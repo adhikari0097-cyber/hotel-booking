@@ -3,6 +3,7 @@ const CONFIG = {
   SUPABASE_ANON_KEY: "sb_publishable_IvUExYz6ZOxtslILNlB6fw_kEu_Sv78",
   SUPABASE_TABLE: "bookings",
   SUPABASE_PROFILES_TABLE: "profiles",
+  SUPABASE_REQUESTS_TABLE: "booking_change_requests",
   GOOGLE_SHEETS_BACKUP_URL: "/.netlify/functions/proxy",
 };
 
@@ -19,6 +20,11 @@ const state = {
   currentProfile: null,
   currentSession: null,
   roomPlans: new Map(),
+  bookingMap: new Map(),
+  requestMap: new Map(),
+  profileMap: new Map(),
+  activeBooking: null,
+  modalMode: "request",
 };
 
 const qs = (selector) => document.querySelector(selector);
@@ -63,16 +69,37 @@ const normalPlanner = qs("#planner-normal");
 const accountsList = qs("#accounts-list");
 const accountsEmpty = qs("#accounts-empty");
 const refreshAccountsBtn = qs("#refresh-accounts");
+const requestsList = qs("#requests-list");
+const requestsEmpty = qs("#requests-empty");
+const refreshRequestsBtn = qs("#refresh-requests");
+const requestsHelper = qs("#requests-helper");
+const requestModal = qs("#request-modal");
+const closeModalBtn = qs("#close-modal");
+const requestForm = qs("#request-form");
+const modalBookingId = qs("#modal-booking-id");
+const modalTitle = qs("#modal-title");
+const requestReasonField = qs("#request-reason-field");
+const requestReasonInput = qs("#request-reason");
+const requestGuestNameInput = qs("#request-guest-name");
+const requestPhoneInput = qs("#request-phone");
+const requestCheckInInput = qs("#request-check-in");
+const requestCheckOutInput = qs("#request-check-out");
+const requestStatusInput = qs("#request-status");
+const requestNotesInput = qs("#request-notes");
+const requestMessageInput = qs("#request-message");
+const requestSubmitBtn = qs("#request-submit");
 
 const navButtons = {
   booking: qs("#tab-booking"),
   view: qs("#tab-view"),
+  requests: qs("#tab-requests"),
   accounts: qs("#tab-accounts"),
 };
 
 const screens = {
   booking: qs("#screen-booking"),
   view: qs("#screen-view"),
+  requests: qs("#screen-requests"),
   accounts: qs("#screen-accounts"),
 };
 
@@ -86,10 +113,19 @@ function isSupabaseConfigured() {
 }
 
 function isSheetsBackupConfigured() {
-  return (
+  if (
     CONFIG.GOOGLE_SHEETS_BACKUP_URL &&
     !CONFIG.GOOGLE_SHEETS_BACKUP_URL.includes("YOUR_GOOGLE")
-  );
+  ) {
+    if (
+      CONFIG.GOOGLE_SHEETS_BACKUP_URL.startsWith("/.netlify/") &&
+      !window.location.hostname.includes("netlify.app")
+    ) {
+      return false;
+    }
+    return true;
+  }
+  return false;
 }
 
 function showToast(message, isError = false) {
@@ -309,6 +345,10 @@ function canManageAccounts() {
   return state.currentProfile && ["owner", "admin"].includes(state.currentProfile.role);
 }
 
+function canManageRequests() {
+  return canManageAccounts();
+}
+
 function updateHeaderProfile() {
   if (!state.currentProfile) {
     userChip.textContent = "";
@@ -319,9 +359,14 @@ function updateHeaderProfile() {
 
 function updateNavVisibility() {
   const showAccounts = canManageAccounts();
+  const showRequests = Boolean(state.currentProfile?.approved);
+  navButtons.requests.classList.toggle("hidden", !showRequests);
   navButtons.accounts.classList.toggle("hidden", !showAccounts);
-  const columns = showAccounts ? "repeat(3, 1fr)" : "repeat(2, 1fr)";
+  const columns = showAccounts ? "repeat(4, 1fr)" : "repeat(3, 1fr)";
   qs(".bottom-nav").style.gridTemplateColumns = columns;
+  if (!showRequests && screens.requests.classList.contains("screen-active")) {
+    setScreen("booking");
+  }
   if (!showAccounts && screens.accounts.classList.contains("screen-active")) {
     setScreen("booking");
   }
@@ -364,7 +409,10 @@ async function fetchProfile(userId, attempts = 5) {
       .eq("user_id", userId)
       .maybeSingle();
 
-    if (!error && data) return data;
+    if (!error && data) {
+      state.profileMap.set(data.user_id, data);
+      return data;
+    }
     await new Promise((resolve) => setTimeout(resolve, 300));
   }
   return null;
@@ -407,6 +455,7 @@ async function applySession(session) {
   updateOnlineStatus();
   await setupRealtime();
   await refreshLiveViews();
+  await loadRequests();
   if (canManageAccounts()) {
     await loadAccounts();
   }
@@ -853,6 +902,7 @@ function renderRoomStatus(bookingsForDate) {
 
 function renderBookings(bookings) {
   bookingCards.innerHTML = "";
+  state.bookingMap = new Map(bookings.map((booking) => [booking.id, booking]));
   if (!bookings.length) {
     bookingEmpty.textContent = "No bookings for this date.";
     bookingEmpty.style.display = "block";
@@ -876,8 +926,253 @@ function renderBookings(bookings) {
         <div><strong>Notes:</strong> ${booking.notes || "-"}</div>
       </div>
       <span class="booking-tag">${booking.status || "Booking"}</span>
+      <div class="request-actions">
+        <button class="action-btn" type="button" data-booking-action="${canManageRequests() ? "edit" : "request"}" data-booking-id="${booking.id}">
+          ${canManageRequests() ? "Edit Booking" : "Request Change"}
+        </button>
+      </div>
     `;
+    card.querySelector("[data-booking-action]").addEventListener("click", () => {
+      openRequestModal(booking.id, canManageRequests() ? "edit" : "request");
+    });
     bookingCards.appendChild(card);
+  });
+}
+
+function getDefaultRequestStatus(reason, currentStatus) {
+  if (reason === "cancel") return "Cancelled";
+  if (reason === "hold") return "Pending";
+  return currentStatus || "Campaign";
+}
+
+function closeRequestModal() {
+  requestModal.classList.add("hidden");
+  requestForm.reset();
+  state.activeBooking = null;
+  state.modalMode = "request";
+}
+
+function openRequestModal(bookingId, mode) {
+  const booking = state.bookingMap.get(bookingId);
+  if (!booking) {
+    showToast("Booking not found.", true);
+    return;
+  }
+
+  state.activeBooking = booking;
+  state.modalMode = mode;
+  modalBookingId.value = booking.id;
+  requestGuestNameInput.value = booking.guestName || "";
+  requestPhoneInput.value = booking.phone || "";
+  requestCheckInInput.value = booking.checkIn || "";
+  requestCheckOutInput.value = booking.checkOut || "";
+  requestStatusInput.value = booking.status || "Campaign";
+  requestNotesInput.value = booking.notes || "";
+  requestMessageInput.value = "";
+  requestReasonInput.value = "change_date";
+  requestReasonField.classList.toggle("hidden", mode !== "request");
+  modalTitle.textContent = mode === "edit" ? "Edit Booking" : "Request Booking Change";
+  requestSubmitBtn.textContent = mode === "edit" ? "Save Booking Update" : "Submit Change Request";
+  syncModalReasonDefaults();
+  requestModal.classList.remove("hidden");
+}
+
+function mapRequest(row) {
+  return {
+    id: row.id,
+    bookingId: row.booking_id,
+    requestedBy: row.requested_by,
+    reason: row.reason,
+    requestNote: row.request_note || "",
+    requestedGuestName: row.requested_guest_name || "",
+    requestedPhone: row.requested_phone || "",
+    requestedCheckIn: row.requested_check_in || "",
+    requestedCheckOut: row.requested_check_out || "",
+    requestedNotes: row.requested_notes || "",
+    requestedBookingStatus: row.requested_booking_status || "",
+    status: row.status,
+    adminNote: row.admin_note || "",
+    reviewedBy: row.reviewed_by,
+    reviewedAt: row.reviewed_at,
+    createdAt: row.created_at,
+    booking: row.bookings ? mapBooking(row.bookings) : null,
+  };
+}
+
+function formatRequestReason(reason) {
+  switch (reason) {
+    case "cancel":
+      return "Customer request to cancel";
+    case "hold":
+      return "Customer request to hold";
+    case "change_date":
+      return "Customer request to change date";
+    case "wrong_data":
+      return "Wrong data";
+    default:
+      return reason || "-";
+  }
+}
+
+async function fetchRequests() {
+  ensureSupabase();
+  let query = state.supabase
+    .from(CONFIG.SUPABASE_REQUESTS_TABLE)
+    .select(`*, bookings:${CONFIG.SUPABASE_TABLE}(*)`)
+    .order("created_at", { ascending: false });
+
+  if (!canManageRequests()) {
+    query = query.eq("requested_by", state.currentSession.user.id);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return (data || []).map(mapRequest);
+}
+
+async function updateBooking(bookingId, values) {
+  ensureSupabase();
+  const row = {};
+  if ("guestName" in values) row.guest_name = values.guestName;
+  if ("phone" in values) row.phone = values.phone;
+  if ("checkIn" in values) row.check_in = values.checkIn;
+  if ("checkOut" in values) row.check_out = values.checkOut;
+  if ("notes" in values) row.notes = values.notes || "";
+  if ("status" in values) row.booking_status = values.status;
+
+  const { error } = await state.supabase.from(CONFIG.SUPABASE_TABLE).update(row).eq("id", bookingId);
+  if (error) throw new Error(error.message);
+}
+
+async function insertChangeRequest(payload) {
+  ensureSupabase();
+  const { error } = await state.supabase.from(CONFIG.SUPABASE_REQUESTS_TABLE).insert({
+    booking_id: payload.bookingId,
+    requested_by: state.currentSession.user.id,
+    reason: payload.reason,
+    request_note: payload.requestNote || "",
+    requested_guest_name: payload.guestName || null,
+    requested_phone: payload.phone || null,
+    requested_check_in: payload.checkIn || null,
+    requested_check_out: payload.checkOut || null,
+    requested_notes: payload.notes || null,
+    requested_booking_status: payload.status || null,
+  });
+  if (error) throw new Error(error.message);
+}
+
+async function updateRequestStatus(requestId, values) {
+  ensureSupabase();
+  const row = {};
+  if ("status" in values) row.status = values.status;
+  if ("adminNote" in values) row.admin_note = values.adminNote || "";
+  row.reviewed_by = state.currentSession?.user?.id || null;
+  row.reviewed_at = new Date().toISOString();
+
+  const { error } = await state.supabase.from(CONFIG.SUPABASE_REQUESTS_TABLE).update(row).eq("id", requestId);
+  if (error) throw new Error(error.message);
+}
+
+async function approveRequest(requestId) {
+  const request = state.requestMap.get(requestId);
+  if (!request) throw new Error("Request not found.");
+
+  const targetStatus = request.reason === "cancel"
+    ? "Cancelled"
+    : request.reason === "hold"
+      ? "Pending"
+      : (request.requestedBookingStatus || request.booking?.status || "Campaign");
+
+  await updateBooking(request.bookingId, {
+    guestName: request.requestedGuestName || request.booking?.guestName || "",
+    phone: request.requestedPhone || request.booking?.phone || "",
+    checkIn: request.requestedCheckIn || request.booking?.checkIn || "",
+    checkOut: request.requestedCheckOut || request.booking?.checkOut || "",
+    notes: request.requestedNotes ?? request.booking?.notes ?? "",
+    status: targetStatus,
+  });
+  await updateRequestStatus(requestId, { status: "approved" });
+}
+
+async function rejectRequest(requestId) {
+  const adminNote = window.prompt("Reject reason (optional):", "") || "";
+  await updateRequestStatus(requestId, { status: "rejected", adminNote });
+}
+
+function renderRequests(requests) {
+  requestsList.innerHTML = "";
+  state.requestMap = new Map(requests.map((request) => [request.id, request]));
+  requestsEmpty.style.display = requests.length ? "none" : "block";
+  requestsHelper.textContent = canManageRequests()
+    ? "Owner/Admin can approve or reject requests here."
+    : "Your submitted requests show pending, approved, or rejected status here.";
+
+  requests.forEach((request) => {
+    const booking = request.booking;
+    const card = document.createElement("article");
+    card.className = "request-card";
+    const statusClass =
+      request.status === "approved"
+        ? "tag-success"
+        : request.status === "pending"
+          ? "tag-pending"
+          : "";
+    card.innerHTML = `
+      <div class="account-head">
+        <div>
+          <h4>${booking?.trackCode || "-"} · ${booking?.guestName || request.requestedGuestName || "Booking"}</h4>
+          <p>${formatRequestReason(request.reason)}</p>
+        </div>
+        <span class="booking-tag ${statusClass}">${request.status}</span>
+      </div>
+      <div class="request-meta">
+        <div><strong>Requested by:</strong> ${
+          state.profileMap.get(request.requestedBy)?.full_name ||
+          state.profileMap.get(request.requestedBy)?.username ||
+          (request.requestedBy === state.currentSession?.user?.id ? state.currentProfile?.full_name || state.currentProfile?.username || "-" : "Staff")
+        }</div>
+        <div><strong>Current:</strong> ${booking?.checkIn || "-"} -> ${booking?.checkOut || "-"} · ${booking?.status || "-"}</div>
+        <div><strong>Requested:</strong> ${request.requestedCheckIn || booking?.checkIn || "-"} -> ${request.requestedCheckOut || booking?.checkOut || "-"} · ${request.requestedBookingStatus || booking?.status || "-"}</div>
+        <div><strong>Notes:</strong> ${request.requestedNotes || booking?.notes || "-"}</div>
+        <div><strong>Reason Details:</strong> ${request.requestNote || "-"}</div>
+        ${
+          request.adminNote
+            ? `<div><strong>Admin Note:</strong> ${request.adminNote}</div>`
+            : ""
+        }
+      </div>
+      ${
+        canManageRequests() && request.status === "pending"
+          ? `<div class="request-actions">
+              <button class="action-btn" type="button" data-request-action="approve" data-request-id="${request.id}">Approve</button>
+              <button class="action-btn danger" type="button" data-request-action="reject" data-request-id="${request.id}">Reject</button>
+            </div>`
+          : ""
+      }
+    `;
+
+    card.querySelectorAll("[data-request-action]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        try {
+          button.disabled = true;
+          if (button.dataset.requestAction === "approve") {
+            await approveRequest(button.dataset.requestId);
+            showToast("Request approved.");
+          } else {
+            await rejectRequest(button.dataset.requestId);
+            showToast("Request rejected.");
+          }
+          await loadRequests();
+          await refreshLiveViews();
+        } catch (error) {
+          showToast(error.message, true);
+        } finally {
+          button.disabled = false;
+        }
+      });
+    });
+
+    requestsList.appendChild(card);
   });
 }
 
@@ -1014,7 +1309,16 @@ async function setupRealtime() {
       async () => {
         setSyncState("live");
         await refreshLiveViews();
-        if (canManageAccounts()) await loadAccounts();
+        await loadRequests();
+      }
+    )
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: CONFIG.SUPABASE_REQUESTS_TABLE },
+      async () => {
+        setSyncState("live");
+        await loadRequests();
+        await refreshLiveViews();
       }
     )
     .subscribe((status) => {
@@ -1118,7 +1422,22 @@ async function loadAccounts() {
   if (!canManageAccounts()) return;
   try {
     const profiles = await fetchAccounts();
+    state.profileMap = new Map(profiles.map((profile) => [profile.user_id, profile]));
     renderAccounts(profiles);
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function loadRequests() {
+  if (!state.currentProfile?.approved) return;
+  try {
+    if (canManageRequests() && state.profileMap.size <= 1) {
+      const profiles = await fetchAccounts();
+      state.profileMap = new Map(profiles.map((profile) => [profile.user_id, profile]));
+    }
+    const requests = await fetchRequests();
+    renderRequests(requests);
   } catch (error) {
     showToast(error.message, true);
   }
@@ -1153,6 +1472,66 @@ async function bootstrapSession() {
     data: { session },
   } = await state.supabase.auth.getSession();
   await applySession(session);
+}
+
+function syncModalReasonDefaults() {
+  if (state.modalMode !== "request") return;
+  requestStatusInput.value = getDefaultRequestStatus(requestReasonInput.value, state.activeBooking?.status || "Campaign");
+}
+
+async function handleRequestSubmit(event) {
+  event.preventDefault();
+  if (!state.activeBooking) {
+    showToast("Booking not selected.", true);
+    return;
+  }
+
+  const payload = {
+    guestName: requestGuestNameInput.value.trim(),
+    phone: requestPhoneInput.value.trim(),
+    checkIn: requestCheckInInput.value,
+    checkOut: requestCheckOutInput.value,
+    status: requestStatusInput.value,
+    notes: requestNotesInput.value.trim(),
+    requestNote: requestMessageInput.value.trim(),
+  };
+
+  if (!payload.guestName || !payload.phone || !payload.checkIn || !payload.checkOut) {
+    showToast("Fill all required booking fields.", true);
+    return;
+  }
+
+  const start = parseDate(payload.checkIn);
+  const end = parseDate(payload.checkOut);
+  if (!start || !end || end <= start) {
+    showToast("Check-out must be after check-in.", true);
+    return;
+  }
+
+  requestSubmitBtn.disabled = true;
+  requestSubmitBtn.textContent = state.modalMode === "edit" ? "Saving..." : "Submitting...";
+
+  try {
+    if (state.modalMode === "edit") {
+      await updateBooking(state.activeBooking.id, payload);
+      showToast("Booking updated.");
+    } else {
+      await insertChangeRequest({
+        bookingId: state.activeBooking.id,
+        reason: requestReasonInput.value,
+        ...payload,
+      });
+      showToast("Request submitted.");
+    }
+    closeRequestModal();
+    await loadRequests();
+    await refreshLiveViews();
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    requestSubmitBtn.disabled = false;
+    requestSubmitBtn.textContent = state.modalMode === "edit" ? "Save Booking Update" : "Submit Change Request";
+  }
 }
 
 bookingForm.addEventListener("submit", async (event) => {
@@ -1257,12 +1636,19 @@ bookingForm.addEventListener("submit", async (event) => {
 
 loginForm.addEventListener("submit", handleLogin);
 signupForm.addEventListener("submit", handleSignup);
+requestForm.addEventListener("submit", handleRequestSubmit);
 authTabLogin.addEventListener("click", () => setAuthTab("login"));
 authTabSignup.addEventListener("click", () => setAuthTab("signup"));
 pendingLogoutBtn.addEventListener("click", handleLogout);
 logoutBtn.addEventListener("click", handleLogout);
 loadBookingsBtn.addEventListener("click", () => loadBookingsForDate(viewDateInput.value));
 refreshAccountsBtn.addEventListener("click", () => loadAccounts());
+refreshRequestsBtn.addEventListener("click", () => loadRequests());
+closeModalBtn.addEventListener("click", closeRequestModal);
+requestReasonInput.addEventListener("change", syncModalReasonDefaults);
+requestModal.querySelectorAll("[data-close-modal]").forEach((element) => {
+  element.addEventListener("click", closeRequestModal);
+});
 
 viewDateInput.addEventListener("change", async (event) => {
   const pickedDate = parseDate(event.target.value);
@@ -1289,6 +1675,7 @@ qs("#checkOut").addEventListener("change", refreshAvailability);
 
 navButtons.booking.addEventListener("click", () => setScreen("booking"));
 navButtons.view.addEventListener("click", () => setScreen("view"));
+navButtons.requests.addEventListener("click", () => setScreen("requests"));
 navButtons.accounts.addEventListener("click", () => setScreen("accounts"));
 
 window.addEventListener("online", updateOnlineStatus);

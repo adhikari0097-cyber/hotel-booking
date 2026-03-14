@@ -19,8 +19,28 @@ Rules:
 - First signup becomes `owner` automatically and is approved automatically
 - Later signups become `user` and stay `pending` until owner/admin approves them
 - Only approved accounts can read or create bookings
+- Only `owner` and `admin` can directly edit bookings
+- `user` accounts submit change requests instead of editing bookings directly
 - Owner can change roles
 - Admin can approve/block accounts
+
+## Change Request Workflow
+
+User request reasons:
+
+- `Customer request to cancel`
+- `Customer request to hold`
+- `Customer request to change date`
+- `Wrong data`
+
+Flow:
+
+- `user` opens a booking and submits a change request with a reason and details
+- request status starts as `pending`
+- `owner` / `admin` sees requests in the `Requests` tab
+- `owner` / `admin` can `Approve` or `Reject`
+- when approved, the booking row is updated automatically in `Supabase`
+- user sees the latest request status from the same `Requests` tab
 
 ## Supabase Setup
 
@@ -76,9 +96,19 @@ Apps Script row order must match that header exactly.
 
 1. Update Supabase SQL
 2. Update Apps Script
-3. Redeploy Netlify
+3. Redeploy Vercel
+
+Note:
+
+- current Vercel hosting does not use the old Netlify proxy path
+- the app now skips the broken Netlify backup path automatically when running outside `netlify.app`
+- `Supabase` is the source of truth
 
 ## Realtime
 
-The app listens to `public.bookings` realtime changes.
-When one staff member saves a booking, other logged-in approved staff see updates automatically.
+The app listens to realtime changes from:
+
+- `public.bookings`
+- `public.booking_change_requests`
+
+When one staff member saves a booking or submits/approves a request, other approved staff see updates automatically.

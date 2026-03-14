@@ -223,6 +223,23 @@
           </div>
         </section>
 
+        <section class="screen" id="screen-requests" aria-labelledby="tab-requests">
+          <div class="card">
+            <div class="accounts-header">
+              <div>
+                <p class="eyebrow">Workflow</p>
+                <h3>Change Requests</h3>
+              </div>
+              <button id="refresh-requests" class="secondary-btn small-btn" type="button">Refresh</button>
+            </div>
+            <p class="inline-note" id="requests-helper">
+              Users can submit requests. Owner/Admin can approve or reject them here.
+            </p>
+            <div id="requests-list" class="accounts-list"></div>
+            <p id="requests-empty" class="empty-state">No requests yet.</p>
+          </div>
+        </section>
+
         <section class="screen" id="screen-accounts" aria-labelledby="tab-accounts">
           <div class="card">
             <div class="accounts-header">
@@ -242,8 +259,71 @@
       <nav class="bottom-nav">
         <button id="tab-booking" class="nav-btn nav-active" type="button">New Booking</button>
         <button id="tab-view" class="nav-btn" type="button">View By Date</button>
+        <button id="tab-requests" class="nav-btn" type="button">Requests</button>
         <button id="tab-accounts" class="nav-btn hidden" type="button">Accounts</button>
       </nav>
+    </div>
+
+    <div id="request-modal" class="modal hidden">
+      <div class="modal-backdrop" data-close-modal></div>
+      <div class="modal-card">
+        <div class="accounts-header">
+          <div>
+            <p class="eyebrow">Booking Action</p>
+            <h3 id="modal-title">Request Change</h3>
+          </div>
+          <button id="close-modal" class="ghost-btn" type="button">Close</button>
+        </div>
+        <form id="request-form">
+          <input id="modal-booking-id" type="hidden" />
+          <div id="request-reason-field" class="field">
+            <label for="request-reason">Request Reason *</label>
+            <select id="request-reason" required>
+              <option value="cancel">Customer request to cancel</option>
+              <option value="hold">Customer request to hold</option>
+              <option value="change_date">Customer request to change date</option>
+              <option value="wrong_data">Wrong data</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="request-guest-name">Guest Name</label>
+            <input id="request-guest-name" type="text" />
+          </div>
+          <div class="field">
+            <label for="request-phone">Phone Number</label>
+            <input id="request-phone" type="tel" inputmode="tel" />
+          </div>
+          <div class="field grid-2">
+            <div>
+              <label for="request-check-in">Check-in</label>
+              <input id="request-check-in" type="date" />
+            </div>
+            <div>
+              <label for="request-check-out">Check-out</label>
+              <input id="request-check-out" type="date" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="request-status">Booking Status</label>
+            <select id="request-status">
+              <option value="Campaign">Campaign Booking</option>
+              <option value="Visit">Visit Booking</option>
+              <option value="BKC">BKC Booking</option>
+              <option value="Pending">Pending</option>
+              <option value="Cancelled">Cancelled</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="request-notes">Notes</label>
+            <textarea id="request-notes"></textarea>
+          </div>
+          <div class="field">
+            <label for="request-message">Reason Details</label>
+            <textarea id="request-message" placeholder="Explain why this change is needed."></textarea>
+          </div>
+          <button id="request-submit" class="primary-btn" type="submit">Submit</button>
+        </form>
+      </div>
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
