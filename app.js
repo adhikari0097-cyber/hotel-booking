@@ -1,0 +1,1317 @@
+const CONFIG = {
+  SUPABASE_URL: "https://rxeeeejdyxtbqnvxfxde.supabase.co",
+  SUPABASE_ANON_KEY: "sb_publishable_IvUExYz6ZOxtslILNlB6fw_kEu_Sv78",
+  SUPABASE_TABLE: "bookings",
+  SUPABASE_PROFILES_TABLE: "profiles",
+  GOOGLE_SHEETS_BACKUP_URL: "/.netlify/functions/proxy",
+};
+
+const ROOM_DEFS = [
+  { type: "kitchen", label: "Kitchen Room", count: 2, maxPax: 6 },
+  { type: "normal", label: "Normal Room", count: 4, maxPax: 4 },
+];
+
+const TOTAL_ROOMS = ROOM_DEFS.reduce((sum, room) => sum + room.count, 0);
+const state = {
+  supabase: null,
+  realtimeChannel: null,
+  currentMonthDate: new Date(),
+  currentProfile: null,
+  currentSession: null,
+  roomPlans: new Map(),
+};
+
+const qs = (selector) => document.querySelector(selector);
+
+const authShell = qs("#auth-shell");
+const pendingShell = qs("#pending-shell");
+const appShell = qs("#app-shell");
+const authMessage = qs("#auth-message");
+const loginForm = qs("#login-form");
+const signupForm = qs("#signup-form");
+const authTabLogin = qs("#auth-tab-login");
+const authTabSignup = qs("#auth-tab-signup");
+const pendingCopy = qs("#pending-copy");
+const pendingLogoutBtn = qs("#pending-logout");
+const logoutBtn = qs("#logout-btn");
+const userChip = qs("#user-chip");
+
+const bookingForm = qs("#booking-form");
+const toast = qs("#toast");
+const syncStatus = qs("#sync-status");
+const guestsInput = qs("#guests");
+const bookingCards = qs("#booking-cards");
+const bookingEmpty = qs("#booking-empty");
+const roomStatusList = qs("#room-status-list");
+const statTotal = qs("#stat-total");
+const statOccupied = qs("#stat-occupied");
+const statAvailable = qs("#stat-available");
+const monthLabel = qs("#month-label");
+const monthGrid = qs("#month-grid");
+const monthPrevBtn = qs("#month-prev");
+const monthNextBtn = qs("#month-next");
+const viewDateInput = qs("#viewDate");
+const loadBookingsBtn = qs("#loadBookings");
+const checkAvailabilityBtn = qs("#checkAvailability");
+const availNormal = qs("#avail-normal");
+const availKitchen = qs("#avail-kitchen");
+const bookedNormal = qs("#booked-normal");
+const bookedKitchen = qs("#booked-kitchen");
+const availabilityHint = qs("#availability-hint");
+const kitchenPlanner = qs("#planner-kitchen");
+const normalPlanner = qs("#planner-normal");
+const accountsList = qs("#accounts-list");
+const accountsEmpty = qs("#accounts-empty");
+const refreshAccountsBtn = qs("#refresh-accounts");
+
+const navButtons = {
+  booking: qs("#tab-booking"),
+  view: qs("#tab-view"),
+  accounts: qs("#tab-accounts"),
+};
+
+const screens = {
+  booking: qs("#screen-booking"),
+  view: qs("#screen-view"),
+  accounts: qs("#screen-accounts"),
+};
+
+function isSupabaseConfigured() {
+  return (
+    CONFIG.SUPABASE_URL &&
+    CONFIG.SUPABASE_ANON_KEY &&
+    !CONFIG.SUPABASE_URL.includes("YOUR_SUPABASE") &&
+    !CONFIG.SUPABASE_ANON_KEY.includes("YOUR_SUPABASE")
+  );
+}
+
+function isSheetsBackupConfigured() {
+  return (
+    CONFIG.GOOGLE_SHEETS_BACKUP_URL &&
+    !CONFIG.GOOGLE_SHEETS_BACKUP_URL.includes("YOUR_GOOGLE")
+  );
+}
+
+function showToast(message, isError = false) {
+  toast.textContent = message;
+  toast.style.background = isError ? "#b5473d" : "#0b3d2e";
+  toast.classList.add("show");
+  setTimeout(() => toast.classList.remove("show"), 2800);
+}
+
+function setSyncState(stateName) {
+  const states = {
+    setup: { text: "Setup", bg: "#efe5d1", color: "#7a5a21" },
+    connecting: { text: "Connecting", bg: "#e9eef7", color: "#20497c" },
+    live: { text: "Live", bg: "#e6f0eb", color: "#0b3d2e" },
+    offline: { text: "Offline", bg: "#f9e4e1", color: "#b5473d" },
+    error: { text: "Error", bg: "#f9e4e1", color: "#b5473d" },
+  };
+  const next = states[stateName] || states.error;
+  syncStatus.textContent = next.text;
+  syncStatus.style.background = next.bg;
+  syncStatus.style.color = next.color;
+}
+
+function toDateInputValue(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseDate(dateString) {
+  if (!dateString) return null;
+  if (dateString instanceof Date) {
+    return new Date(dateString.getFullYear(), dateString.getMonth(), dateString.getDate(), 12, 0, 0);
+  }
+  const [year, month, day] = String(dateString).slice(0, 10).split("-").map(Number);
+  return new Date(year, month - 1, day, 12, 0, 0);
+}
+
+function startOfMonth(date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1, 12, 0, 0);
+}
+
+function endOfMonth(date) {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0, 12, 0, 0);
+}
+
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function formatDateKey(date) {
+  return toDateInputValue(date);
+}
+
+function formatMonthLabel(date) {
+  return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
+function getNightCount(checkIn, checkOut) {
+  const start = parseDate(checkIn);
+  const end = parseDate(checkOut);
+  if (!start || !end) return 1;
+  const diff = Math.round((end - start) / 86400000);
+  return diff > 0 ? diff : 1;
+}
+
+function getRoomKey(type, number) {
+  return `${type}-${number}`;
+}
+
+function formatCheckoutFromNights(checkIn, nights) {
+  return formatDateKey(addDays(parseDate(checkIn), nights));
+}
+
+function datesOverlap(startA, endA, startB, endB) {
+  return startA < endB && endA > startB;
+}
+
+function buildRoomList() {
+  return ROOM_DEFS.flatMap((room) => {
+    const rooms = [];
+    for (let i = 1; i <= room.count; i += 1) {
+      rooms.push({
+        type: room.type,
+        number: i,
+        label: room.label,
+        fullLabel: `${room.label} ${i}`,
+        maxPax: room.maxPax,
+      });
+    }
+    return rooms;
+  });
+}
+
+function getRoomDef(type) {
+  return ROOM_DEFS.find((room) => room.type === type);
+}
+
+function getRoomLabel(type, number) {
+  const def = getRoomDef(type);
+  if (!def) return "Room";
+  return `${def.label} ${number}`;
+}
+
+function getRoomPlan(type, number, defaultNights) {
+  const key = getRoomKey(type, number);
+  if (!state.roomPlans.has(key)) {
+    state.roomPlans.set(key, { pax: 0, nights: defaultNights });
+  }
+  const plan = state.roomPlans.get(key);
+  if (plan.nights < 1) plan.nights = defaultNights;
+  return plan;
+}
+
+function getAssignedRoomLabel(room, pax) {
+  return `${room.label} - ${pax} Pax`;
+}
+
+function normalizeRoomGroup(type) {
+  if (!type) return "";
+  const value = String(type);
+  if (value.startsWith("normal")) return "normal";
+  if (value.startsWith("kitchen")) return "kitchen";
+  if (value === "4-pax") return "normal";
+  if (value === "6-pax") return "kitchen";
+  return value;
+}
+
+function getRoomTypeDisplay(type) {
+  switch (type) {
+    case "normal-1":
+      return "Normal Room - 1 Pax";
+    case "normal-2":
+      return "Normal Room - 2 Pax";
+    case "normal-3":
+      return "Normal Room - 3 Pax";
+    case "normal-4":
+      return "Normal Room - 4 Pax";
+    case "kitchen-6":
+      return "Kitchen Room - 6 Pax";
+    case "normal":
+      return "Normal Room";
+    case "kitchen":
+      return "Kitchen Room";
+    case "4-pax":
+      return "Normal Room - 4 Pax";
+    case "6-pax":
+      return "Kitchen Room - 6 Pax";
+    default:
+      return String(type || "");
+  }
+}
+
+function isBlockingBooking(booking) {
+  return String(booking.status || "").toLowerCase() !== "cancelled";
+}
+
+function mapBooking(row) {
+  return {
+    id: row.id,
+    trackCode: row.track_code || "",
+    guestName: row.guest_name,
+    phone: row.phone,
+    checkIn: row.check_in,
+    checkOut: row.check_out,
+    guests: Number(row.guests || 0),
+    roomType: row.room_type,
+    roomTypeLabel: row.room_type_label,
+    roomNumber: Number(row.room_number),
+    roomsNeeded: Number(row.rooms_needed || 1),
+    notes: row.notes || "",
+    status: row.booking_status || "",
+    createdAt: row.created_at,
+  };
+}
+
+function ensureSupabase() {
+  if (!state.supabase) {
+    throw new Error("Set Supabase URL and anon key in app.js first.");
+  }
+}
+
+function normalizeUsername(value) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, "");
+}
+
+function usernameToEmail(username) {
+  const normalized = normalizeUsername(username);
+  if (!normalized) return "";
+  return normalized.includes("@") ? normalized : `${normalized}@hotel.local`;
+}
+
+function showAuthMessage(message, isError = false) {
+  authMessage.textContent = message;
+  authMessage.classList.toggle("error", isError);
+}
+
+function setAuthTab(mode) {
+  const loginActive = mode === "login";
+  authTabLogin.classList.toggle("auth-tab-active", loginActive);
+  authTabSignup.classList.toggle("auth-tab-active", !loginActive);
+  loginForm.classList.toggle("auth-form-active", loginActive);
+  signupForm.classList.toggle("auth-form-active", !loginActive);
+  showAuthMessage("");
+}
+
+function renderShell(mode) {
+  authShell.classList.toggle("hidden", mode !== "auth");
+  pendingShell.classList.toggle("hidden", mode !== "pending");
+  appShell.classList.toggle("hidden", mode !== "app");
+}
+
+function canManageAccounts() {
+  return state.currentProfile && ["owner", "admin"].includes(state.currentProfile.role);
+}
+
+function updateHeaderProfile() {
+  if (!state.currentProfile) {
+    userChip.textContent = "";
+    return;
+  }
+  userChip.textContent = `${state.currentProfile.full_name || state.currentProfile.username} · ${state.currentProfile.role}`;
+}
+
+function updateNavVisibility() {
+  const showAccounts = canManageAccounts();
+  navButtons.accounts.classList.toggle("hidden", !showAccounts);
+  const columns = showAccounts ? "repeat(3, 1fr)" : "repeat(2, 1fr)";
+  qs(".bottom-nav").style.gridTemplateColumns = columns;
+  if (!showAccounts && screens.accounts.classList.contains("screen-active")) {
+    setScreen("booking");
+  }
+}
+
+function setScreen(target) {
+  Object.values(screens).forEach((screen) => screen.classList.remove("screen-active"));
+  Object.values(navButtons).forEach((btn) => btn.classList.remove("nav-active"));
+
+  screens[target].classList.add("screen-active");
+  navButtons[target].classList.add("nav-active");
+}
+
+function updateOnlineStatus() {
+  if (!navigator.onLine) {
+    setSyncState("offline");
+    return;
+  }
+  if (!isSupabaseConfigured()) {
+    setSyncState("setup");
+    return;
+  }
+  if (!state.supabase) {
+    setSyncState("connecting");
+    return;
+  }
+  if (!state.realtimeChannel && state.currentProfile?.approved) {
+    setSyncState("connecting");
+    return;
+  }
+  setSyncState(state.currentProfile?.approved ? "live" : "setup");
+}
+
+async function fetchProfile(userId, attempts = 5) {
+  ensureSupabase();
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const { data, error } = await state.supabase
+      .from(CONFIG.SUPABASE_PROFILES_TABLE)
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (!error && data) return data;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+  return null;
+}
+
+async function applySession(session) {
+  state.currentSession = session;
+
+  if (!session) {
+    state.currentProfile = null;
+    if (state.realtimeChannel) {
+      await state.supabase.removeChannel(state.realtimeChannel);
+      state.realtimeChannel = null;
+    }
+    renderShell("auth");
+    updateOnlineStatus();
+    return;
+  }
+
+  const profile = await fetchProfile(session.user.id);
+  if (!profile) {
+    renderShell("auth");
+    showAuthMessage("Profile not ready yet. Please try again.", true);
+    await state.supabase.auth.signOut();
+    return;
+  }
+
+  state.currentProfile = profile;
+  updateHeaderProfile();
+  updateNavVisibility();
+
+  if (!profile.approved) {
+    pendingCopy.textContent = `${profile.full_name || profile.username}, your account is waiting for owner/admin approval.`;
+    renderShell("pending");
+    updateOnlineStatus();
+    return;
+  }
+
+  renderShell("app");
+  updateOnlineStatus();
+  await setupRealtime();
+  await refreshLiveViews();
+  if (canManageAccounts()) {
+    await loadAccounts();
+  }
+}
+
+async function handleLogin(event) {
+  event.preventDefault();
+  showAuthMessage("");
+  const formData = new FormData(loginForm);
+  const username = formData.get("username");
+  const password = formData.get("password");
+  const email = usernameToEmail(username);
+
+  if (!email || !password) {
+    showAuthMessage("Username and password are required.", true);
+    return;
+  }
+
+  const submitButton = loginForm.querySelector("button[type='submit']");
+  submitButton.disabled = true;
+  submitButton.textContent = "Logging in...";
+
+  try {
+    const { error } = await state.supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+  } catch (error) {
+    showAuthMessage(error.message || "Login failed.", true);
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = "Login";
+  }
+}
+
+async function handleSignup(event) {
+  event.preventDefault();
+  showAuthMessage("");
+  const formData = new FormData(signupForm);
+  const username = normalizeUsername(formData.get("username"));
+  const email = usernameToEmail(username);
+  const fullName = String(formData.get("fullName") || "").trim();
+  const phone = String(formData.get("phone") || "").trim();
+  const password = String(formData.get("password") || "");
+
+  if (!username || !fullName || !phone || !password) {
+    showAuthMessage("Fill all account fields.", true);
+    return;
+  }
+
+  const submitButton = signupForm.querySelector("button[type='submit']");
+  submitButton.disabled = true;
+  submitButton.textContent = "Submitting...";
+
+  try {
+    const { data, error } = await state.supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          username,
+          full_name: fullName,
+          phone,
+        },
+      },
+    });
+
+    if (error) throw error;
+
+    if (!data.session) {
+      showAuthMessage("Account created. Ask owner to approve your access.");
+      setAuthTab("login");
+      signupForm.reset();
+      return;
+    }
+
+    const profile = await fetchProfile(data.user.id);
+    if (profile?.role === "owner" && profile.approved) {
+      showToast("Owner account created.");
+    } else {
+      showToast("Account request submitted. Wait for approval.");
+    }
+    signupForm.reset();
+  } catch (error) {
+    showAuthMessage(error.message || "Could not submit account request.", true);
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = "Submit Account Request";
+  }
+}
+
+async function handleLogout() {
+  if (!state.supabase) return;
+  await state.supabase.auth.signOut();
+}
+
+function getRoomTypeVariants(group) {
+  if (group === "normal") {
+    return ["normal", "normal-1", "normal-2", "normal-3", "normal-4", "4-pax"];
+  }
+  if (group === "kitchen") {
+    return ["kitchen", "kitchen-6", "6-pax"];
+  }
+  return [group];
+}
+
+async function fetchRangeBookings(roomGroup, start, end) {
+  ensureSupabase();
+  const { data, error } = await state.supabase
+    .from(CONFIG.SUPABASE_TABLE)
+    .select("*")
+    .in("room_type", getRoomTypeVariants(roomGroup))
+    .lt("check_in", end)
+    .gt("check_out", start)
+    .order("room_number", { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return (data || []).map(mapBooking);
+}
+
+async function fetchBookingsByDate(date) {
+  ensureSupabase();
+  const { data, error } = await state.supabase
+    .from(CONFIG.SUPABASE_TABLE)
+    .select("*")
+    .lte("check_in", date)
+    .gt("check_out", date)
+    .order("room_number", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return (data || []).map(mapBooking);
+}
+
+async function fetchBookingsForPeriod(start, end) {
+  ensureSupabase();
+  const { data, error } = await state.supabase
+    .from(CONFIG.SUPABASE_TABLE)
+    .select("*")
+    .lt("check_in", end)
+    .gt("check_out", start)
+    .order("check_in", { ascending: true })
+    .order("room_number", { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return (data || []).map(mapBooking);
+}
+
+function getStatusTrackPrefix(status) {
+  switch (String(status || "").trim().toUpperCase()) {
+    case "BKC":
+      return "BKC";
+    case "VISIT":
+      return "VIS";
+    case "CAMPAIGN":
+      return "CAM";
+    default:
+      return "BK";
+  }
+}
+
+async function getNextTrackCode(status) {
+  ensureSupabase();
+  const prefix = getStatusTrackPrefix(status);
+  const { data, error } = await state.supabase
+    .from(CONFIG.SUPABASE_TABLE)
+    .select("track_code")
+    .ilike("track_code", `${prefix}-%`)
+    .order("track_code", { ascending: false })
+    .limit(1);
+
+  if (error) throw new Error(error.message);
+
+  let nextNumber = 1;
+  const current = data?.[0]?.track_code ? String(data[0].track_code) : "";
+  const match = current.match(/^(.*?)-(\d+)$/);
+  if (match) nextNumber = Number(match[2]) + 1;
+  return `${prefix}-${String(nextNumber).padStart(4, "0")}`;
+}
+
+async function insertBooking(payload) {
+  ensureSupabase();
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const row = {
+      track_code: payload.trackCode || (await getNextTrackCode(payload.status)),
+      guest_name: payload.guestName,
+      phone: payload.phone,
+      check_in: payload.checkIn,
+      check_out: payload.checkOut,
+      guests: Number(payload.guests),
+      room_type: payload.roomType,
+      room_type_label: payload.roomTypeLabel,
+      room_number: Number(payload.roomNumber),
+      rooms_needed: Number(payload.roomsNeeded || 1),
+      notes: payload.notes || "",
+      booking_status: payload.status,
+    };
+
+    const { error } = await state.supabase.from(CONFIG.SUPABASE_TABLE).insert(row);
+    if (!error) {
+      payload.trackCode = row.track_code;
+      return row.track_code;
+    }
+
+    const message = String(error.message || "");
+    if (!message.toLowerCase().includes("track_code") && !message.toLowerCase().includes("duplicate")) {
+      throw new Error(message);
+    }
+
+    payload.trackCode = "";
+  }
+
+  throw new Error("Could not generate unique track code.");
+}
+
+async function backupBookingToSheets(payload) {
+  if (!isSheetsBackupConfigured()) {
+    return { skipped: true };
+  }
+
+  const baseUrl = CONFIG.GOOGLE_SHEETS_BACKUP_URL.startsWith("http")
+    ? CONFIG.GOOGLE_SHEETS_BACKUP_URL
+    : `${window.location.origin}${CONFIG.GOOGLE_SHEETS_BACKUP_URL}`;
+
+  const body = new URLSearchParams({
+    trackCode: payload.trackCode,
+    guestName: payload.guestName,
+    phone: payload.phone,
+    checkIn: payload.checkIn,
+    checkOut: payload.checkOut,
+    guests: String(payload.guests),
+    roomType: payload.roomType,
+    roomTypeLabel: payload.roomTypeLabel,
+    roomNumber: String(payload.roomNumber),
+    roomsNeeded: String(payload.roomsNeeded || 1),
+    notes: payload.notes || "",
+    status: payload.status,
+    timestamp: new Date().toISOString(),
+  }).toString();
+
+  const response = await fetch(baseUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  });
+
+  const text = await response.text();
+  if (!response.ok) throw new Error(text || "Google Sheets backup failed.");
+
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed.success === false) throw new Error(parsed.message || "Google Sheets backup failed.");
+    return parsed;
+  } catch (error) {
+    throw new Error(text || "Google Sheets backup failed.");
+  }
+}
+
+async function getAvailability(checkIn, checkOut) {
+  if (!checkIn || !checkOut) return null;
+  const startDate = parseDate(checkIn);
+  const endDate = parseDate(checkOut);
+  if (!startDate || !endDate || endDate <= startDate) return null;
+
+  const results = await Promise.all(
+    ROOM_DEFS.map(async (room) => ({
+      room,
+      bookings: await fetchRangeBookings(room.type, checkIn, checkOut),
+    }))
+  );
+
+  const availability = {};
+
+  results.forEach(({ room, bookings }) => {
+    const booked = new Set();
+    const occupied = new Map();
+
+    bookings.forEach((booking) => {
+      if (!isBlockingBooking(booking)) return;
+      const bookingStart = parseDate(booking.checkIn);
+      const bookingEnd = parseDate(booking.checkOut);
+      if (!bookingStart || !bookingEnd) return;
+      if (!datesOverlap(startDate, endDate, bookingStart, bookingEnd)) return;
+      if (normalizeRoomGroup(booking.roomType) !== room.type) return;
+      const roomNumber = Number(booking.roomNumber);
+      booked.add(roomNumber);
+      if (!occupied.has(roomNumber)) occupied.set(roomNumber, booking);
+    });
+
+    const available = [];
+    for (let i = 1; i <= room.count; i += 1) {
+      if (!booked.has(i)) available.push(i);
+    }
+
+    availability[room.type] = {
+      total: room.count,
+      booked: booked.size,
+      available,
+      occupied,
+    };
+  });
+
+  return availability;
+}
+
+function updateTotalGuests() {
+  let total = 0;
+  state.roomPlans.forEach((plan) => {
+    total += Number(plan.pax || 0);
+  });
+  guestsInput.value = total ? String(total) : "";
+}
+
+function updateAvailabilityUI(availability) {
+  const defaultNights = getNightCount(qs("#checkIn").value, qs("#checkOut").value);
+  kitchenPlanner.innerHTML = "";
+  normalPlanner.innerHTML = "";
+
+  if (!availability) {
+    availNormal.textContent = "-";
+    availKitchen.textContent = "-";
+    bookedNormal.textContent = "-";
+    bookedKitchen.textContent = "-";
+    availabilityHint.textContent = "Select dates to load room planner.";
+    state.roomPlans.clear();
+    guestsInput.value = "";
+    return;
+  }
+
+  const normal = availability.normal;
+  const kitchen = availability.kitchen;
+  availNormal.textContent = `${normal.available.length} / ${normal.total}`;
+  bookedNormal.textContent = `${normal.booked} booked`;
+  availKitchen.textContent = `${kitchen.available.length} / ${kitchen.total}`;
+  bookedKitchen.textContent = `${kitchen.booked} booked`;
+  availabilityHint.textContent = `Nights default from selected dates: ${defaultNights}. Change per room if needed.`;
+
+  buildRoomList().forEach((room) => {
+    const groupAvailability = availability[room.type];
+    const isAvailable = groupAvailability.available.includes(room.number);
+    const plan = getRoomPlan(room.type, room.number, defaultNights);
+    if (!isAvailable) {
+      plan.pax = 0;
+      plan.nights = defaultNights;
+    } else if (plan.pax === 0) {
+      plan.nights = defaultNights;
+    }
+    const booking = groupAvailability.occupied.get(room.number);
+
+    const card = document.createElement("article");
+    card.className = `planner-room ${isAvailable ? "available" : "booked"}${plan.pax > 0 && isAvailable ? " selected" : ""}`;
+
+    const paxOptions = Array.from({ length: room.maxPax + 1 }, (_, index) =>
+      `<option value="${index}"${index === plan.pax ? " selected" : ""}>${index} Pax</option>`
+    ).join("");
+
+    const nightOptions = Array.from({ length: 30 }, (_, index) => {
+      const value = index + 1;
+      return `<option value="${value}"${value === plan.nights ? " selected" : ""}>${value} Night${value > 1 ? "s" : ""}</option>`;
+    }).join("");
+
+    card.innerHTML = `
+      <div class="planner-room-head">
+        <div class="planner-room-name">${getRoomLabel(room.type, room.number)}</div>
+        <div class="planner-room-status ${isAvailable ? "available" : "booked"}">${isAvailable ? "Empty" : "Booked"}</div>
+      </div>
+      <div class="planner-room-guest">
+        ${
+          isAvailable
+            ? "Available for selected dates"
+            : `${booking?.guestName || "Occupied"}<br>${booking?.checkIn || ""} -> ${booking?.checkOut || ""}`
+        }
+      </div>
+      <div class="planner-controls">
+        <div class="planner-control">
+          <label>Nights</label>
+          <select data-role="nights" ${isAvailable ? "" : "disabled"}>${nightOptions}</select>
+        </div>
+        <div class="planner-control">
+          <label>Pax</label>
+          <select data-role="pax" ${isAvailable ? "" : "disabled"}>${paxOptions}</select>
+        </div>
+      </div>
+    `;
+
+    if (isAvailable) {
+      const nightsSelect = card.querySelector('[data-role="nights"]');
+      const paxSelect = card.querySelector('[data-role="pax"]');
+
+      nightsSelect.addEventListener("change", () => {
+        plan.nights = Number(nightsSelect.value);
+      });
+
+      paxSelect.addEventListener("change", () => {
+        plan.pax = Number(paxSelect.value);
+        card.classList.toggle("selected", plan.pax > 0);
+        updateTotalGuests();
+      });
+    }
+
+    if (room.type === "kitchen") kitchenPlanner.appendChild(card);
+    else normalPlanner.appendChild(card);
+  });
+
+  updateTotalGuests();
+}
+
+async function refreshAvailability() {
+  if (!state.currentProfile?.approved) return;
+  try {
+    const checkIn = qs("#checkIn").value;
+    const checkOut = qs("#checkOut").value;
+    const availability = await getAvailability(checkIn, checkOut);
+    updateAvailabilityUI(availability);
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+function renderRoomStatus(bookingsForDate) {
+  const bookedMap = new Map();
+
+  bookingsForDate.forEach((booking) => {
+    if (!isBlockingBooking(booking)) return;
+    const roomGroup = normalizeRoomGroup(booking.roomType);
+    bookedMap.set(`${roomGroup}-${booking.roomNumber}`, booking.guestName);
+  });
+
+  roomStatusList.innerHTML = "";
+  buildRoomList().forEach((room) => {
+    const guest = bookedMap.get(`${room.type}-${room.number}`);
+    const item = document.createElement("div");
+    item.className = "room-item";
+    item.innerHTML = `
+      <div>
+        <span>${room.fullLabel}</span>
+        ${guest ? `<div class="muted">${guest}</div>` : ""}
+      </div>
+      <div class="status ${guest ? "status-booked" : "status-available"}">
+        ${guest ? "Booked" : "Available"}
+      </div>
+    `;
+    roomStatusList.appendChild(item);
+  });
+}
+
+function renderBookings(bookings) {
+  bookingCards.innerHTML = "";
+  if (!bookings.length) {
+    bookingEmpty.textContent = "No bookings for this date.";
+    bookingEmpty.style.display = "block";
+    return;
+  }
+
+  bookingEmpty.style.display = "none";
+  bookings.forEach((booking) => {
+    const card = document.createElement("div");
+    card.className = "booking-card";
+    const roomGroup = normalizeRoomGroup(booking.roomType);
+    card.innerHTML = `
+      <h4>${booking.guestName || "Guest"}</h4>
+      <div class="booking-meta">
+        <div><strong>Track Code:</strong> ${booking.trackCode || "-"}</div>
+        <div><strong>Phone:</strong> <a href="tel:${booking.phone}">${booking.phone}</a></div>
+        <div><strong>Room:</strong> ${getRoomLabel(roomGroup, booking.roomNumber)} (#${booking.roomNumber})</div>
+        <div><strong>Room type:</strong> ${booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType)}</div>
+        <div><strong>Dates:</strong> ${booking.checkIn} -> ${booking.checkOut}</div>
+        <div><strong>Guests:</strong> ${booking.guests}</div>
+        <div><strong>Notes:</strong> ${booking.notes || "-"}</div>
+      </div>
+      <span class="booking-tag">${booking.status || "Booking"}</span>
+    `;
+    bookingCards.appendChild(card);
+  });
+}
+
+function updateStats(bookings) {
+  const bookedRooms = new Set();
+  bookings.forEach((booking) => {
+    if (!isBlockingBooking(booking)) return;
+    bookedRooms.add(`${normalizeRoomGroup(booking.roomType)}-${booking.roomNumber}`);
+  });
+  statTotal.textContent = bookings.length;
+  statOccupied.textContent = bookedRooms.size;
+  statAvailable.textContent = TOTAL_ROOMS - bookedRooms.size;
+}
+
+async function loadBookingsForDate(date) {
+  if (!date || !state.currentProfile?.approved) {
+    bookingEmpty.textContent = "Select a date to see bookings.";
+    bookingEmpty.style.display = "block";
+    return;
+  }
+
+  try {
+    const bookings = await fetchBookingsByDate(date);
+    updateStats(bookings);
+    renderRoomStatus(bookings);
+    renderBookings(bookings);
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+function renderMonthCalendar(bookings) {
+  const monthStart = startOfMonth(state.currentMonthDate);
+  const monthEnd = endOfMonth(state.currentMonthDate);
+  const gridStart = addDays(monthStart, -monthStart.getDay());
+  const gridEnd = addDays(monthEnd, 6 - monthEnd.getDay());
+  const selectedDateKey = viewDateInput.value;
+  const todayKey = formatDateKey(new Date());
+  const dayMap = new Map();
+
+  bookings.forEach((booking) => {
+    if (!isBlockingBooking(booking)) return;
+    const start = parseDate(booking.checkIn);
+    const end = parseDate(booking.checkOut);
+    if (!start || !end) return;
+
+    let cursor = new Date(start);
+    while (cursor < end) {
+      const key = formatDateKey(cursor);
+      const next = dayMap.get(key) || { bookings: 0, rooms: new Set() };
+      next.bookings += 1;
+      next.rooms.add(`${normalizeRoomGroup(booking.roomType)}-${booking.roomNumber}`);
+      dayMap.set(key, next);
+      cursor = addDays(cursor, 1);
+    }
+  });
+
+  monthLabel.textContent = formatMonthLabel(state.currentMonthDate);
+  monthGrid.innerHTML = "";
+
+  for (let cursor = new Date(gridStart); cursor <= gridEnd; cursor = addDays(cursor, 1)) {
+    const key = formatDateKey(cursor);
+    const meta = dayMap.get(key);
+    const isCurrentMonth = cursor.getMonth() === state.currentMonthDate.getMonth();
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "calendar-day";
+
+    if (!isCurrentMonth) button.classList.add("empty");
+    if (key === selectedDateKey) button.classList.add("selected");
+    if (key === todayKey) button.classList.add("today");
+    if (meta && meta.rooms.size > 0) button.classList.add("booked");
+
+    button.innerHTML = `
+      <span class="calendar-day-number">${cursor.getDate()}</span>
+      <span class="calendar-day-meta">
+        ${
+          meta
+            ? `<span class="calendar-pill">${meta.rooms.size} rooms</span><span class="calendar-pill subtle">${meta.bookings} bookings</span>`
+            : `<span class="calendar-empty-text">Free</span>`
+        }
+      </span>
+    `;
+
+    button.addEventListener("click", async () => {
+      viewDateInput.value = key;
+      if (cursor.getMonth() !== state.currentMonthDate.getMonth()) {
+        state.currentMonthDate = startOfMonth(cursor);
+        await loadMonthCalendar();
+      } else {
+        renderMonthCalendar(bookings);
+      }
+      await loadBookingsForDate(key);
+    });
+
+    monthGrid.appendChild(button);
+  }
+}
+
+async function loadMonthCalendar() {
+  if (!state.currentProfile?.approved) return;
+  try {
+    const monthStart = formatDateKey(startOfMonth(state.currentMonthDate));
+    const monthAfterEnd = formatDateKey(addDays(endOfMonth(state.currentMonthDate), 1));
+    const bookings = await fetchBookingsForPeriod(monthStart, monthAfterEnd);
+    renderMonthCalendar(bookings);
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function refreshLiveViews() {
+  if (!state.currentProfile?.approved) return;
+  await loadMonthCalendar();
+  await refreshAvailability();
+  if (viewDateInput.value) {
+    await loadBookingsForDate(viewDateInput.value);
+  }
+}
+
+async function setupRealtime() {
+  if (!state.supabase || !state.currentProfile?.approved) return;
+
+  if (state.realtimeChannel) {
+    await state.supabase.removeChannel(state.realtimeChannel);
+    state.realtimeChannel = null;
+  }
+
+  state.realtimeChannel = state.supabase
+    .channel("bookings-live")
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: CONFIG.SUPABASE_TABLE },
+      async () => {
+        setSyncState("live");
+        await refreshLiveViews();
+        if (canManageAccounts()) await loadAccounts();
+      }
+    )
+    .subscribe((status) => {
+      if (status === "SUBSCRIBED") setSyncState("live");
+      else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") setSyncState("error");
+      else setSyncState("connecting");
+    });
+}
+
+async function fetchAccounts() {
+  ensureSupabase();
+  const { data, error } = await state.supabase
+    .from(CONFIG.SUPABASE_PROFILES_TABLE)
+    .select("*")
+    .order("created_at", { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+async function updateAccount(userId, values) {
+  ensureSupabase();
+  const { error } = await state.supabase
+    .from(CONFIG.SUPABASE_PROFILES_TABLE)
+    .update(values)
+    .eq("user_id", userId);
+  if (error) throw new Error(error.message);
+}
+
+function renderAccounts(profiles) {
+  accountsList.innerHTML = "";
+  accountsEmpty.style.display = profiles.length ? "none" : "block";
+
+  profiles.forEach((profile) => {
+    const isSelf = profile.user_id === state.currentSession?.user?.id;
+    const card = document.createElement("div");
+    card.className = "account-card";
+
+    const roleOptions = ["user", "admin", "owner"]
+      .map((role) => {
+        const disabled = state.currentProfile.role !== "owner" && role === "owner";
+        return `<option value="${role}"${role === profile.role ? " selected" : ""}${disabled ? " disabled" : ""}>${role}</option>`;
+      })
+      .join("");
+
+    card.innerHTML = `
+      <div class="account-head">
+        <div>
+          <h4>${profile.full_name || profile.username}</h4>
+          <p>@${profile.username}</p>
+        </div>
+        <span class="booking-tag ${profile.approved ? "tag-success" : "tag-pending"}">${profile.approved ? "Approved" : "Pending"}</span>
+      </div>
+      <div class="account-meta">
+        <div><strong>Phone:</strong> ${profile.phone || "-"}</div>
+        <div><strong>Role:</strong> ${profile.role}</div>
+      </div>
+      <div class="account-actions">
+        <label>
+          Role
+          <select data-role-select ${state.currentProfile.role !== "owner" || isSelf ? "disabled" : ""}>${roleOptions}</select>
+        </label>
+        <label>
+          Access
+          <select data-approved-select ${isSelf ? "disabled" : ""}>
+            <option value="true"${profile.approved ? " selected" : ""}>Approved</option>
+            <option value="false"${!profile.approved ? " selected" : ""}>Blocked</option>
+          </select>
+        </label>
+        <button type="button" class="secondary-btn small-btn" data-save-account ${isSelf ? "disabled" : ""}>Save</button>
+      </div>
+    `;
+
+    const saveBtn = card.querySelector("[data-save-account]");
+    const roleSelect = card.querySelector("[data-role-select]");
+    const approvedSelect = card.querySelector("[data-approved-select]");
+
+    saveBtn.addEventListener("click", async () => {
+      try {
+        saveBtn.disabled = true;
+        saveBtn.textContent = "Saving...";
+        const nextRole = roleSelect.value;
+        const nextApproved = approvedSelect.value === "true";
+        const values = state.currentProfile.role === "owner" ? { role: nextRole, approved: nextApproved } : { approved: nextApproved };
+        await updateAccount(profile.user_id, values);
+        showToast("Account updated.");
+        await loadAccounts();
+      } catch (error) {
+        showToast(error.message, true);
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = "Save";
+      }
+    });
+
+    accountsList.appendChild(card);
+  });
+}
+
+async function loadAccounts() {
+  if (!canManageAccounts()) return;
+  try {
+    const profiles = await fetchAccounts();
+    renderAccounts(profiles);
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+function initSupabase() {
+  if (!isSupabaseConfigured()) {
+    setSyncState("setup");
+    return;
+  }
+
+  if (!window.supabase || typeof window.supabase.createClient !== "function") {
+    setSyncState("error");
+    showToast("Supabase client failed to load.", true);
+    return;
+  }
+
+  state.supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+
+  state.supabase.auth.onAuthStateChange((_event, session) => {
+    window.setTimeout(() => {
+      applySession(session).catch((error) => {
+        showToast(error.message || "Session update failed.", true);
+      });
+    }, 0);
+  });
+}
+
+async function bootstrapSession() {
+  if (!state.supabase) return;
+  const {
+    data: { session },
+  } = await state.supabase.auth.getSession();
+  await applySession(session);
+}
+
+bookingForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!state.currentProfile?.approved) {
+    showToast("Login with an approved account first.", true);
+    return;
+  }
+
+  const formData = new FormData(bookingForm);
+  const payload = Object.fromEntries(formData.entries());
+
+  if (!payload.guestName || !payload.phone) {
+    showToast("Guest name and phone are required.", true);
+    return;
+  }
+
+  if (!payload.checkIn || !payload.checkOut) {
+    showToast("Check-in and check-out dates are required.", true);
+    return;
+  }
+
+  const checkInDate = parseDate(payload.checkIn);
+  const checkOutDate = parseDate(payload.checkOut);
+  if (!checkInDate || !checkOutDate || checkOutDate <= checkInDate) {
+    showToast("Check-out must be after check-in.", true);
+    return;
+  }
+
+  const submitButton = bookingForm.querySelector("button[type='submit']");
+  submitButton.disabled = true;
+  submitButton.textContent = "Saving...";
+
+  try {
+    const selectedPlans = buildRoomList()
+      .map((room) => {
+        const plan = state.roomPlans.get(getRoomKey(room.type, room.number));
+        return plan && Number(plan.pax) > 0
+          ? { room, pax: Number(plan.pax), nights: Number(plan.nights || getNightCount(payload.checkIn, payload.checkOut)) }
+          : null;
+      })
+      .filter(Boolean);
+
+    if (!selectedPlans.length) {
+      throw new Error("Select at least one room with pax.");
+    }
+
+    const totalGuests = selectedPlans.reduce((sum, plan) => sum + plan.pax, 0);
+    guestsInput.value = String(totalGuests);
+    const backupFailures = [];
+    const savedTrackCodes = [];
+
+    for (const plan of selectedPlans) {
+      const roomCheckOut = formatCheckoutFromNights(payload.checkIn, plan.nights);
+      const roomBookings = await fetchRangeBookings(plan.room.type, payload.checkIn, roomCheckOut);
+      const hasConflict = roomBookings.some((booking) => {
+        if (!isBlockingBooking(booking)) return false;
+        return Number(booking.roomNumber) === plan.room.number;
+      });
+
+      if (hasConflict) {
+        throw new Error(`${getRoomLabel(plan.room.type, plan.room.number)} is already booked.`);
+      }
+
+      const bookingPayload = {
+        ...payload,
+        trackCode: "",
+        guests: String(plan.pax),
+        checkOut: roomCheckOut,
+        roomType: plan.room.type,
+        roomTypeLabel: getAssignedRoomLabel(plan.room, plan.pax),
+        roomNumber: plan.room.number,
+        roomsNeeded: selectedPlans.length,
+      };
+
+      const trackCode = await insertBooking(bookingPayload);
+      savedTrackCodes.push(trackCode);
+
+      try {
+        await backupBookingToSheets(bookingPayload);
+      } catch (error) {
+        backupFailures.push(`${getRoomLabel(plan.room.type, plan.room.number)}: ${error.message}`);
+      }
+    }
+
+    bookingForm.reset();
+    state.roomPlans.clear();
+    guestsInput.value = "";
+    if (backupFailures.length) {
+      showToast(`Saved live. Backup failed for ${backupFailures.length} room(s). First code: ${savedTrackCodes[0] || "-"}`, true);
+    } else {
+      showToast(`Saved. First track code: ${savedTrackCodes[0] || "-"}`);
+    }
+    await refreshLiveViews();
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = "Save Booking";
+  }
+});
+
+loginForm.addEventListener("submit", handleLogin);
+signupForm.addEventListener("submit", handleSignup);
+authTabLogin.addEventListener("click", () => setAuthTab("login"));
+authTabSignup.addEventListener("click", () => setAuthTab("signup"));
+pendingLogoutBtn.addEventListener("click", handleLogout);
+logoutBtn.addEventListener("click", handleLogout);
+loadBookingsBtn.addEventListener("click", () => loadBookingsForDate(viewDateInput.value));
+refreshAccountsBtn.addEventListener("click", () => loadAccounts());
+
+viewDateInput.addEventListener("change", async (event) => {
+  const pickedDate = parseDate(event.target.value);
+  if (pickedDate) {
+    state.currentMonthDate = startOfMonth(pickedDate);
+    await loadMonthCalendar();
+  }
+  await loadBookingsForDate(event.target.value);
+});
+
+monthPrevBtn.addEventListener("click", async () => {
+  state.currentMonthDate = new Date(state.currentMonthDate.getFullYear(), state.currentMonthDate.getMonth() - 1, 1, 12, 0, 0);
+  await loadMonthCalendar();
+});
+
+monthNextBtn.addEventListener("click", async () => {
+  state.currentMonthDate = new Date(state.currentMonthDate.getFullYear(), state.currentMonthDate.getMonth() + 1, 1, 12, 0, 0);
+  await loadMonthCalendar();
+});
+
+checkAvailabilityBtn.addEventListener("click", refreshAvailability);
+qs("#checkIn").addEventListener("change", refreshAvailability);
+qs("#checkOut").addEventListener("change", refreshAvailability);
+
+navButtons.booking.addEventListener("click", () => setScreen("booking"));
+navButtons.view.addEventListener("click", () => setScreen("view"));
+navButtons.accounts.addEventListener("click", () => setScreen("accounts"));
+
+window.addEventListener("online", updateOnlineStatus);
+window.addEventListener("offline", updateOnlineStatus);
+
+(function init() {
+  updateOnlineStatus();
+  initSupabase();
+  setAuthTab("login");
+
+  const today = new Date();
+  const tomorrow = addDays(today, 1);
+  state.currentMonthDate = startOfMonth(today);
+  qs("#checkIn").value = toDateInputValue(today);
+  qs("#checkOut").value = toDateInputValue(tomorrow);
+  viewDateInput.value = toDateInputValue(today);
+  renderRoomStatus([]);
+  updateStats([]);
+  bootstrapSession();
+
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      registrations.forEach((registration) => registration.unregister());
+    });
+  }
+})();

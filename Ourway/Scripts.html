@@ -1,0 +1,755 @@
+<script>
+  const state = {
+    token: localStorage.getItem('iems_session') || '',
+    setup: null,
+    appData: null,
+    activeView: 'dashboard',
+    editingTaskId: '',
+    editingAttendanceId: ''
+  };
+
+  document.addEventListener('DOMContentLoaded', init);
+
+  async function init() {
+    bindStaticEvents();
+    state.setup = await serverCall('setupSystem');
+    renderSetupNote();
+
+    if (state.token) {
+      try {
+        await refreshAppData();
+        showApp();
+      } catch (error) {
+        clearSession();
+        showToast(error.message, true);
+      }
+    }
+  }
+
+  function bindStaticEvents() {
+    document.getElementById('login-tab').addEventListener('click', function() {
+      toggleAuthMode('login');
+    });
+    document.getElementById('register-tab').addEventListener('click', function() {
+      toggleAuthMode('register');
+    });
+    document.getElementById('login-form').addEventListener('submit', onLogin);
+    document.getElementById('register-form').addEventListener('submit', onRegister);
+    document.getElementById('logout-button').addEventListener('click', onLogout);
+    document.getElementById('refresh-button').addEventListener('click', function() {
+      guardedAction(refreshAppData);
+    });
+    document.querySelectorAll('.nav-button[data-view]').forEach(function(button) {
+      button.addEventListener('click', function() {
+        setView(button.dataset.view);
+      });
+    });
+  }
+
+  function renderSetupNote() {
+    const setupNode = document.getElementById('setup-note');
+    setupNode.innerHTML = `
+      <strong>Registration workflow</strong><br>
+      New user accounts stay in pending status until an admin or coordinator approves them.
+    `;
+  }
+
+  function toggleAuthMode(mode) {
+    document.getElementById('login-tab').classList.toggle('active', mode === 'login');
+    document.getElementById('register-tab').classList.toggle('active', mode === 'register');
+    document.getElementById('login-form').classList.toggle('hidden', mode !== 'login');
+    document.getElementById('register-form').classList.toggle('hidden', mode !== 'register');
+  }
+
+  async function onLogin(event) {
+    event.preventDefault();
+    const payload = formToObject(event.target);
+    await guardedAction(async function() {
+      const result = await serverCall('loginUser', payload);
+      state.token = result.token;
+      localStorage.setItem('iems_session', state.token);
+      await refreshAppData();
+      showApp();
+      event.target.reset();
+      showToast('Login successful.');
+    });
+  }
+
+  async function onRegister(event) {
+    event.preventDefault();
+    const payload = formToObject(event.target);
+    await guardedAction(async function() {
+      const result = await serverCall('registerUser', payload);
+      event.target.reset();
+      toggleAuthMode('login');
+      showToast(result.message);
+    });
+  }
+
+  async function onLogout() {
+    await guardedAction(async function() {
+      if (state.token) {
+        await serverCall('logoutUser', state.token);
+      }
+      clearSession();
+      showToast('Logged out.');
+    });
+  }
+
+  function clearSession() {
+    state.token = '';
+    state.appData = null;
+    localStorage.removeItem('iems_session');
+    showAuth();
+  }
+
+  async function refreshAppData() {
+    if (!state.token) return;
+    state.appData = await serverCall('getAppData', state.token);
+    renderApp();
+  }
+
+  function showAuth() {
+    document.getElementById('auth-screen').classList.remove('hidden');
+    document.getElementById('app-screen').classList.add('hidden');
+  }
+
+  function showApp() {
+    document.getElementById('auth-screen').classList.add('hidden');
+    document.getElementById('app-screen').classList.remove('hidden');
+    renderApp();
+  }
+
+  function renderApp() {
+    if (!state.appData) return;
+    const user = state.appData.currentUser;
+    document.getElementById('sidebar-user-name').textContent = user.fullName;
+    document.getElementById('sidebar-user-role').textContent = user.role + ' | ' + user.status;
+    document.getElementById('admin-nav').classList.toggle('hidden', !state.appData.permissions.canManage);
+    document.getElementById('sheet-link').href = state.appData.meta.spreadsheetUrl;
+
+    renderDashboard();
+    renderAttendance();
+    renderLeave();
+    renderNotices();
+    renderTasks();
+    renderAdmin();
+    setView(state.activeView);
+  }
+
+  function setView(view) {
+    state.activeView = view;
+    const titles = {
+      dashboard: 'Dashboard',
+      attendance: 'Attendance',
+      leave: 'Leave',
+      notices: 'Notices',
+      tasks: 'Tasks',
+      admin: 'Admin Controls'
+    };
+
+    document.getElementById('view-title').textContent = titles[view] || 'Dashboard';
+    document.querySelectorAll('.view-panel').forEach(function(panel) {
+      panel.classList.add('hidden');
+    });
+    document.getElementById(view + '-view').classList.remove('hidden');
+
+    document.querySelectorAll('.nav-button[data-view]').forEach(function(button) {
+      button.classList.toggle('active', button.dataset.view === view);
+    });
+  }
+
+  function renderDashboard() {
+    const stats = state.appData.stats;
+    const user = state.appData.currentUser;
+    const cards = [
+      statCard('Open Tasks', stats.openTasks),
+      statCard('Pending Leave', stats.pendingLeaves),
+      statCard('Pending QC', stats.pendingQc),
+      statCard('Notices To Answer', stats.noticesAwaitingResponse)
+    ];
+
+    if (state.appData.permissions.canManage) {
+      cards.unshift(statCard('Pending Users', stats.pendingUsers));
+      cards.push(statCard('Clocked In Today', stats.clockedInToday));
+    }
+
+    const todayRecord = state.appData.attendanceState.record;
+    document.getElementById('dashboard-view').innerHTML = `
+      <div class="card-grid">${cards.join('')}</div>
+      <div class="grid-two">
+        <article class="card">
+          <p class="eyebrow">Today</p>
+          <h3>${todayRecord ? 'Attendance captured' : 'No attendance yet'}</h3>
+          <p class="subtle">
+            ${todayRecord ? `Clock in: ${formatDateTime(todayRecord.clockIn)}${todayRecord.clockOut ? `, clock out: ${formatDateTime(todayRecord.clockOut)}` : ', currently active.'}` : 'Use the attendance view to clock in or out.'}
+          </p>
+        </article>
+        <article class="card">
+          <p class="eyebrow">Logged In As</p>
+          <h3>${escapeHtml(user.fullName)}</h3>
+          <p class="subtle">${escapeHtml(user.email)}<br>${escapeHtml(user.role)}</p>
+        </article>
+      </div>
+    `;
+  }
+
+  function renderAttendance() {
+    const todayState = state.appData.attendanceState;
+    const rows = state.appData.attendance.map(function(item) {
+      return `
+        <tr>
+          <td>${escapeHtml(item.fullName)}</td>
+          <td>${escapeHtml(item.date)}</td>
+          <td>${escapeHtml(item.workMode || '-')}</td>
+          <td>${formatDateTime(item.clockIn)}</td>
+          <td>${formatDateTime(item.clockOut)}</td>
+          <td>${item.durationMinutes || '-'}</td>
+          <td>${escapeHtml(item.notes || '-')}</td>
+          ${state.appData.permissions.canManage ? `<td><button class="chip-button" type="button" onclick="prefillAttendance('${item.attendanceId}')">Edit</button></td>` : ''}
+        </tr>
+      `;
+    }).join('');
+
+    document.getElementById('attendance-view').innerHTML = `
+      <div class="grid-two">
+        <article class="card">
+          <div class="toolbar">
+            <div>
+              <p class="eyebrow">Clock Actions</p>
+              <h3>Flexible attendance</h3>
+            </div>
+            <div class="action-row">
+              <button class="primary-button" type="button" ${todayState.canClockIn ? '' : 'disabled'} onclick="clockInAction()">Clock In</button>
+              <button class="secondary-button" type="button" ${todayState.canClockOut ? '' : 'disabled'} onclick="clockOutAction()">Clock Out</button>
+            </div>
+          </div>
+          <div class="meta-row">
+            <span class="badge">${todayState.record ? 'Today recorded' : 'No record today'}</span>
+            ${todayState.record ? `<span class="badge">${escapeHtml(todayState.record.workMode || 'Remote')}</span>` : ''}
+          </div>
+          <label>
+            <span>Clock In Work Mode</span>
+            <select id="clock-work-mode">
+              <option value="Remote">Remote</option>
+              <option value="Office">Office</option>
+              <option value="Field">Field</option>
+            </select>
+          </label>
+          <label>
+            <span>Optional Notes</span>
+            <textarea id="clock-notes" placeholder="Daily note"></textarea>
+          </label>
+        </article>
+
+        ${state.appData.permissions.canManage ? `
+          <article class="card">
+            <p class="eyebrow">Attendance Editor</p>
+            <h3>Admin / Coordinator edit</h3>
+            <form id="attendance-edit-form" class="form-grid" onsubmit="saveAttendanceEdit(event)">
+              <input type="hidden" name="attendanceId" value="${escapeHtml(state.editingAttendanceId || '')}">
+              <label><span>Date</span><input type="date" name="date"></label>
+              <label><span>Work Mode</span><input type="text" name="workMode"></label>
+              <label><span>Clock In</span><input type="text" name="clockIn" placeholder="2026-03-14T09:00:00+05:30"></label>
+              <label><span>Clock Out</span><input type="text" name="clockOut" placeholder="2026-03-14T17:30:00+05:30"></label>
+              <label><span>Notes</span><textarea name="notes"></textarea></label>
+              <button class="primary-button" type="submit">Save Attendance Record</button>
+            </form>
+          </article>` : ''}
+      </div>
+
+      <article class="table-card">
+        <div class="toolbar">
+          <div>
+            <p class="eyebrow">History</p>
+            <h3>Attendance Records</h3>
+          </div>
+        </div>
+        ${rows ? `<div class="table-wrap"><table><thead><tr><th>Name</th><th>Date</th><th>Mode</th><th>Clock In</th><th>Clock Out</th><th>Minutes</th><th>Notes</th>${state.appData.permissions.canManage ? '<th>Actions</th>' : ''}</tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="empty-state">No attendance records found.</div>'}
+      </article>
+    `;
+  }
+
+  function renderLeave() {
+    const rows = state.appData.leaveRequests.map(function(item) {
+      const actions = state.appData.permissions.canManage && item.status === 'Pending'
+        ? `<div class="action-row">
+            <button class="chip-button success" type="button" onclick="reviewLeaveAction('${item.leaveId}', 'approve')">Approve</button>
+            <button class="chip-button danger" type="button" onclick="reviewLeaveAction('${item.leaveId}', 'reject')">Reject</button>
+          </div>`
+        : '';
+      return `
+        <tr>
+          <td>${escapeHtml(item.fullName)}</td>
+          <td>${escapeHtml(item.fromDate)} to ${escapeHtml(item.toDate)}</td>
+          <td>${item.days}</td>
+          <td>${escapeHtml(item.leaveType)}</td>
+          <td>${escapeHtml(item.reason || '-')}</td>
+          <td>${statusBadge(item.status)}</td>
+          <td>${escapeHtml(item.reviewedBy || '-')}</td>
+          <td>${actions}</td>
+        </tr>
+      `;
+    }).join('');
+
+    document.getElementById('leave-view').innerHTML = `
+      <div class="grid-two">
+        <article class="card">
+          <p class="eyebrow">Apply Leave</p>
+          <h3>Maximum ${state.appData.meta.maxLeaveDays} days per request</h3>
+          <form class="form-grid" onsubmit="submitLeaveAction(event)">
+            <label><span>From Date</span><input type="date" name="fromDate" required></label>
+            <label><span>To Date</span><input type="date" name="toDate" required></label>
+            <label><span>Leave Type</span><input type="text" name="leaveType" placeholder="Annual leave" required></label>
+            <label><span>Reason</span><textarea name="reason"></textarea></label>
+            <button class="primary-button" type="submit">Submit Leave Request</button>
+          </form>
+        </article>
+        <article class="card">
+          <p class="eyebrow">Status Flow</p>
+          <h3>Pending -> Approved / Rejected</h3>
+          <p class="subtle">Requests stay read-only for employees. Admin and coordinators review them from the same table below.</p>
+        </article>
+      </div>
+
+      <article class="table-card">
+        <p class="eyebrow">Leave Records</p>
+        <h3>Leave History</h3>
+        ${rows ? `<div class="table-wrap"><table><thead><tr><th>Name</th><th>Range</th><th>Days</th><th>Type</th><th>Reason</th><th>Status</th><th>Reviewed By</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="empty-state">No leave requests found.</div>'}
+      </article>
+    `;
+  }
+
+  function renderNotices() {
+    const noticesHtml = state.appData.notices.map(function(item) {
+      const responseButtons = item.responseRequired ? `
+        <div class="action-row">
+          <button class="chip-button success" type="button" onclick="respondNoticeAction('${item.noticeId}', 'Yes')">Yes</button>
+          <button class="chip-button danger" type="button" onclick="respondNoticeAction('${item.noticeId}', 'No')">No</button>
+        </div>
+      ` : '';
+      return `
+        <article class="notice-card">
+          <div class="toolbar">
+            <div>
+              <h3>${escapeHtml(item.title)}</h3>
+              <p class="subtle">Posted by ${escapeHtml(item.createdBy)} on ${formatDateTime(item.createdAt)}</p>
+            </div>
+            ${statusBadge(item.status)}
+          </div>
+          <p>${escapeHtml(item.message)}</p>
+          <div class="meta-row">
+            ${item.responseRequired ? '<span class="badge warning">Response required</span>' : '<span class="badge">Announcement</span>'}
+            <span class="badge">Yes: ${item.responseSummary.yes}</span>
+            <span class="badge">No: ${item.responseSummary.no}</span>
+            ${item.userResponse ? `<span class="badge approved">You answered: ${escapeHtml(item.userResponse)}</span>` : ''}
+          </div>
+          ${item.responseRequired ? responseButtons : ''}
+        </article>
+      `;
+    }).join('');
+
+    document.getElementById('notices-view').innerHTML = noticesHtml || '<div class="empty-state">No notices published yet.</div>';
+  }
+
+  function renderTasks() {
+    const currentUserId = state.appData.currentUser.userId;
+    const tasksHtml = state.appData.tasks.map(function(item) {
+      const actionButtons = [];
+      const isAssignedToCurrentUser = item.assignedUserId === currentUserId;
+      if (isAssignedToCurrentUser && (item.status === 'Assigned' || item.status === 'Rejected')) {
+        actionButtons.push(`<button class="chip-button" type="button" onclick="taskAction('startTask', '${item.taskId}')">Start Task</button>`);
+      }
+      if (isAssignedToCurrentUser && item.status === 'In Progress') {
+        actionButtons.push(`<button class="chip-button success" type="button" onclick="taskAction('completeTask', '${item.taskId}')">Mark Complete</button>`);
+      }
+      if (isAssignedToCurrentUser && item.status === 'Completed') {
+        actionButtons.push(`<button class="chip-button warning" type="button" onclick="taskAction('submitTaskForQc', '${item.taskId}')">Submit For QC</button>`);
+      }
+      if (state.appData.permissions.canManage) {
+        actionButtons.push(`<button class="chip-button" type="button" onclick="prefillTask('${item.taskId}')">Edit</button>`);
+      }
+      return `
+        <article class="task-card">
+          <div class="toolbar">
+            <div>
+              <h3>${escapeHtml(item.title)}</h3>
+              <p class="subtle">${escapeHtml(item.trackCode)} | Assigned to ${escapeHtml(item.assignedUserName)}</p>
+            </div>
+            ${statusBadge(item.status)}
+          </div>
+          <p>${escapeHtml(item.description || '-')}</p>
+          <div class="meta-row">
+            <span class="badge">Client: ${escapeHtml(item.clientName || '-')}</span>
+            <span class="badge">Deadline: ${escapeHtml(item.deadline || '-')}</span>
+            <span class="badge">Minutes: ${item.timeSpentMinutes || 0}</span>
+          </div>
+          ${item.rejectionReason ? `<p><strong>Rejection reason:</strong> ${escapeHtml(item.rejectionReason)}</p>` : ''}
+          ${item.chatFeedbackLink ? `<p><a href="${escapeAttribute(item.chatFeedbackLink)}" target="_blank" rel="noopener">Open Google Chat feedback link</a></p>` : ''}
+          ${actionButtons.length ? `<div class="action-row">${actionButtons.join('')}</div>` : ''}
+        </article>
+      `;
+    }).join('');
+
+    document.getElementById('tasks-view').innerHTML = tasksHtml || '<div class="empty-state">No tasks available.</div>';
+  }
+
+  function renderAdmin() {
+    if (!state.appData.permissions.canManage) {
+      document.getElementById('admin-view').innerHTML = '<div class="empty-state">Admin access only.</div>';
+      return;
+    }
+
+    const pendingUsers = state.appData.users.filter(function(item) { return item.status === 'Pending'; });
+    const usersRows = pendingUsers.map(function(item) {
+      return `
+        <tr>
+          <td>${escapeHtml(item.fullName)}</td>
+          <td>${escapeHtml(item.shortName)}</td>
+          <td>${escapeHtml(item.email)}</td>
+          <td>
+            <select id="role-${item.userId}">
+              ${['Admin', 'Coordinator', 'Employee'].map(function(role) {
+                return `<option value="${role}" ${item.role === role ? 'selected' : ''}>${role}</option>`;
+              }).join('')}
+            </select>
+          </td>
+          <td>
+            <div class="action-row">
+              <button class="chip-button success" type="button" onclick="reviewUserAction('${item.userId}', 'approve')">Approve</button>
+              <button class="chip-button danger" type="button" onclick="reviewUserAction('${item.userId}', 'reject')">Reject</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    const pendingQcTasks = state.appData.tasks.filter(function(item) { return item.status === 'Pending QC'; });
+    const qcRows = pendingQcTasks.map(function(item) {
+      return `
+        <tr>
+          <td>${escapeHtml(item.trackCode)}</td>
+          <td>${escapeHtml(item.title)}</td>
+          <td>${escapeHtml(item.assignedUserName)}</td>
+          <td>${escapeHtml(item.deadline || '-')}</td>
+          <td>
+            <div class="action-row">
+              <button class="chip-button success" type="button" onclick="reviewQcAction('${item.taskId}', 'approve')">Approve</button>
+              <button class="chip-button danger" type="button" onclick="reviewQcAction('${item.taskId}', 'reject')">Reject</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    document.getElementById('admin-view').innerHTML = `
+      <div class="grid-two">
+        <article class="card">
+          <p class="eyebrow">Task Manager</p>
+          <h3>${state.editingTaskId ? 'Edit task' : 'Create task'}</h3>
+          <form id="task-form" class="form-grid" onsubmit="saveTaskAction(event)">
+            <input type="hidden" name="taskId" value="${escapeHtml(state.editingTaskId || '')}">
+            <label><span>Task Title</span><input type="text" name="title" required></label>
+            <label><span>Description</span><textarea name="description"></textarea></label>
+            <label>
+              <span>Assigned User</span>
+              <select name="assignedUserId" required>
+                <option value="">Select user</option>
+                ${state.appData.approvedUsers.map(function(user) {
+                  return `<option value="${user.userId}">${escapeHtml(user.fullName)} (${escapeHtml(user.role)})</option>`;
+                }).join('')}
+              </select>
+            </label>
+            <label><span>Client Name</span><input type="text" name="clientName"></label>
+            <label><span>Deadline</span><input type="date" name="deadline"></label>
+            <button class="primary-button" type="submit">${state.editingTaskId ? 'Update Task' : 'Create Task'}</button>
+          </form>
+        </article>
+
+        <article class="card">
+          <p class="eyebrow">Post Notice</p>
+          <h3>Broadcast announcement</h3>
+          <form class="form-grid" onsubmit="createNoticeAction(event)">
+            <label><span>Title</span><input type="text" name="title" required></label>
+            <label><span>Message</span><textarea name="message" required></textarea></label>
+            <label><span>Response Required</span>
+              <select name="responseRequired">
+                <option value="false">No</option>
+                <option value="true">Yes</option>
+              </select>
+            </label>
+            <button class="primary-button" type="submit">Post Notice</button>
+          </form>
+        </article>
+      </div>
+
+      <article class="table-card">
+        <p class="eyebrow">User Approval</p>
+        <h3>Pending registrations</h3>
+        ${usersRows ? `<div class="table-wrap"><table><thead><tr><th>Name</th><th>Short Name</th><th>Email</th><th>Role</th><th>Actions</th></tr></thead><tbody>${usersRows}</tbody></table></div>` : '<div class="empty-state">No pending users.</div>'}
+      </article>
+
+      <article class="table-card">
+        <p class="eyebrow">QC Queue</p>
+        <h3>Tasks waiting for review</h3>
+        ${qcRows ? `<div class="table-wrap"><table><thead><tr><th>Track Code</th><th>Task</th><th>Assigned User</th><th>Deadline</th><th>Actions</th></tr></thead><tbody>${qcRows}</tbody></table></div>` : '<div class="empty-state">No tasks waiting for QC.</div>'}
+      </article>
+
+      <article class="table-card">
+        <p class="eyebrow">QC History</p>
+        <h3>Recorded QC decisions</h3>
+        ${state.appData.qcRecords.length ? `
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Track Code</th><th>Status</th><th>Reviewed By</th><th>Reviewed At</th><th>Reason</th><th>Chat Link</th></tr></thead>
+              <tbody>
+                ${state.appData.qcRecords.map(function(item) {
+                  return `<tr>
+                    <td>${escapeHtml(item.trackCode)}</td>
+                    <td>${statusBadge(item.reviewStatus)}</td>
+                    <td>${escapeHtml(item.reviewedBy)}</td>
+                    <td>${formatDateTime(item.reviewedAt)}</td>
+                    <td>${escapeHtml(item.rejectionReason || '-')}</td>
+                    <td>${item.chatFeedbackLink ? `<a href="${escapeAttribute(item.chatFeedbackLink)}" target="_blank" rel="noopener">Open</a>` : '-'}</td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>` : '<div class="empty-state">No QC records available.</div>'}
+      </article>
+    `;
+
+    if (state.editingTaskId) {
+      fillTaskForm();
+    }
+    if (state.editingAttendanceId) {
+      fillAttendanceForm();
+    }
+  }
+
+  function statCard(label, value) {
+    return `<article class="card stat-card"><p class="eyebrow">${escapeHtml(label)}</p><p class="value">${value || 0}</p></article>`;
+  }
+
+  async function clockInAction() {
+    await guardedAction(async function() {
+      await serverCall('clockIn', state.token, {
+        workMode: document.getElementById('clock-work-mode').value,
+        notes: document.getElementById('clock-notes').value
+      });
+      await refreshAppData();
+      showToast('Clock in recorded.');
+    });
+  }
+
+  async function clockOutAction() {
+    await guardedAction(async function() {
+      await serverCall('clockOut', state.token);
+      await refreshAppData();
+      showToast('Clock out recorded.');
+    });
+  }
+
+  async function saveAttendanceEdit(event) {
+    event.preventDefault();
+    await guardedAction(async function() {
+      const payload = formToObject(event.target);
+      await serverCall('saveAttendanceRecord', state.token, payload);
+      state.editingAttendanceId = '';
+      await refreshAppData();
+      showToast('Attendance updated.');
+    });
+  }
+
+  function prefillAttendance(attendanceId) {
+    state.editingAttendanceId = attendanceId;
+    renderAttendance();
+    renderAdmin();
+    fillAttendanceForm();
+    setView('attendance');
+  }
+
+  function fillAttendanceForm() {
+    const form = document.getElementById('attendance-edit-form');
+    if (!form || !state.editingAttendanceId) return;
+    const record = state.appData.attendance.find(function(item) {
+      return item.attendanceId === state.editingAttendanceId;
+    });
+    if (!record) return;
+    form.attendanceId.value = record.attendanceId;
+    form.date.value = record.date || '';
+    form.workMode.value = record.workMode || '';
+    form.clockIn.value = record.clockIn || '';
+    form.clockOut.value = record.clockOut || '';
+    form.notes.value = record.notes || '';
+  }
+
+  async function submitLeaveAction(event) {
+    event.preventDefault();
+    await guardedAction(async function() {
+      await serverCall('applyLeave', state.token, formToObject(event.target));
+      event.target.reset();
+      await refreshAppData();
+      showToast('Leave request submitted.');
+    });
+  }
+
+  async function reviewLeaveAction(leaveId, action) {
+    await guardedAction(async function() {
+      await serverCall('reviewLeave', state.token, { leaveId: leaveId, action: action });
+      await refreshAppData();
+      showToast('Leave request updated.');
+    });
+  }
+
+  async function createNoticeAction(event) {
+    event.preventDefault();
+    await guardedAction(async function() {
+      const payload = formToObject(event.target);
+      payload.responseRequired = payload.responseRequired === 'true';
+      await serverCall('createNotice', state.token, payload);
+      event.target.reset();
+      await refreshAppData();
+      showToast('Notice posted.');
+    });
+  }
+
+  async function respondNoticeAction(noticeId, response) {
+    await guardedAction(async function() {
+      await serverCall('respondToNotice', state.token, { noticeId: noticeId, response: response });
+      await refreshAppData();
+      showToast('Response saved.');
+    });
+  }
+
+  async function saveTaskAction(event) {
+    event.preventDefault();
+    await guardedAction(async function() {
+      await serverCall('saveTask', state.token, formToObject(event.target));
+      state.editingTaskId = '';
+      event.target.reset();
+      await refreshAppData();
+      showToast('Task saved.');
+      setView('tasks');
+    });
+  }
+
+  function prefillTask(taskId) {
+    state.editingTaskId = taskId;
+    renderAdmin();
+    fillTaskForm();
+    setView('admin');
+  }
+
+  function fillTaskForm() {
+    const form = document.getElementById('task-form');
+    if (!form || !state.editingTaskId) return;
+    const task = state.appData.tasks.find(function(item) {
+      return item.taskId === state.editingTaskId;
+    });
+    if (!task) return;
+    form.taskId.value = task.taskId;
+    form.title.value = task.title || '';
+    form.description.value = task.description || '';
+    form.assignedUserId.value = task.assignedUserId || '';
+    form.clientName.value = task.clientName || '';
+    form.deadline.value = task.deadline || '';
+  }
+
+  async function taskAction(method, taskId) {
+    await guardedAction(async function() {
+      await serverCall(method, state.token, { taskId: taskId });
+      await refreshAppData();
+      showToast('Task updated.');
+    });
+  }
+
+  async function reviewUserAction(userId, action) {
+    await guardedAction(async function() {
+      const role = document.getElementById('role-' + userId).value;
+      await serverCall('reviewUser', state.token, { userId: userId, action: action, role: role });
+      await refreshAppData();
+      showToast('User status updated.');
+    });
+  }
+
+  async function reviewQcAction(taskId, action) {
+    await guardedAction(async function() {
+      let rejectionReason = '';
+      let chatFeedbackLink = '';
+      if (action === 'reject') {
+        rejectionReason = window.prompt('Enter rejection reason:') || '';
+        chatFeedbackLink = window.prompt('Paste Google Chat feedback link (optional):') || '';
+      }
+      await serverCall('reviewTaskQc', state.token, {
+        taskId: taskId,
+        action: action,
+        rejectionReason: rejectionReason,
+        chatFeedbackLink: chatFeedbackLink,
+        comments: ''
+      });
+      await refreshAppData();
+      showToast('QC decision saved.');
+    });
+  }
+
+  function formToObject(form) {
+    return Object.fromEntries(new FormData(form).entries());
+  }
+
+  function serverCall(name) {
+    const args = Array.prototype.slice.call(arguments, 1);
+    return new Promise(function(resolve, reject) {
+      const runner = google.script.run
+        .withSuccessHandler(resolve)
+        .withFailureHandler(function(error) {
+          reject(new Error(error && error.message ? error.message : String(error)));
+        });
+      runner[name].apply(runner, args);
+    });
+  }
+
+  async function guardedAction(callback) {
+    try {
+      await callback();
+    } catch (error) {
+      showToast(error.message || 'Something went wrong.', true);
+      throw error;
+    }
+  }
+
+  function statusBadge(status) {
+    const slug = String(status || '').toLowerCase().replace(/\s+/g, '-');
+    return `<span class="badge ${slug}">${escapeHtml(status || '-')}</span>`;
+  }
+
+  function formatDateTime(value) {
+    if (!value) return '-';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return escapeHtml(value);
+    return date.toLocaleString();
+  }
+
+  function escapeHtml(value) {
+    return String(value || '').replace(/[&<>"']/g, function(char) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char];
+    });
+  }
+
+  function escapeAttribute(value) {
+    return escapeHtml(value).replace(/"/g, '&quot;');
+  }
+
+  function showToast(message, isError) {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.classList.remove('hidden', 'error');
+    if (isError) {
+      toast.classList.add('error');
+    }
+    window.clearTimeout(showToast.timer);
+    showToast.timer = window.setTimeout(function() {
+      toast.classList.add('hidden');
+    }, 3200);
+  }
+</script>

@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <?!= include('Styles'); ?>
+  </head>
+  <body>
+    <div class="page-shell">
+      <div id="toast" class="toast hidden"></div>
+
+      <section id="auth-screen" class="auth-screen">
+        <div class="auth-panel">
+          <div class="auth-copy">
+            <p class="eyebrow">Team Operations Hub</p>
+            <h1>Attendance, leave, tasks, and QC in one internal workspace.</h1>
+            <p class="subtle">
+              Built on Google Apps Script with Google Sheets as the database. Registration requires approval before login.
+            </p>
+            <div id="setup-note" class="setup-note"></div>
+          </div>
+
+          <div class="auth-card">
+            <div class="auth-tabs">
+              <button id="login-tab" class="tab-button active" type="button">Login</button>
+              <button id="register-tab" class="tab-button" type="button">Register</button>
+            </div>
+
+            <form id="login-form" class="form-grid">
+              <label>
+                <span>Email</span>
+                <input type="email" name="email" required>
+              </label>
+              <label>
+                <span>Password</span>
+                <input type="password" name="password" required>
+              </label>
+              <button class="primary-button" type="submit">Sign In</button>
+            </form>
+
+            <form id="register-form" class="form-grid hidden">
+              <label>
+                <span>Full Name</span>
+                <input type="text" name="fullName" required>
+              </label>
+              <label>
+                <span>Short Name</span>
+                <input type="text" name="shortName" required>
+              </label>
+              <label>
+                <span>Email</span>
+                <input type="email" name="email" required>
+              </label>
+              <label>
+                <span>Phone</span>
+                <input type="text" name="phone">
+              </label>
+              <label>
+                <span>Position / Role</span>
+                <select name="role">
+                  <option value="Employee">Employee</option>
+                  <option value="Coordinator">Coordinator</option>
+                  <option value="Admin">Admin</option>
+                </select>
+              </label>
+              <label>
+                <span>Password</span>
+                <input type="password" name="password" required minlength="6">
+              </label>
+              <button class="primary-button" type="submit">Submit Registration</button>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <section id="app-screen" class="app-screen hidden">
+        <aside class="sidebar">
+          <div>
+            <p class="eyebrow">Internal EMS</p>
+            <h2 id="sidebar-user-name">User</h2>
+            <p id="sidebar-user-role" class="subtle"></p>
+          </div>
+
+          <nav class="nav-list">
+            <button class="nav-button active" data-view="dashboard">Dashboard</button>
+            <button class="nav-button" data-view="attendance">Attendance</button>
+            <button class="nav-button" data-view="leave">Leave</button>
+            <button class="nav-button" data-view="notices">Notices</button>
+            <button class="nav-button" data-view="tasks">Tasks</button>
+            <button id="admin-nav" class="nav-button hidden" data-view="admin">Admin</button>
+          </nav>
+
+          <div class="sidebar-footer">
+            <a id="sheet-link" href="#" target="_blank" rel="noopener">Open Sheet Backend</a>
+            <button id="logout-button" class="secondary-button" type="button">Logout</button>
+          </div>
+        </aside>
+
+        <main class="content">
+          <header class="content-header">
+            <div>
+              <p class="eyebrow">Workspace</p>
+              <h1 id="view-title">Dashboard</h1>
+            </div>
+            <button id="refresh-button" class="ghost-button" type="button">Refresh Data</button>
+          </header>
+
+          <section id="dashboard-view" class="view-panel"></section>
+          <section id="attendance-view" class="view-panel hidden"></section>
+          <section id="leave-view" class="view-panel hidden"></section>
+          <section id="notices-view" class="view-panel hidden"></section>
+          <section id="tasks-view" class="view-panel hidden"></section>
+          <section id="admin-view" class="view-panel hidden"></section>
+        </main>
+      </section>
+    </div>
+
+    <?!= include('Scripts'); ?>
+  </body>
+</html>
