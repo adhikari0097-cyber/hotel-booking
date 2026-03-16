@@ -968,6 +968,37 @@ h4 {
   margin-bottom: 6px;
 }
 
+.extra-room-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.extra-room-option {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.extra-room-option input {
+  width: 18px;
+  height: 18px;
+}
+
+.extra-room-option strong {
+  display: block;
+  font-size: 14px;
+}
+
+.extra-room-option span {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .request-filters {
   display: grid;
   gap: 12px;

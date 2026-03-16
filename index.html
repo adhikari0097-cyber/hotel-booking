@@ -315,7 +315,8 @@
               <option value="cancel">Customer request to cancel</option>
               <option value="hold">Customer request to hold</option>
               <option value="change_date">Customer request to change date</option>
-              <option value="wrong_data">Wrong data</option>
+              <option value="additional_rooms">Requesting additional rooms</option>
+              <option value="delete_booking">Delete Booking</option>
             </select>
           </div>
           <div class="field">
@@ -353,6 +354,11 @@
               <label for="request-room-number">Room Number</label>
               <select id="request-room-number"></select>
             </div>
+          </div>
+          <div id="request-extra-rooms-section" class="field hidden">
+            <label>Additional Rooms</label>
+            <p class="inline-note">Select extra rooms only when the reason is requesting additional rooms.</p>
+            <div id="request-extra-rooms" class="extra-room-grid"></div>
           </div>
           <div class="field">
             <label for="request-status">Booking Status</label>
