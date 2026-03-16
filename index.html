@@ -310,7 +310,7 @@
         <form id="request-form">
           <input id="modal-booking-id" type="hidden" />
           <div id="request-reason-field" class="field">
-            <label for="request-reason">Request Reason *</label>
+            <label for="request-reason">Update Reason *</label>
             <select id="request-reason" required>
               <option value="cancel">Customer request to cancel</option>
               <option value="hold">Customer request to hold</option>
@@ -340,6 +340,20 @@
           <p id="request-date-help" class="inline-note hidden">
             Enter the new requested date range. Owner/Admin will see both current and requested dates before approval.
           </p>
+          <div id="request-current-room" class="inline-note"></div>
+          <div class="field grid-2">
+            <div>
+              <label for="request-room-type">Room Group</label>
+              <select id="request-room-type">
+                <option value="normal">Normal Room</option>
+                <option value="kitchen">Kitchen Room</option>
+              </select>
+            </div>
+            <div>
+              <label for="request-room-number">Room Number</label>
+              <select id="request-room-number"></select>
+            </div>
+          </div>
           <div class="field">
             <label for="request-status">Booking Status</label>
             <select id="request-status">
@@ -355,7 +369,7 @@
             <textarea id="request-notes"></textarea>
           </div>
           <div class="field">
-            <label for="request-message">Reason Details</label>
+            <label for="request-message">Comment</label>
             <textarea id="request-message" placeholder="Explain why this change is needed."></textarea>
           </div>
           <button id="request-submit" class="primary-btn" type="submit">Submit</button>

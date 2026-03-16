@@ -98,11 +98,14 @@ const requestReasonInput = qs("#request-reason");
 const requestGuestNameInput = qs("#request-guest-name");
 const requestPhoneInput = qs("#request-phone");
 const requestCurrentDates = qs("#request-current-dates");
+const requestCurrentRoom = qs("#request-current-room");
 const requestCheckInLabel = qs("#request-checkin-label");
 const requestCheckOutLabel = qs("#request-checkout-label");
 const requestCheckInInput = qs("#request-check-in");
 const requestCheckOutInput = qs("#request-check-out");
 const requestDateHelp = qs("#request-date-help");
+const requestRoomTypeInput = qs("#request-room-type");
+const requestRoomNumberInput = qs("#request-room-number");
 const requestStatusInput = qs("#request-status");
 const requestNotesInput = qs("#request-notes");
 const requestMessageInput = qs("#request-message");
@@ -250,6 +253,35 @@ function getRoomLabel(type, number) {
   const def = getRoomDef(type);
   if (!def) return "Room";
   return `${def.label} ${number}`;
+}
+
+function getRoomTypeLabelForGuests(roomType, guests) {
+  const def = getRoomDef(normalizeRoomGroup(roomType));
+  if (!def) return getRoomTypeDisplay(roomType);
+  return `${def.label} - ${guests} Pax`;
+}
+
+function populateRequestRoomNumbers(roomType, selectedNumber) {
+  const def = getRoomDef(normalizeRoomGroup(roomType));
+  const count = def?.count || 0;
+  requestRoomNumberInput.innerHTML = Array.from({ length: count }, (_, index) => {
+    const value = index + 1;
+    return `<option value="${value}"${Number(selectedNumber) === value ? " selected" : ""}>Room ${value}</option>`;
+  }).join("");
+}
+
+async function ensureBookingAvailabilityForUpdate(bookingId, values) {
+  if (String(values.status || "").toLowerCase() === "cancelled") return;
+  const roomGroup = normalizeRoomGroup(values.roomType);
+  const roomBookings = await fetchRangeBookings(roomGroup, values.checkIn, values.checkOut);
+  const hasConflict = roomBookings.some((booking) => {
+    if (!isBlockingBooking(booking)) return false;
+    if (booking.id === bookingId) return false;
+    return Number(booking.roomNumber) === Number(values.roomNumber);
+  });
+  if (hasConflict) {
+    throw new Error(`${getRoomLabel(roomGroup, Number(values.roomNumber))} is already booked for the selected dates.`);
+  }
 }
 
 function getRoomPlan(type, number, defaultNights) {
@@ -962,7 +994,7 @@ function renderBookings(bookings) {
       <span class="booking-tag">${booking.status || "Booking"}</span>
       <div class="request-actions">
         <button class="action-btn" type="button" data-booking-action="${canManageRequests() ? "edit" : "request"}" data-booking-id="${booking.id}">
-          ${canManageRequests() ? "Edit Booking" : "Request Change"}
+          Update Booking
         </button>
       </div>
     `;
@@ -999,14 +1031,16 @@ function openRequestModal(bookingId, mode) {
   requestGuestNameInput.value = booking.guestName || "";
   requestPhoneInput.value = booking.phone || "";
   requestCurrentDates.textContent = `Current booking dates: ${booking.checkIn || "-"} -> ${booking.checkOut || "-"}`;
+  requestCurrentRoom.textContent = `Current room: ${getRoomLabel(normalizeRoomGroup(booking.roomType), booking.roomNumber)} · ${booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType)}`;
   requestCheckInInput.value = booking.checkIn || "";
   requestCheckOutInput.value = booking.checkOut || "";
+  requestRoomTypeInput.value = normalizeRoomGroup(booking.roomType) || "normal";
+  populateRequestRoomNumbers(requestRoomTypeInput.value, booking.roomNumber);
   requestStatusInput.value = booking.status || "Campaign";
   requestNotesInput.value = booking.notes || "";
   requestMessageInput.value = "";
   requestReasonInput.value = "change_date";
-  requestReasonField.classList.toggle("hidden", mode !== "request");
-  modalTitle.textContent = mode === "edit" ? "Edit Booking" : "Request Booking Change";
+  modalTitle.textContent = mode === "edit" ? "Update Booking" : "Request Booking Change";
   requestSubmitBtn.textContent = mode === "edit" ? "Save Booking Update" : "Submit Change Request";
   syncModalReasonDefaults();
   requestModal.classList.remove("hidden");
@@ -1023,6 +1057,9 @@ function mapRequest(row) {
     requestedPhone: row.requested_phone || "",
     requestedCheckIn: row.requested_check_in || "",
     requestedCheckOut: row.requested_check_out || "",
+    requestedRoomType: row.requested_room_type || "",
+    requestedRoomTypeLabel: row.requested_room_type_label || "",
+    requestedRoomNumber: Number(row.requested_room_number || 0),
     requestedNotes: row.requested_notes || "",
     requestedBookingStatus: row.requested_booking_status || "",
     status: row.status,
@@ -1072,6 +1109,9 @@ async function updateBooking(bookingId, values) {
   if ("phone" in values) row.phone = values.phone;
   if ("checkIn" in values) row.check_in = values.checkIn;
   if ("checkOut" in values) row.check_out = values.checkOut;
+  if ("roomType" in values) row.room_type = values.roomType;
+  if ("roomTypeLabel" in values) row.room_type_label = values.roomTypeLabel;
+  if ("roomNumber" in values) row.room_number = Number(values.roomNumber);
   if ("notes" in values) row.notes = values.notes || "";
   if ("status" in values) row.booking_status = values.status;
 
@@ -1090,8 +1130,15 @@ async function insertChangeRequest(payload) {
     requested_phone: payload.phone || null,
     requested_check_in: payload.checkIn || null,
     requested_check_out: payload.checkOut || null,
+    requested_room_type: payload.roomType || null,
+    requested_room_type_label: payload.roomTypeLabel || null,
+    requested_room_number: payload.roomNumber ? Number(payload.roomNumber) : null,
     requested_notes: payload.notes || null,
     requested_booking_status: payload.status || null,
+    status: payload.requestStatusOverride || "pending",
+    admin_note: payload.adminNote || "",
+    reviewed_by: payload.reviewedBy || null,
+    reviewed_at: payload.reviewedAt || null,
   });
   if (error) throw new Error(error.message);
 }
@@ -1118,11 +1165,22 @@ async function approveRequest(requestId) {
       ? "Pending"
       : (request.requestedBookingStatus || request.booking?.status || "Campaign");
 
+  await ensureBookingAvailabilityForUpdate(request.bookingId, {
+    checkIn: request.requestedCheckIn || request.booking?.checkIn || "",
+    checkOut: request.requestedCheckOut || request.booking?.checkOut || "",
+    roomType: request.requestedRoomType || request.booking?.roomType || "",
+    roomNumber: request.requestedRoomNumber || request.booking?.roomNumber || 0,
+    status: targetStatus,
+  });
+
   await updateBooking(request.bookingId, {
     guestName: request.requestedGuestName || request.booking?.guestName || "",
     phone: request.requestedPhone || request.booking?.phone || "",
     checkIn: request.requestedCheckIn || request.booking?.checkIn || "",
     checkOut: request.requestedCheckOut || request.booking?.checkOut || "",
+    roomType: request.requestedRoomType || request.booking?.roomType || "",
+    roomTypeLabel: request.requestedRoomTypeLabel || request.booking?.roomTypeLabel || "",
+    roomNumber: request.requestedRoomNumber || request.booking?.roomNumber || 0,
     notes: request.requestedNotes ?? request.booking?.notes ?? "",
     status: targetStatus,
   });
@@ -1253,8 +1311,9 @@ function renderRequests(requests) {
       <div class="request-meta request-detail">
         <div><strong>Current:</strong> ${booking?.checkIn || "-"} -> ${booking?.checkOut || "-"} · ${booking?.status || "-"}</div>
         <div><strong>Requested:</strong> ${request.requestedCheckIn || booking?.checkIn || "-"} -> ${request.requestedCheckOut || booking?.checkOut || "-"} · ${request.requestedBookingStatus || booking?.status || "-"}</div>
+        <div><strong>Current Room:</strong> ${booking?.roomTypeLabel || "-"} · ${getRoomLabel(normalizeRoomGroup(booking?.roomType || ""), booking?.roomNumber || 0)}</div>
+        <div><strong>Requested Room:</strong> ${request.requestedRoomTypeLabel || booking?.roomTypeLabel || "-"} · ${getRoomLabel(normalizeRoomGroup(request.requestedRoomType || booking?.roomType || ""), request.requestedRoomNumber || booking?.roomNumber || 0)}</div>
         <div><strong>Phone:</strong> ${request.requestedPhone || booking?.phone || "-"}</div>
-        <div><strong>Room:</strong> ${booking?.roomTypeLabel || "-"}</div>
         <div><strong>Notes:</strong> ${request.requestedNotes || booking?.notes || "-"}</div>
         <div><strong>Reason Details:</strong> ${request.requestNote || "-"}</div>
         ${
@@ -1605,14 +1664,11 @@ async function bootstrapSession() {
 }
 
 function syncModalReasonDefaults() {
-  const isRequestMode = state.modalMode === "request";
-  const isDateChange = isRequestMode && requestReasonInput.value === "change_date";
+  const isDateChange = requestReasonInput.value === "change_date";
 
   requestCheckInLabel.textContent = isDateChange ? "New Check-in" : "Check-in";
   requestCheckOutLabel.textContent = isDateChange ? "New Check-out" : "Check-out";
   requestDateHelp.classList.toggle("hidden", !isDateChange);
-
-  if (!isRequestMode) return;
   requestStatusInput.value = getDefaultRequestStatus(requestReasonInput.value, state.activeBooking?.status || "Campaign");
 }
 
@@ -1628,10 +1684,14 @@ async function handleRequestSubmit(event) {
     phone: requestPhoneInput.value.trim(),
     checkIn: requestCheckInInput.value,
     checkOut: requestCheckOutInput.value,
+    roomType: requestRoomTypeInput.value,
+    roomNumber: Number(requestRoomNumberInput.value),
     status: requestStatusInput.value,
     notes: requestNotesInput.value.trim(),
     requestNote: requestMessageInput.value.trim(),
   };
+
+  payload.roomTypeLabel = getRoomTypeLabelForGuests(payload.roomType, state.activeBooking.guests || 1);
 
   if (!payload.guestName || !payload.phone || !payload.checkIn || !payload.checkOut) {
     showToast("Fill all required booking fields.", true);
@@ -1650,7 +1710,17 @@ async function handleRequestSubmit(event) {
 
   try {
     if (state.modalMode === "edit") {
+      await ensureBookingAvailabilityForUpdate(state.activeBooking.id, payload);
       await updateBooking(state.activeBooking.id, payload);
+      await insertChangeRequest({
+        bookingId: state.activeBooking.id,
+        reason: requestReasonInput.value,
+        ...payload,
+        requestStatusOverride: "approved",
+        adminNote: payload.requestNote,
+        reviewedBy: state.currentSession.user.id,
+        reviewedAt: new Date().toISOString(),
+      });
       showToast("Booking updated.");
     } else {
       await insertChangeRequest({
@@ -1803,6 +1873,9 @@ requestsDateFromFilter.addEventListener("change", handleRequestDateRangeChange);
 requestsDateToFilter.addEventListener("change", handleRequestDateRangeChange);
 requestsTrackFilter.addEventListener("input", () => loadRequests());
 requestsRequestedByFilter.addEventListener("input", () => loadRequests());
+requestRoomTypeInput.addEventListener("change", () => {
+  populateRequestRoomNumbers(requestRoomTypeInput.value, 1);
+});
 requestModal.querySelectorAll("[data-close-modal]").forEach((element) => {
   element.addEventListener("click", closeRequestModal);
 });
