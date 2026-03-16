@@ -235,6 +235,30 @@
             <p class="inline-note" id="requests-helper">
               Users can submit requests. Owner/Admin can approve or reject them here.
             </p>
+            <div class="request-filters">
+              <div class="request-filter-chips">
+                <button id="filter-recent" class="filter-chip" type="button" data-filter-mode="recent">Recent</button>
+                <button id="filter-date" class="filter-chip" type="button" data-filter-mode="date">Date By</button>
+                <button id="filter-pending" class="filter-chip filter-chip-active" type="button" data-filter-status="pending">Pending</button>
+                <button id="filter-approved" class="filter-chip" type="button" data-filter-status="approved">Approved</button>
+                <button id="filter-rejected" class="filter-chip" type="button" data-filter-status="rejected">Cancelled</button>
+                <button id="filter-all" class="filter-chip" type="button" data-filter-status="all">All Data</button>
+              </div>
+              <div class="request-filter-search">
+                <div class="field compact-field">
+                  <label for="requests-track-filter">Track Code</label>
+                  <input id="requests-track-filter" type="text" placeholder="CAM-0008" />
+                </div>
+                <div class="field compact-field">
+                  <label for="requests-requested-by-filter">Requested By</label>
+                  <input id="requests-requested-by-filter" type="text" placeholder="Kavindi" />
+                </div>
+                <div class="field compact-field">
+                  <label for="requests-date-filter">Request Date</label>
+                  <input id="requests-date-filter" type="date" />
+                </div>
+              </div>
+            </div>
             <div id="requests-list" class="accounts-list"></div>
             <p id="requests-empty" class="empty-state">No requests yet.</p>
           </div>

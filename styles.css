@@ -960,12 +960,82 @@ h4 {
   margin-bottom: 6px;
 }
 
+.request-filters {
+  display: grid;
+  gap: 12px;
+  margin: 14px 0 16px;
+}
+
+.request-filter-search {
+  display: grid;
+  gap: 12px;
+}
+
+.request-filter-chips {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.filter-chip {
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--primary);
+  border-radius: 999px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.filter-chip-active {
+  background: #efe2bd;
+  border-color: #efe2bd;
+}
+
+.compact-field label {
+  margin-bottom: 6px;
+}
+
+.compact-field input {
+  height: 46px;
+}
+
+@media (min-width: 640px) {
+  .request-filter-search {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 .request-meta {
   display: grid;
   gap: 6px;
   color: var(--muted);
   font-size: 13px;
   margin-bottom: 12px;
+}
+
+.request-summary {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.request-summary-line {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.request-detail {
+  display: none;
+}
+
+.request-detail-open {
+  display: grid;
 }
 
 .request-actions {

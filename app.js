@@ -21,10 +21,14 @@ const state = {
   currentSession: null,
   roomPlans: new Map(),
   bookingMap: new Map(),
+  bookingGroups: new Map(),
   requestMap: new Map(),
   profileMap: new Map(),
   activeBooking: null,
+  activeBookingGroup: [],
   modalMode: "request",
+  requestsFilterMode: "recent",
+  requestsFilterStatus: "pending",
 };
 
 const qs = (selector) => document.querySelector(selector);
@@ -73,6 +77,10 @@ const requestsList = qs("#requests-list");
 const requestsEmpty = qs("#requests-empty");
 const refreshRequestsBtn = qs("#refresh-requests");
 const requestsHelper = qs("#requests-helper");
+const requestsTrackFilter = qs("#requests-track-filter");
+const requestsRequestedByFilter = qs("#requests-requested-by-filter");
+const requestsDateFilter = qs("#requests-date-filter");
+const requestFilterButtons = Array.from(document.querySelectorAll("[data-filter-mode], [data-filter-status]"));
 const requestModal = qs("#request-modal");
 const closeModalBtn = qs("#close-modal");
 const requestForm = qs("#request-form");
@@ -1099,15 +1107,69 @@ async function rejectRequest(requestId) {
   await updateRequestStatus(requestId, { status: "rejected", adminNote });
 }
 
+function getRequestRequestedDate(request) {
+  return request.requestedCheckIn || request.booking?.checkIn || "";
+}
+
+function getFilteredRequests(requests) {
+  let next = [...requests];
+  const trackFilter = (requestsTrackFilter.value || "").trim().toLowerCase();
+  const requestedByFilter = (requestsRequestedByFilter.value || "").trim().toLowerCase();
+
+  if (state.requestsFilterStatus !== "all") {
+    next = next.filter((request) => request.status === state.requestsFilterStatus);
+  }
+
+  if (trackFilter) {
+    next = next.filter((request) =>
+      String(request.booking?.trackCode || request.trackCode || "").toLowerCase().includes(trackFilter)
+    );
+  }
+
+  if (requestedByFilter) {
+    next = next.filter((request) => {
+      const profile = state.profileMap.get(request.requestedBy);
+      const haystack = [
+        profile?.full_name || "",
+        profile?.username || "",
+        request.requestedByName || "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(requestedByFilter);
+    });
+  }
+
+  if (state.requestsFilterMode === "date" && requestsDateFilter.value) {
+    next = next.filter((request) => getRequestRequestedDate(request) === requestsDateFilter.value);
+    next.sort((a, b) => getRequestRequestedDate(a).localeCompare(getRequestRequestedDate(b)));
+  } else {
+    next.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+  }
+
+  return next;
+}
+
+function updateRequestFilterButtons() {
+  requestFilterButtons.forEach((button) => {
+    const isActive =
+      (button.dataset.filterMode && button.dataset.filterMode === state.requestsFilterMode) ||
+      (button.dataset.filterStatus && button.dataset.filterStatus === state.requestsFilterStatus);
+    button.classList.toggle("filter-chip-active", Boolean(isActive));
+  });
+}
+
 function renderRequests(requests) {
   requestsList.innerHTML = "";
   state.requestMap = new Map(requests.map((request) => [request.id, request]));
-  requestsEmpty.style.display = requests.length ? "none" : "block";
+  const filteredRequests = getFilteredRequests(requests);
+  requestsEmpty.style.display = filteredRequests.length ? "none" : "block";
   requestsHelper.textContent = canManageRequests()
     ? "Owner/Admin can approve or reject requests here."
     : "Your submitted requests show pending, approved, or rejected status here.";
+  updateRequestFilterButtons();
 
-  requests.forEach((request) => {
+  filteredRequests.forEach((request) => {
     const booking = request.booking;
     const card = document.createElement("article");
     card.className = "request-card";
@@ -1125,14 +1187,25 @@ function renderRequests(requests) {
         </div>
         <span class="booking-tag ${statusClass}">${request.status}</span>
       </div>
-      <div class="request-meta">
-        <div><strong>Requested by:</strong> ${
+      <div class="request-summary">
+        <div class="request-summary-line">
+          <span><strong>By:</strong> ${
           state.profileMap.get(request.requestedBy)?.full_name ||
           state.profileMap.get(request.requestedBy)?.username ||
           (request.requestedBy === state.currentSession?.user?.id ? state.currentProfile?.full_name || state.currentProfile?.username || "-" : "Staff")
-        }</div>
+        }</span>
+          <span><strong>Date:</strong> ${getRequestRequestedDate(request) || "-"}</span>
+        </div>
+        <div class="request-summary-line">
+          <span><strong>Current:</strong> ${booking?.status || "-"}</span>
+          <span><strong>Requested:</strong> ${request.requestedBookingStatus || booking?.status || "-"}</span>
+        </div>
+      </div>
+      <div class="request-meta request-detail">
         <div><strong>Current:</strong> ${booking?.checkIn || "-"} -> ${booking?.checkOut || "-"} · ${booking?.status || "-"}</div>
         <div><strong>Requested:</strong> ${request.requestedCheckIn || booking?.checkIn || "-"} -> ${request.requestedCheckOut || booking?.checkOut || "-"} · ${request.requestedBookingStatus || booking?.status || "-"}</div>
+        <div><strong>Phone:</strong> ${request.requestedPhone || booking?.phone || "-"}</div>
+        <div><strong>Room:</strong> ${booking?.roomTypeLabel || "-"}</div>
         <div><strong>Notes:</strong> ${request.requestedNotes || booking?.notes || "-"}</div>
         <div><strong>Reason Details:</strong> ${request.requestNote || "-"}</div>
         ${
@@ -1141,15 +1214,23 @@ function renderRequests(requests) {
             : ""
         }
       </div>
-      ${
-        canManageRequests() && request.status === "pending"
-          ? `<div class="request-actions">
-              <button class="action-btn" type="button" data-request-action="approve" data-request-id="${request.id}">Approve</button>
-              <button class="action-btn danger" type="button" data-request-action="reject" data-request-id="${request.id}">Reject</button>
-            </div>`
-          : ""
-      }
+      <div class="request-actions">
+        <button class="action-btn" type="button" data-request-toggle>More</button>
+        ${
+          canManageRequests() && request.status === "pending"
+            ? `<button class="action-btn" type="button" data-request-action="approve" data-request-id="${request.id}">Approve</button>
+               <button class="action-btn danger" type="button" data-request-action="reject" data-request-id="${request.id}">Reject</button>`
+            : ""
+        }
+      </div>
     `;
+
+    const toggleBtn = card.querySelector("[data-request-toggle]");
+    const detail = card.querySelector(".request-detail");
+    toggleBtn.addEventListener("click", () => {
+      const open = detail.classList.toggle("request-detail-open");
+      toggleBtn.textContent = open ? "Less" : "More";
+    });
 
     card.querySelectorAll("[data-request-action]").forEach((button) => {
       button.addEventListener("click", async () => {
@@ -1646,6 +1727,23 @@ refreshAccountsBtn.addEventListener("click", () => loadAccounts());
 refreshRequestsBtn.addEventListener("click", () => loadRequests());
 closeModalBtn.addEventListener("click", closeRequestModal);
 requestReasonInput.addEventListener("change", syncModalReasonDefaults);
+requestFilterButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    if (button.dataset.filterMode) {
+      state.requestsFilterMode = button.dataset.filterMode;
+    }
+    if (button.dataset.filterStatus) {
+      state.requestsFilterStatus = button.dataset.filterStatus;
+    }
+    loadRequests();
+  });
+});
+requestsDateFilter.addEventListener("change", () => {
+  state.requestsFilterMode = "date";
+  loadRequests();
+});
+requestsTrackFilter.addEventListener("input", () => loadRequests());
+requestsRequestedByFilter.addEventListener("input", () => loadRequests());
 requestModal.querySelectorAll("[data-close-modal]").forEach((element) => {
   element.addEventListener("click", closeRequestModal);
 });
