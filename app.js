@@ -85,7 +85,8 @@ const refreshRequestsBtn = qs("#refresh-requests");
 const requestsHelper = qs("#requests-helper");
 const requestsTrackFilter = qs("#requests-track-filter");
 const requestsRequestedByFilter = qs("#requests-requested-by-filter");
-const requestsDateFilter = qs("#requests-date-filter");
+const requestsDateFromFilter = qs("#requests-date-from");
+const requestsDateToFilter = qs("#requests-date-to");
 const requestFilterButtons = Array.from(document.querySelectorAll("[data-filter-mode], [data-filter-status]"));
 const requestModal = qs("#request-modal");
 const closeModalBtn = qs("#close-modal");
@@ -1155,6 +1156,8 @@ function getFilteredRequests(requests) {
   let next = getLatestRequests(requests);
   const trackFilter = (requestsTrackFilter.value || "").trim().toLowerCase();
   const requestedByFilter = (requestsRequestedByFilter.value || "").trim().toLowerCase();
+  const dateFrom = requestsDateFromFilter.value || "";
+  const dateTo = requestsDateToFilter.value || "";
 
   if (state.requestsFilterStatus !== "all") {
     next = next.filter((request) => request.status === state.requestsFilterStatus);
@@ -1180,8 +1183,14 @@ function getFilteredRequests(requests) {
     });
   }
 
-  if (state.requestsFilterMode === "date" && requestsDateFilter.value) {
-    next = next.filter((request) => getRequestRequestedDate(request) === requestsDateFilter.value);
+  if (state.requestsFilterMode === "date" && (dateFrom || dateTo)) {
+    next = next.filter((request) => {
+      const requestedDate = getRequestRequestedDate(request);
+      if (!requestedDate) return false;
+      if (dateFrom && requestedDate < dateFrom) return false;
+      if (dateTo && requestedDate > dateTo) return false;
+      return true;
+    });
     next.sort((a, b) => getRequestRequestedDate(a).localeCompare(getRequestRequestedDate(b)));
   } else {
     next.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
@@ -1785,10 +1794,13 @@ requestFilterButtons.forEach((button) => {
     loadRequests();
   });
 });
-requestsDateFilter.addEventListener("change", () => {
+function handleRequestDateRangeChange() {
   state.requestsFilterMode = "date";
   loadRequests();
-});
+}
+
+requestsDateFromFilter.addEventListener("change", handleRequestDateRangeChange);
+requestsDateToFilter.addEventListener("change", handleRequestDateRangeChange);
 requestsTrackFilter.addEventListener("input", () => loadRequests());
 requestsRequestedByFilter.addEventListener("input", () => loadRequests());
 requestModal.querySelectorAll("[data-close-modal]").forEach((element) => {
