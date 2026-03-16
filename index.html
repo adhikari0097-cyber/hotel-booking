@@ -218,6 +218,11 @@
 
           <div class="card" id="booking-list">
             <h3>Bookings</h3>
+            <div class="booking-list-filters">
+              <button id="booking-filter-active" class="filter-chip filter-chip-active" type="button">Active</button>
+              <button id="booking-filter-cancelled" class="filter-chip" type="button">Cancelled</button>
+              <button id="booking-filter-all" class="filter-chip" type="button">All</button>
+            </div>
             <div id="booking-cards" class="booking-cards"></div>
             <p id="booking-empty" class="empty-state">Select a date to see bookings.</p>
           </div>
@@ -317,16 +322,20 @@
             <label for="request-phone">Phone Number</label>
             <input id="request-phone" type="tel" inputmode="tel" />
           </div>
+          <div id="request-current-dates" class="inline-note"></div>
           <div class="field grid-2">
             <div>
-              <label for="request-check-in">Check-in</label>
+              <label id="request-checkin-label" for="request-check-in">Check-in</label>
               <input id="request-check-in" type="date" />
             </div>
             <div>
-              <label for="request-check-out">Check-out</label>
+              <label id="request-checkout-label" for="request-check-out">Check-out</label>
               <input id="request-check-out" type="date" />
             </div>
           </div>
+          <p id="request-date-help" class="inline-note hidden">
+            Enter the new requested date range. Owner/Admin will see both current and requested dates before approval.
+          </p>
           <div class="field">
             <label for="request-status">Booking Status</label>
             <select id="request-status">

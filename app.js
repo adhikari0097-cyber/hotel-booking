@@ -27,6 +27,7 @@ const state = {
   activeBooking: null,
   activeBookingGroup: [],
   modalMode: "request",
+  bookingListFilter: "active",
   requestsFilterMode: "recent",
   requestsFilterStatus: "pending",
 };
@@ -52,6 +53,11 @@ const syncStatus = qs("#sync-status");
 const guestsInput = qs("#guests");
 const bookingCards = qs("#booking-cards");
 const bookingEmpty = qs("#booking-empty");
+const bookingFilterButtons = {
+  active: qs("#booking-filter-active"),
+  cancelled: qs("#booking-filter-cancelled"),
+  all: qs("#booking-filter-all"),
+};
 const roomStatusList = qs("#room-status-list");
 const statTotal = qs("#stat-total");
 const statOccupied = qs("#stat-occupied");
@@ -90,8 +96,12 @@ const requestReasonField = qs("#request-reason-field");
 const requestReasonInput = qs("#request-reason");
 const requestGuestNameInput = qs("#request-guest-name");
 const requestPhoneInput = qs("#request-phone");
+const requestCurrentDates = qs("#request-current-dates");
+const requestCheckInLabel = qs("#request-checkin-label");
+const requestCheckOutLabel = qs("#request-checkout-label");
 const requestCheckInInput = qs("#request-check-in");
 const requestCheckOutInput = qs("#request-check-out");
+const requestDateHelp = qs("#request-date-help");
 const requestStatusInput = qs("#request-status");
 const requestNotesInput = qs("#request-notes");
 const requestMessageInput = qs("#request-message");
@@ -911,14 +921,29 @@ function renderRoomStatus(bookingsForDate) {
 function renderBookings(bookings) {
   bookingCards.innerHTML = "";
   state.bookingMap = new Map(bookings.map((booking) => [booking.id, booking]));
-  if (!bookings.length) {
-    bookingEmpty.textContent = "No bookings for this date.";
+  const filteredBookings = bookings.filter((booking) => {
+    if (state.bookingListFilter === "cancelled") return booking.status === "Cancelled";
+    if (state.bookingListFilter === "active") return booking.status !== "Cancelled";
+    return true;
+  });
+
+  Object.entries(bookingFilterButtons).forEach(([key, button]) => {
+    button.classList.toggle("filter-chip-active", state.bookingListFilter === key);
+  });
+
+  if (!filteredBookings.length) {
+    bookingEmpty.textContent =
+      state.bookingListFilter === "cancelled"
+        ? "No cancelled bookings for this date."
+        : state.bookingListFilter === "active"
+          ? "No active bookings for this date."
+          : "No bookings for this date.";
     bookingEmpty.style.display = "block";
     return;
   }
 
   bookingEmpty.style.display = "none";
-  bookings.forEach((booking) => {
+  filteredBookings.forEach((booking) => {
     const card = document.createElement("div");
     card.className = "booking-card";
     const roomGroup = normalizeRoomGroup(booking.roomType);
@@ -972,6 +997,7 @@ function openRequestModal(bookingId, mode) {
   modalBookingId.value = booking.id;
   requestGuestNameInput.value = booking.guestName || "";
   requestPhoneInput.value = booking.phone || "";
+  requestCurrentDates.textContent = `Current booking dates: ${booking.checkIn || "-"} -> ${booking.checkOut || "-"}`;
   requestCheckInInput.value = booking.checkIn || "";
   requestCheckOutInput.value = booking.checkOut || "";
   requestStatusInput.value = booking.status || "Campaign";
@@ -1111,8 +1137,22 @@ function getRequestRequestedDate(request) {
   return request.requestedCheckIn || request.booking?.checkIn || "";
 }
 
+function getLatestRequests(requests) {
+  const latestByBooking = new Map();
+
+  requests.forEach((request) => {
+    const key = request.booking?.trackCode || request.bookingId || request.id;
+    const existing = latestByBooking.get(key);
+    if (!existing || String(request.createdAt || "") > String(existing.createdAt || "")) {
+      latestByBooking.set(key, request);
+    }
+  });
+
+  return Array.from(latestByBooking.values());
+}
+
 function getFilteredRequests(requests) {
-  let next = [...requests];
+  let next = getLatestRequests(requests);
   const trackFilter = (requestsTrackFilter.value || "").trim().toLowerCase();
   const requestedByFilter = (requestsRequestedByFilter.value || "").trim().toLowerCase();
 
@@ -1556,7 +1596,14 @@ async function bootstrapSession() {
 }
 
 function syncModalReasonDefaults() {
-  if (state.modalMode !== "request") return;
+  const isRequestMode = state.modalMode === "request";
+  const isDateChange = isRequestMode && requestReasonInput.value === "change_date";
+
+  requestCheckInLabel.textContent = isDateChange ? "New Check-in" : "Check-in";
+  requestCheckOutLabel.textContent = isDateChange ? "New Check-out" : "Check-out";
+  requestDateHelp.classList.toggle("hidden", !isDateChange);
+
+  if (!isRequestMode) return;
   requestStatusInput.value = getDefaultRequestStatus(requestReasonInput.value, state.activeBooking?.status || "Campaign");
 }
 
@@ -1755,6 +1802,13 @@ viewDateInput.addEventListener("change", async (event) => {
     await loadMonthCalendar();
   }
   await loadBookingsForDate(event.target.value);
+});
+
+Object.entries(bookingFilterButtons).forEach(([key, button]) => {
+  button.addEventListener("click", async () => {
+    state.bookingListFilter = key;
+    await loadBookingsForDate(viewDateInput.value);
+  });
 });
 
 monthPrevBtn.addEventListener("click", async () => {
