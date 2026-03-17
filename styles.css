@@ -376,15 +376,20 @@ h4 {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 10px;
   padding: 12px 14px;
   border-radius: 14px;
-  background: #f8f8f6;
+  background: #fdfcfa;
   border: 1px solid var(--border);
   font-size: 14px;
 }
 
+.room-item-main {
+  min-width: 0;
+}
+
 .room-item span {
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .muted {
@@ -409,6 +414,38 @@ h4 {
 .status-booked {
   background: #f9e4e1;
   color: var(--danger);
+}
+
+.booking-meta-compact {
+  gap: 4px;
+}
+
+.booking-group-call {
+  display: flex;
+  align-items: center;
+}
+
+.call-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  color: var(--text);
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.call-link::before {
+  content: "\260E";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: #e5f4ed;
+  color: var(--success);
+  font-size: 14px;
 }
 
 .booking-cards {

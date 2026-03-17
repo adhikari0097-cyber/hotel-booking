@@ -1127,21 +1127,21 @@ function renderRoomStatus(bookingsForDate) {
   bookingsForDate.forEach((booking) => {
     if (!isBlockingBooking(booking)) return;
     const roomGroup = normalizeRoomGroup(booking.roomType);
-    bookedMap.set(`${roomGroup}-${booking.roomNumber}`, booking.guestName);
+    bookedMap.set(`${roomGroup}-${booking.roomNumber}`, booking);
   });
 
   roomStatusList.innerHTML = "";
   buildRoomList().forEach((room) => {
-    const guest = bookedMap.get(`${room.type}-${room.number}`);
+    const booking = bookedMap.get(`${room.type}-${room.number}`);
     const item = document.createElement("div");
     item.className = "room-item";
     item.innerHTML = `
-      <div>
+      <div class="room-item-main">
         <span>${room.fullLabel}</span>
-        ${guest ? `<div class="muted">${guest}</div>` : ""}
+        ${booking ? `<div class="muted">${booking.guestName || "-"} ${booking.trackCode || ""}</div>` : ""}
       </div>
-      <div class="status ${guest ? "status-booked" : "status-available"}">
-        ${guest ? "Booked" : "Available"}
+      <div class="status ${booking ? "status-booked" : "status-available"}">
+        ${booking ? "BOOKED" : "AVAILABLE"}
       </div>
     `;
     roomStatusList.appendChild(item);
@@ -1247,7 +1247,10 @@ function renderBookings(bookings) {
         </div>
         <span class="booking-tag">${groupStatus}</span>
       </div>
-      <div class="booking-meta">
+      <div class="booking-group-call">
+        <a class="call-link" href="tel:${group.phone || ""}">Call ${group.guestName || "Guest"}</a>
+      </div>
+      <div class="booking-meta booking-meta-compact">
         <div><strong>Track Code:</strong> ${group.trackCode || "-"}</div>
         <div><strong>Phone:</strong> <a href="tel:${group.phone}">${group.phone || "-"}</a></div>
       </div>
