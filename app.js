@@ -442,15 +442,15 @@ function mergeNotesAndServices(notes, services) {
   return parts.join(" | ");
 }
 
-function renderServiceToggleButtons(booking) {
-  const active = new Set(parseBookingNotes(booking.notes).services);
+function renderGroupServiceToggleButtons(group) {
+  const active = new Set(parseBookingNotes(group.bookings[0]?.notes || "").services);
   return `
     <div class="service-chip-list service-chip-list-editable">
       ${ROOM_SERVICE_OPTIONS.map((service) => `
         <button
           class="service-chip service-chip-toggle ${active.has(service) ? "service-chip-active" : "service-chip-inactive"}"
           type="button"
-          data-booking-service-toggle="${booking.id}"
+          data-group-service-toggle="${group.trackCode || group.key}"
           data-service-name="${service}"
           aria-pressed="${active.has(service) ? "true" : "false"}"
         >
@@ -462,24 +462,29 @@ function renderServiceToggleButtons(booking) {
   `;
 }
 
-async function toggleBookingServiceDirect(bookingId, serviceName) {
-  const booking = state.bookingMap.get(bookingId);
-  if (!booking) throw new Error("Booking not found.");
-  const parsed = parseBookingNotes(booking.notes);
+async function toggleGroupServiceDirect(groupKey, serviceName) {
+  const group = state.bookingGroups.get(groupKey);
+  if (!group?.bookings?.length) throw new Error("Booking group not found.");
+  const parsed = parseBookingNotes(group.bookings[0].notes);
   const next = new Set(parsed.services);
   if (next.has(serviceName)) next.delete(serviceName);
   else next.add(serviceName);
-  await updateBooking(bookingId, {
-    guestName: booking.guestName,
-    phone: booking.phone,
-    checkIn: booking.checkIn,
-    checkOut: booking.checkOut,
-    roomType: booking.roomType,
-    roomTypeLabel: booking.roomTypeLabel,
-    roomNumber: booking.roomNumber,
-    notes: mergeNotesAndServices(parsed.otherNotes.join(" | "), Array.from(next)),
-    status: booking.status,
-  });
+  const nextServices = Array.from(next);
+
+  for (const booking of group.bookings) {
+    const bookingParsed = parseBookingNotes(booking.notes);
+    await updateBooking(booking.id, {
+      guestName: booking.guestName,
+      phone: booking.phone,
+      checkIn: booking.checkIn,
+      checkOut: booking.checkOut,
+      roomType: booking.roomType,
+      roomTypeLabel: booking.roomTypeLabel,
+      roomNumber: booking.roomNumber,
+      notes: mergeNotesAndServices(bookingParsed.otherNotes.join(" | "), nextServices),
+      status: booking.status,
+    });
+  }
 }
 
 async function removeBookingRoomDirect(bookingId) {
@@ -1887,7 +1892,6 @@ function renderBookings(bookings) {
               <div class="booking-room-row-title">${getRoomLabel(roomGroup, booking.roomNumber)} (#${booking.roomNumber})</div>
               <div class="booking-room-row-meta">${metaBits.join(" · ")}</div>
               ${bookingRequest ? `<div class="booking-room-row-request">${getRequestStatusMarkup(bookingRequest, "Request")}</div>` : ""}
-              <div class="booking-room-row-services"><span class="booking-room-row-label">Services</span>${renderServiceToggleButtons(booking)}</div>
               ${noteMeta.otherNotes.length ? `<div class="booking-room-row-notes"><span class="booking-room-row-label">Notes</span><div>${noteMeta.otherNotes.join(" | ")}</div></div>` : ""}
             </div>
             <div class="booking-room-row-actions">
@@ -1931,6 +1935,7 @@ function renderBookings(bookings) {
         <div class="booking-group-phone"><strong>Phone:</strong> <a href="tel:${group.phone}">${group.phone || "-"}</a></div>
       </div>
       ${requestBrief}
+      ${group.bookings.length ? `<div class="booking-room-row-services booking-group-services"><span class="booking-room-row-label">Services</span>${renderGroupServiceToggleButtons(group)}</div>` : ""}
       <div class="booking-room-list">${roomRows}</div>
       <div class="booking-group-footer-actions">
         <button class="booking-add-room-btn" type="button" data-booking-group-add="${group.bookings[0].id}">+</button>
@@ -1955,10 +1960,10 @@ function renderBookings(bookings) {
         }
       });
     });
-    card.querySelectorAll("[data-booking-service-toggle]").forEach((button) => {
+    card.querySelectorAll("[data-group-service-toggle]").forEach((button) => {
       button.addEventListener("click", async () => {
         try {
-          await toggleBookingServiceDirect(button.dataset.bookingServiceToggle, button.dataset.serviceName);
+          await toggleGroupServiceDirect(button.dataset.groupServiceToggle, button.dataset.serviceName);
           await refreshLiveViews();
         } catch (error) {
           showToast(error.message, true);
