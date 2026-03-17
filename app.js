@@ -1449,7 +1449,7 @@ async function approveRequest(requestId) {
       });
 
       await insertBooking({
-        trackCode: "",
+        trackCode: request.booking?.trackCode || "",
         guestName: request.requestedGuestName || request.booking?.guestName || "",
         phone: request.requestedPhone || request.booking?.phone || "",
         checkIn: request.requestedCheckIn || request.booking?.checkIn || "",
@@ -2054,7 +2054,7 @@ async function handleRequestSubmit(event) {
             status: payload.status,
           });
           await insertBooking({
-            trackCode: "",
+            trackCode: state.activeBooking.trackCode || "",
             guestName: payload.guestName,
             phone: payload.phone,
             checkIn: payload.checkIn,
@@ -2165,6 +2165,7 @@ bookingForm.addEventListener("submit", async (event) => {
     extraGuestsTotalInput.value = totalExtraGuests ? String(totalExtraGuests) : "";
     const backupFailures = [];
     const savedTrackCodes = [];
+    const sharedTrackCode = await getNextTrackCode(payload.status);
 
     for (const plan of selectedPlans) {
       const roomCheckOut = formatCheckoutFromNights(payload.checkIn, plan.nights);
@@ -2186,7 +2187,7 @@ bookingForm.addEventListener("submit", async (event) => {
       const bookingPayload = {
         ...payload,
         notes: notesParts.filter(Boolean).join(" | "),
-        trackCode: "",
+        trackCode: sharedTrackCode,
         guests: String(plan.totalGuests),
         checkOut: roomCheckOut,
         roomType: plan.room.type,
