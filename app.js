@@ -1550,10 +1550,18 @@ function renderRoomStatus(bookingsForDate) {
     const booking = bookedMap.get(`${room.type}-${room.number}`);
     const item = document.createElement("div");
     item.className = "room-item";
+    const bookingSummary = booking
+      ? [
+          booking.trackCode || "-",
+          `${Number(booking.guests || 0)} Pax`,
+          booking.status || "Active",
+          `${booking.checkIn || "-"} -> ${booking.checkOut || "-"}`
+        ].join(" | ")
+      : "";
     item.innerHTML = `
       <div class="room-item-main">
         <span>${room.fullLabel}</span>
-        ${booking ? `<div class="muted">${booking.guestName || "-"} ${booking.trackCode || ""}</div>` : ""}
+        ${booking ? `<div class="muted">${booking.guestName || "-"}</div><div class="muted">${bookingSummary}</div>` : ""}
       </div>
       <div class="status ${booking ? "status-booked" : "status-available"}">
         ${booking ? "BOOKED" : "AVAILABLE"}
