@@ -350,6 +350,8 @@
               <option value="hold">Customer request to hold</option>
               <option value="change_date">Customer request to change date</option>
               <option value="additional_rooms">Requesting additional rooms</option>
+              <option value="additional_services">Requesting additional services</option>
+              <option value="remove_rooms">Requesting room removal</option>
               <option value="delete_booking">Delete Booking</option>
             </select>
           </div>
@@ -394,6 +396,16 @@
             <label>Additional Rooms</label>
             <p class="inline-note">Select extra rooms only when the reason is requesting additional rooms.</p>
             <div id="request-extra-rooms" class="extra-room-grid"></div>
+          </div>
+          <div id="request-services-section" class="field hidden">
+            <label>Additional Services</label>
+            <p class="inline-note">Select the extra services requested for this booking.</p>
+            <div id="request-services" class="service-grid"></div>
+          </div>
+          <div id="request-remove-rooms-section" class="field hidden">
+            <label>Remove Rooms</label>
+            <p class="inline-note">Select the rooms that should be removed from this booking.</p>
+            <div id="request-remove-rooms" class="extra-room-grid"></div>
           </div>
           <div class="field">
             <label for="request-status">Booking Status</label>
