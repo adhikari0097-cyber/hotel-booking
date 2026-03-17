@@ -12,6 +12,10 @@
       href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css"
+    />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -49,7 +53,16 @@
           </div>
           <div class="field">
             <label for="signup-phone">Phone Number</label>
-            <input id="signup-phone" name="phone" type="tel" inputmode="tel" required />
+            <input
+              id="signup-phone"
+              name="phone"
+              type="tel"
+              inputmode="numeric"
+              pattern="[0-9]*"
+              maxlength="15"
+              autocomplete="tel-national"
+              required
+            />
           </div>
           <div class="field">
             <label for="signup-password">Password</label>
@@ -93,17 +106,30 @@
             </div>
             <div class="field">
               <label for="phone">Phone Number *</label>
-              <input id="phone" name="phone" type="tel" inputmode="tel" placeholder="Phone number" required />
+              <input
+                id="phone"
+                name="phone"
+                type="tel"
+                inputmode="numeric"
+                pattern="[0-9]*"
+                maxlength="15"
+                autocomplete="tel-national"
+                placeholder="Phone number"
+                required
+              />
             </div>
-            <div class="field grid-2">
-              <div>
-                <label for="checkIn">Check-in Date *</label>
-                <input id="checkIn" name="checkIn" type="date" required />
-              </div>
-              <div>
-                <label for="checkOut">Check-out Date *</label>
-                <input id="checkOut" name="checkOut" type="date" required />
-              </div>
+            <div class="field">
+              <label for="bookingDateRange">Stay Dates *</label>
+              <input
+                id="bookingDateRange"
+                type="text"
+                placeholder="Select check-in and check-out"
+                readonly
+                required
+              />
+              <input id="checkIn" name="checkIn" type="hidden" />
+              <input id="checkOut" name="checkOut" type="hidden" />
+              <p class="inline-note">Select the full stay in one calendar. Past dates are disabled.</p>
             </div>
             <div class="field">
               <label for="notes">Notes</label>
@@ -356,7 +382,14 @@
           </div>
           <div class="field">
             <label for="request-phone">Phone Number</label>
-            <input id="request-phone" type="tel" inputmode="tel" />
+            <input
+              id="request-phone"
+              type="tel"
+              inputmode="numeric"
+              pattern="[0-9]*"
+              maxlength="15"
+              autocomplete="tel-national"
+            />
           </div>
           <div id="request-current-dates" class="inline-note"></div>
           <div class="field grid-2">
@@ -443,6 +476,7 @@
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script src="app.js"></script>
   </body>
 </html>

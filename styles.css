@@ -108,6 +108,10 @@ h4 {
   background: #fbfbf9;
 }
 
+#bookingDateRange {
+  cursor: pointer;
+}
+
 .field textarea {
   min-height: 90px;
   resize: vertical;
@@ -118,6 +122,30 @@ h4 {
 .field textarea:focus {
   outline: 2px solid rgba(11, 61, 46, 0.2);
   border-color: var(--primary);
+}
+
+.flatpickr-calendar {
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+
+.flatpickr-day.selected,
+.flatpickr-day.startRange,
+.flatpickr-day.endRange,
+.flatpickr-day.selected:hover,
+.flatpickr-day.startRange:hover,
+.flatpickr-day.endRange:hover {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.flatpickr-day.inRange,
+.flatpickr-day.prevMonthDay.inRange,
+.flatpickr-day.nextMonthDay.inRange {
+  background: #e6f0eb;
+  border-color: #e6f0eb;
+  box-shadow: -5px 0 0 #e6f0eb, 5px 0 0 #e6f0eb;
 }
 
 .grid-2 {

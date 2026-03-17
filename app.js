@@ -56,6 +56,11 @@ const logoutBtn = qs("#logout-btn");
 const userChip = qs("#user-chip");
 
 const bookingForm = qs("#booking-form");
+const bookingPhoneInput = qs("#phone");
+const signupPhoneInput = qs("#signup-phone");
+const bookingDateRangeInput = qs("#bookingDateRange");
+const bookingCheckInInput = qs("#checkIn");
+const bookingCheckOutInput = qs("#checkOut");
 const toast = qs("#toast");
 const syncStatus = qs("#sync-status");
 const guestsInput = qs("#guests");
@@ -255,6 +260,64 @@ function getRoomServices(type, number) {
 
 function formatCheckoutFromNights(checkIn, nights) {
   return formatDateKey(addDays(parseDate(checkIn), nights));
+}
+
+function sanitizePhoneValue(value) {
+  return String(value || "").replace(/\D+/g, "").slice(0, 15);
+}
+
+function applyPhoneSanitizer(input) {
+  if (!input) return;
+  input.addEventListener("input", () => {
+    const sanitized = sanitizePhoneValue(input.value);
+    if (input.value !== sanitized) input.value = sanitized;
+  });
+}
+
+function setBookingDateRange(checkIn, checkOut, { syncPicker = true } = {}) {
+  bookingCheckInInput.value = checkIn || "";
+  bookingCheckOutInput.value = checkOut || "";
+  if (!state.bookingRangePicker && bookingDateRangeInput) {
+    bookingDateRangeInput.value = checkIn && checkOut ? `${checkIn} to ${checkOut}` : checkIn || "";
+  }
+
+  if (state.bookingRangePicker && syncPicker) {
+    if (checkIn && checkOut) {
+      state.bookingRangePicker.setDate([checkIn, checkOut], false);
+    } else if (checkIn) {
+      state.bookingRangePicker.setDate([checkIn], false);
+    } else {
+      state.bookingRangePicker.clear(false);
+    }
+  }
+}
+
+function initBookingDateRangePicker(today, tomorrow) {
+  if (!bookingDateRangeInput) return;
+
+  if (window.flatpickr) {
+    state.bookingRangePicker = window.flatpickr(bookingDateRangeInput, {
+      mode: "range",
+      dateFormat: "Y-m-d",
+      minDate: toDateInputValue(today),
+      defaultDate: [toDateInputValue(today), toDateInputValue(tomorrow)],
+      disableMobile: true,
+      onReady: (_, __, instance) => {
+        instance.input.setAttribute("readonly", "readonly");
+      },
+      onChange: (selectedDates) => {
+        const [start, end] = selectedDates;
+        setBookingDateRange(
+          start ? toDateInputValue(start) : "",
+          end ? toDateInputValue(end) : "",
+          { syncPicker: false }
+        );
+        refreshAvailability();
+      },
+    });
+  }
+
+  setBookingDateRange(toDateInputValue(today), toDateInputValue(tomorrow));
 }
 
 function datesOverlap(startA, endA, startB, endB) {
@@ -888,7 +951,7 @@ async function handleSignup(event) {
   const username = normalizeUsername(formData.get("username"));
   const email = usernameToEmail(username);
   const fullName = String(formData.get("fullName") || "").trim();
-  const phone = String(formData.get("phone") || "").trim();
+  const phone = sanitizePhoneValue(formData.get("phone"));
   const password = String(formData.get("password") || "");
 
   if (!username || !fullName || !phone || !password) {
@@ -2463,7 +2526,7 @@ async function handleRequestSubmit(event) {
   const selectedServices = Array.from(state.modalRequestedServices.values());
   const payload = {
     guestName: requestGuestNameInput.value.trim(),
-    phone: requestPhoneInput.value.trim(),
+    phone: sanitizePhoneValue(requestPhoneInput.value),
     checkIn: requestCheckInInput.value,
     checkOut: requestCheckOutInput.value,
     roomType: requestRoomTypeInput.value,
@@ -2639,6 +2702,8 @@ bookingForm.addEventListener("submit", async (event) => {
 
   const formData = new FormData(bookingForm);
   const payload = Object.fromEntries(formData.entries());
+  payload.phone = sanitizePhoneValue(payload.phone);
+  bookingPhoneInput.value = payload.phone;
 
   if (!payload.guestName || !payload.phone) {
     showToast("Guest name and phone are required.", true);
@@ -2735,6 +2800,9 @@ bookingForm.addEventListener("submit", async (event) => {
     }
 
     bookingForm.reset();
+    const today = new Date();
+    const tomorrow = addDays(today, 1);
+    setBookingDateRange(toDateInputValue(today), toDateInputValue(tomorrow));
     state.roomPlans.clear();
     state.roomServices.clear();
     renderRoomServiceAssignments();
@@ -2744,6 +2812,7 @@ bookingForm.addEventListener("submit", async (event) => {
     } else {
       showToast(`Saved. First track code: ${savedTrackCodes[0] || "-"}`);
     }
+    await refreshAvailability();
     await refreshLiveViews();
   } catch (error) {
     showToast(error.message, true);
@@ -2823,8 +2892,6 @@ monthNextBtn.addEventListener("click", async () => {
 });
 
 checkAvailabilityBtn.addEventListener("click", refreshAvailability);
-qs("#checkIn").addEventListener("change", refreshAvailability);
-qs("#checkOut").addEventListener("change", refreshAvailability);
 
 navButtons.booking.addEventListener("click", () => setScreen("booking"));
 navButtons.view.addEventListener("click", () => setScreen("view"));
@@ -2838,12 +2905,14 @@ window.addEventListener("offline", updateOnlineStatus);
   updateOnlineStatus();
   initSupabase();
   setAuthTab("login");
+  applyPhoneSanitizer(signupPhoneInput);
+  applyPhoneSanitizer(bookingPhoneInput);
+  applyPhoneSanitizer(requestPhoneInput);
 
   const today = new Date();
   const tomorrow = addDays(today, 1);
   state.currentMonthDate = startOfMonth(today);
-  qs("#checkIn").value = toDateInputValue(today);
-  qs("#checkOut").value = toDateInputValue(tomorrow);
+  initBookingDateRangePicker(today, tomorrow);
   viewDateInput.value = toDateInputValue(today);
   renderRoomStatus([]);
   updateStats([]);
