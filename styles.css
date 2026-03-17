@@ -1144,6 +1144,25 @@ h4 {
   font-weight: 600;
 }
 
+.service-chip-toggle {
+  cursor: pointer;
+}
+
+.service-chip-list-editable .service-chip {
+  background: #fff;
+}
+
+.service-chip-active {
+  background: #f8f1dc;
+  border-color: #ead9a3;
+}
+
+.service-chip-inactive {
+  background: #faf9f6;
+  color: var(--muted);
+  opacity: 0.75;
+}
+
 .service-chip-icon {
   display: inline-flex;
   align-items: center;

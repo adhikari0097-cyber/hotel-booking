@@ -446,6 +446,98 @@ function mergeNotesAndServices(notes, services) {
   return parts.join(" | ");
 }
 
+function renderServiceToggleButtons(booking) {
+  const active = new Set(parseBookingNotes(booking.notes).services);
+  return `
+    <div class="service-chip-list service-chip-list-editable">
+      ${ROOM_SERVICE_OPTIONS.map((service) => `
+        <button
+          class="service-chip service-chip-toggle ${active.has(service) ? "service-chip-active" : "service-chip-inactive"}"
+          type="button"
+          data-booking-service-toggle="${booking.id}"
+          data-service-name="${service}"
+          aria-pressed="${active.has(service) ? "true" : "false"}"
+        >
+          <span class="service-chip-icon">${serviceIconLabel(service)}</span>
+          <span>${service}</span>
+        </button>
+      `).join("")}
+    </div>
+  `;
+}
+
+async function toggleBookingServiceDirect(bookingId, serviceName) {
+  const booking = state.bookingMap.get(bookingId);
+  if (!booking) throw new Error("Booking not found.");
+  const parsed = parseBookingNotes(booking.notes);
+  const next = new Set(parsed.services);
+  if (next.has(serviceName)) next.delete(serviceName);
+  else next.add(serviceName);
+  await updateBooking(bookingId, {
+    guestName: booking.guestName,
+    phone: booking.phone,
+    checkIn: booking.checkIn,
+    checkOut: booking.checkOut,
+    roomType: booking.roomType,
+    roomTypeLabel: booking.roomTypeLabel,
+    roomNumber: booking.roomNumber,
+    notes: mergeNotesAndServices(parsed.otherNotes.join(" | "), Array.from(next)),
+    status: booking.status,
+  });
+}
+
+async function removeBookingRoomDirect(bookingId) {
+  const booking = state.bookingMap.get(bookingId);
+  if (!booking) throw new Error("Booking not found.");
+  await updateBooking(booking.id, {
+    guestName: booking.guestName,
+    phone: booking.phone,
+    checkIn: booking.checkIn,
+    checkOut: booking.checkOut,
+    roomType: booking.roomType,
+    roomTypeLabel: booking.roomTypeLabel,
+    roomNumber: booking.roomNumber,
+    notes: booking.notes,
+    status: "Cancelled",
+  });
+  await insertChangeRequest({
+    bookingId: booking.id,
+    reason: "remove_rooms",
+    requestScope: "single",
+    guestName: booking.guestName,
+    phone: booking.phone,
+    checkIn: booking.checkIn,
+    checkOut: booking.checkOut,
+    roomType: booking.roomType,
+    roomTypeLabel: booking.roomTypeLabel,
+    roomNumber: booking.roomNumber,
+    notes: booking.notes,
+    status: "Cancelled",
+    requestedRemoveRooms: [{ bookingId: booking.id, roomType: normalizeRoomGroup(booking.roomType), roomNumber: booking.roomNumber }],
+    requestStatusOverride: "approved",
+    adminNote: "Removed from booking card.",
+    reviewedBy: state.currentSession.user.id,
+    reviewedAt: new Date().toISOString(),
+  });
+}
+
+async function createFullRemovalRequest(booking) {
+  await insertChangeRequest({
+    bookingId: booking.id,
+    reason: "delete_booking",
+    requestScope: "group",
+    guestName: booking.guestName,
+    phone: booking.phone,
+    checkIn: booking.checkIn,
+    checkOut: booking.checkOut,
+    roomType: booking.roomType,
+    roomTypeLabel: booking.roomTypeLabel,
+    roomNumber: booking.roomNumber,
+    notes: booking.notes,
+    status: "Cancelled",
+  });
+}
+
 function renderRoomServiceAssignments() {
   if (!roomServiceAssignments) return;
   const selectedPlans = buildRoomList()
@@ -1797,7 +1889,7 @@ function renderBookings(bookings) {
               <div class="booking-room-row-title">${getRoomLabel(roomGroup, booking.roomNumber)} (#${booking.roomNumber})</div>
               <div class="booking-room-row-meta">${metaBits.join(" · ")}</div>
               ${bookingRequest ? `<div class="booking-room-row-request">${getRequestStatusMarkup(bookingRequest, "Request")}</div>` : ""}
-              ${noteMeta.services.length ? `<div class="booking-room-row-services"><span class="booking-room-row-label">Services</span>${renderServiceChips(noteMeta.services)}</div>` : ""}
+              <div class="booking-room-row-services"><span class="booking-room-row-label">Services</span>${renderServiceToggleButtons(booking)}</div>
               ${noteMeta.otherNotes.length ? `<div class="booking-room-row-notes"><span class="booking-room-row-label">Notes</span><div>${noteMeta.otherNotes.join(" | ")}</div></div>` : ""}
             </div>
             <div class="booking-room-row-actions">
@@ -1827,7 +1919,7 @@ function renderBookings(bookings) {
         <div class="booking-group-statuses booking-group-controls booking-group-controls-stack">
           ${requestButton}
           <button class="secondary-btn booking-type-trigger" type="button" data-booking-group-manage="${group.bookings[0].id}">Booking Type</button>
-          <button class="secondary-btn booking-details-trigger" type="button" data-booking-details="${group.key}">Booking Details</button>
+          <button class="secondary-btn remove-reservation-trigger" type="button" data-booking-group-remove="${group.bookings[0].id}">Remove reservation</button>
         </div>
       </div>
       <div class="booking-date-strip booking-date-strip-wide">
@@ -1854,30 +1946,53 @@ function renderBookings(bookings) {
     });
     card.querySelectorAll("[data-booking-remove]").forEach((button) => {
       button.addEventListener("click", async () => {
-        await launchBookingAction(button.dataset.bookingRemove, {
-          scope: "single",
-          reason: "remove_rooms",
-          removeBookingIds: [button.dataset.bookingRemove],
-        });
+        if (!window.confirm("Remove this room from the booking?")) return;
+        try {
+          await removeBookingRoomDirect(button.dataset.bookingRemove);
+          showToast("Room removed.");
+          await refreshLiveViews();
+          await loadRequests();
+        } catch (error) {
+          showToast(error.message, true);
+        }
       });
     });
-    const detailsBtn = card.querySelector("[data-booking-details]");
-    if (detailsBtn) {
-      detailsBtn.addEventListener("click", () => openBookingDetailsModal(detailsBtn.dataset.bookingDetails));
-    }
+    card.querySelectorAll("[data-booking-service-toggle]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        try {
+          await toggleBookingServiceDirect(button.dataset.bookingServiceToggle, button.dataset.serviceName);
+          await refreshLiveViews();
+        } catch (error) {
+          showToast(error.message, true);
+        }
+      });
+    });
     const bookingTypeBtn = card.querySelector("[data-booking-group-manage]");
     if (bookingTypeBtn) {
       bookingTypeBtn.addEventListener("click", () => {
         openRequestModal(bookingTypeBtn.dataset.bookingGroupManage, canManageRequests() ? "edit" : "request", "group");
       });
     }
+    const removeReservationBtn = card.querySelector("[data-booking-group-remove]");
+    if (removeReservationBtn) {
+      removeReservationBtn.addEventListener("click", async () => {
+        if (!window.confirm("Send a request to remove this full reservation?")) return;
+        try {
+          await createFullRemovalRequest(group.bookings[0]);
+          showToast("Removal request submitted.");
+          await loadRequests();
+          await refreshLiveViews();
+        } catch (error) {
+          showToast(error.message, true);
+        }
+      });
+    }
     const addRoomBtn = card.querySelector("[data-booking-group-add]");
     if (addRoomBtn) {
       addRoomBtn.addEventListener("click", async () => {
-        await launchBookingAction(addRoomBtn.dataset.bookingGroupAdd, {
-          scope: "group",
-          reason: "additional_rooms",
-        });
+        await openRequestModal(addRoomBtn.dataset.bookingGroupAdd, "edit", "group");
+        requestReasonInput.value = "additional_rooms";
+        syncModalReasonDefaults();
       });
     }
     card.querySelectorAll("[data-request-focus]").forEach((button) => {
