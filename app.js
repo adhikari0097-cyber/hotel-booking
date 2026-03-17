@@ -619,7 +619,13 @@ function renderRemoveRoomOptions(booking) {
     option.className = "extra-room-option";
     option.innerHTML = `
       <div class="extra-room-option-head">
-        <input type="checkbox" value="${key}" />
+        <input
+          type="checkbox"
+          value="${key}"
+          data-remove-booking-id="${item.id}"
+          data-room-type="${roomGroup}"
+          data-room-number="${item.roomNumber}"
+        />
         <div>
           <strong>${getRoomLabel(roomGroup, item.roomNumber)}</strong>
           <span>${item.roomTypeLabel || getRoomTypeDisplay(item.roomType)} · ${item.guests} guests</span>
@@ -1508,17 +1514,95 @@ function closeBookingDetailsModal() {
   bookingDetailsBody.innerHTML = "";
 }
 
+function getLatestRequestCollections() {
+  const requests = Array.from(state.requestMap.values());
+  const byTrack = new Map();
+  const byBooking = new Map();
+
+  requests.forEach((request) => {
+    const trackKey = request.booking?.trackCode || request.bookingId || request.id;
+    const bookingKey = request.bookingId || request.id;
+    const createdAt = String(request.createdAt || "");
+
+    const currentTrack = byTrack.get(trackKey);
+    if (!currentTrack || createdAt > String(currentTrack.createdAt || "")) {
+      byTrack.set(trackKey, request);
+    }
+
+    const currentBooking = byBooking.get(bookingKey);
+    if (!currentBooking || createdAt > String(currentBooking.createdAt || "")) {
+      byBooking.set(bookingKey, request);
+    }
+  });
+
+  return { byTrack, byBooking };
+}
+
+function getRequestStatusClass(status) {
+  if (status === "approved") return "tag-success";
+  if (status === "pending") return "tag-pending";
+  if (status === "rejected") return "tag-rejected";
+  return "";
+}
+
+function getRequestStatusMarkup(request, label = "") {
+  if (!request) return "";
+  const prefix = label ? `${label}: ` : "";
+  return `<button class="booking-tag request-state-chip ${getRequestStatusClass(request.status)}" type="button" data-request-focus="${request.id}">${prefix}${request.status}</button>`;
+}
+
+function isPendingRoomRemovalRequest(request, bookingId) {
+  if (!request || request.status !== "pending" || request.reason !== "remove_rooms") return false;
+  return Array.isArray(request.requestedRemoveRooms)
+    && request.requestedRemoveRooms.some((room) => String(room.bookingId) === String(bookingId));
+}
+
+function isPendingGroupRemovalRequest(request) {
+  if (!request || request.status !== "pending") return false;
+  return request.reason === "delete_booking" || (request.reason === "remove_rooms" && request.requestedScope === "group");
+}
+
+function preselectRemoveRoomIds(bookingIds) {
+  const bookingIdSet = new Set((bookingIds || []).map(String));
+  requestRemoveRooms.querySelectorAll("[data-remove-booking-id]").forEach((checkbox) => {
+    const key = String(checkbox.dataset.removeBookingId);
+    const shouldCheck = bookingIdSet.has(key);
+    checkbox.checked = shouldCheck;
+    if (shouldCheck) {
+      state.modalRemoveRooms.set(key, {
+        bookingId: checkbox.dataset.removeBookingId,
+        roomType: checkbox.dataset.roomType,
+        roomNumber: Number(checkbox.dataset.roomNumber),
+      });
+    } else {
+      state.modalRemoveRooms.delete(key);
+    }
+  });
+}
+
+async function launchBookingAction(bookingId, { scope = "single", reason = "change_date", removeBookingIds = [] } = {}) {
+  await openRequestModal(bookingId, canManageRequests() ? "edit" : "request", scope);
+  requestReasonInput.value = reason;
+  syncModalReasonDefaults();
+  if (reason === "remove_rooms") {
+    preselectRemoveRoomIds(removeBookingIds.length ? removeBookingIds : [bookingId]);
+  }
+}
+
 function openBookingDetailsModal(groupKey) {
   const group = state.bookingGroups.get(groupKey);
   if (!group) {
     showToast("Booking details not found.", true);
     return;
   }
+  const requestCollections = getLatestRequestCollections();
+  const groupRequest = requestCollections.byTrack.get(group.trackCode || group.key);
 
   bookingDetailsTitle.textContent = `${group.trackCode || "-"} · ${group.guestName || "Guest"}`;
   const groupServices = Array.from(new Set(group.bookings.flatMap((booking) => parseBookingNotes(booking.notes).services)));
   const roomRows = group.bookings
     .map((booking) => {
+      const bookingRequest = requestCollections.byBooking.get(booking.id);
       const roomGroup = normalizeRoomGroup(booking.roomType);
       const noteMeta = parseBookingNotes(booking.notes);
       const metaBits = [
@@ -1528,17 +1612,24 @@ function openBookingDetailsModal(groupKey) {
       ];
       if (noteMeta.extraGuests) metaBits.push(`Extra pax / kids: ${noteMeta.extraGuests}`);
       if (noteMeta.drivers) metaBits.push(`Drivers: ${noteMeta.drivers}`);
+      const removeControl = isPendingRoomRemovalRequest(bookingRequest, booking.id)
+        ? `<span class="booking-tag tag-pending">Pending Remove</span>`
+        : `<button class="action-btn subtle-btn" type="button" data-booking-remove="${booking.id}">Remove</button>`;
       return `
         <div class="booking-room-row booking-details-room-row">
           <div class="booking-room-row-main">
             <div class="booking-room-row-title">${getRoomLabel(roomGroup, booking.roomNumber)} (#${booking.roomNumber})</div>
             <div class="booking-room-row-meta">${metaBits.join(" · ")}</div>
+            ${bookingRequest ? `<div class="booking-room-row-request">${getRequestStatusMarkup(bookingRequest, "Request")}</div>` : ""}
             ${noteMeta.services.length ? `<div class="booking-room-row-services"><span class="booking-room-row-label">Services</span>${renderServiceChips(noteMeta.services)}</div>` : ""}
             ${noteMeta.otherNotes.length ? `<div class="booking-room-row-notes"><span class="booking-room-row-label">Notes</span><div>${noteMeta.otherNotes.join(" | ")}</div></div>` : ""}
           </div>
-          <button class="action-btn" type="button" data-booking-detail-action="${canManageRequests() ? "edit" : "request"}" data-booking-id="${booking.id}">
-            Update
-          </button>
+          <div class="booking-room-row-actions">
+            ${removeControl}
+            <button class="action-btn" type="button" data-booking-detail-action="${canManageRequests() ? "edit" : "request"}" data-booking-id="${booking.id}">
+              Update
+            </button>
+          </div>
         </div>
       `;
     })
@@ -1553,9 +1644,13 @@ function openBookingDetailsModal(groupKey) {
       <div><strong>Dates:</strong> ${group.checkIn} -> ${group.checkOut}</div>
       <div><strong>Status:</strong> ${group.statuses.size === 1 ? Array.from(group.statuses)[0] : "Mixed"}</div>
     </div>
+    ${groupRequest ? `<div class="booking-details-request-banner">${getRequestStatusMarkup(groupRequest, "Latest request")}</div>` : ""}
     ${groupServices.length ? `<div class="booking-details-services-panel"><div class="booking-details-panel-title">Services</div>${renderServiceChips(groupServices)}</div>` : ""}
     <div class="booking-details-actions">
       <button class="primary-btn" type="button" data-booking-group-action="manage">Manage Full Booking</button>
+      ${isPendingGroupRemovalRequest(groupRequest)
+        ? `<span class="booking-tag tag-pending">Pending Remove</span>`
+        : `<button class="action-btn subtle-btn" type="button" data-booking-group-action="remove">Remove Full Booking</button>`}
     </div>
     <div class="booking-room-list booking-details-room-list">${roomRows}</div>
   `;
@@ -1567,11 +1662,41 @@ function openBookingDetailsModal(groupKey) {
       openRequestModal(group.bookings[0].id, canManageRequests() ? "edit" : "request", "group");
     });
   }
+  const removeGroupBtn = bookingDetailsBody.querySelector('[data-booking-group-action="remove"]');
+  if (removeGroupBtn) {
+    removeGroupBtn.addEventListener("click", async () => {
+      closeBookingDetailsModal();
+      await launchBookingAction(group.bookings[0].id, {
+        scope: "group",
+        reason: "delete_booking",
+      });
+    });
+  }
 
   bookingDetailsBody.querySelectorAll("[data-booking-detail-action]").forEach((button) => {
     button.addEventListener("click", () => {
       closeBookingDetailsModal();
       openRequestModal(button.dataset.bookingId, canManageRequests() ? "edit" : "request");
+    });
+  });
+  bookingDetailsBody.querySelectorAll("[data-booking-remove]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      closeBookingDetailsModal();
+      await launchBookingAction(button.dataset.bookingRemove, {
+        scope: "single",
+        reason: "remove_rooms",
+        removeBookingIds: [button.dataset.bookingRemove],
+      });
+    });
+  });
+  bookingDetailsBody.querySelectorAll("[data-request-focus]").forEach((button) => {
+    button.addEventListener("click", () => {
+      closeBookingDetailsModal();
+      activateScreen("requests");
+      state.requestsFilterStatus = "all";
+      const request = state.requestMap.get(button.dataset.requestFocus);
+      requestsTrackFilter.value = request?.booking?.trackCode || "";
+      loadRequests();
     });
   });
 
@@ -1605,13 +1730,16 @@ function renderBookings(bookings) {
   bookingEmpty.style.display = "none";
   const groupedBookings = groupBookingsForDisplay(filteredBookings);
   state.bookingGroups = new Map(groupedBookings.map((group) => [group.key, group]));
+  const requestCollections = getLatestRequestCollections();
 
   groupedBookings.forEach((group) => {
     const card = document.createElement("div");
     card.className = "booking-card booking-group-card";
     const groupStatus = group.statuses.size === 1 ? Array.from(group.statuses)[0] : "Mixed";
+    const groupRequest = requestCollections.byTrack.get(group.trackCode || group.key);
     const roomRows = group.bookings
       .map((booking) => {
+        const bookingRequest = requestCollections.byBooking.get(booking.id);
         const roomGroup = normalizeRoomGroup(booking.roomType);
         const noteMeta = parseBookingNotes(booking.notes);
         const metaBits = [
@@ -1621,17 +1749,24 @@ function renderBookings(bookings) {
         ];
         if (noteMeta.extraGuests) metaBits.push(`Extra pax / kids: ${noteMeta.extraGuests}`);
         if (noteMeta.drivers) metaBits.push(`Drivers: ${noteMeta.drivers}`);
+        const removeControl = isPendingRoomRemovalRequest(bookingRequest, booking.id)
+          ? `<span class="booking-tag tag-pending">Pending Remove</span>`
+          : `<button class="action-btn subtle-btn" type="button" data-booking-remove="${booking.id}">Remove</button>`;
         return `
           <div class="booking-room-row">
             <div class="booking-room-row-main">
               <div class="booking-room-row-title">${getRoomLabel(roomGroup, booking.roomNumber)} (#${booking.roomNumber})</div>
               <div class="booking-room-row-meta">${metaBits.join(" · ")}</div>
+              ${bookingRequest ? `<div class="booking-room-row-request">${getRequestStatusMarkup(bookingRequest, "Request")}</div>` : ""}
               ${noteMeta.services.length ? `<div class="booking-room-row-services"><span class="booking-room-row-label">Services</span>${renderServiceChips(noteMeta.services)}</div>` : ""}
               ${noteMeta.otherNotes.length ? `<div class="booking-room-row-notes"><span class="booking-room-row-label">Notes</span><div>${noteMeta.otherNotes.join(" | ")}</div></div>` : ""}
             </div>
-            <button class="action-btn" type="button" data-booking-action="${canManageRequests() ? "edit" : "request"}" data-booking-id="${booking.id}">
-              Update
-            </button>
+            <div class="booking-room-row-actions">
+              ${removeControl}
+              <button class="action-btn" type="button" data-booking-action="${canManageRequests() ? "edit" : "request"}" data-booking-id="${booking.id}">
+                Update
+              </button>
+            </div>
           </div>
         `;
       })
@@ -1643,7 +1778,10 @@ function renderBookings(bookings) {
           <h4>${group.trackCode || "-"} · ${group.guestName || "Guest"}</h4>
           <div class="booking-group-summary">${group.bookings.length} room(s) · ${group.totalGuests} guest(s) · ${group.checkIn} -> ${group.checkOut}</div>
         </div>
-        <span class="booking-tag">${groupStatus}</span>
+        <div class="booking-group-statuses">
+          ${groupRequest ? getRequestStatusMarkup(groupRequest) : ""}
+          <span class="booking-tag">${groupStatus}</span>
+        </div>
       </div>
       <div class="booking-group-call">
         <a class="call-link" href="tel:${group.phone || ""}">Call ${group.guestName || "Guest"}</a>
@@ -1661,10 +1799,28 @@ function renderBookings(bookings) {
         openRequestModal(button.dataset.bookingId, canManageRequests() ? "edit" : "request");
       });
     });
+    card.querySelectorAll("[data-booking-remove]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        await launchBookingAction(button.dataset.bookingRemove, {
+          scope: "single",
+          reason: "remove_rooms",
+          removeBookingIds: [button.dataset.bookingRemove],
+        });
+      });
+    });
     const detailsBtn = card.querySelector("[data-booking-details]");
     if (detailsBtn) {
       detailsBtn.addEventListener("click", () => openBookingDetailsModal(detailsBtn.dataset.bookingDetails));
     }
+    card.querySelectorAll("[data-request-focus]").forEach((button) => {
+      button.addEventListener("click", () => {
+        activateScreen("requests");
+        state.requestsFilterStatus = "all";
+        const request = state.requestMap.get(button.dataset.requestFocus);
+        requestsTrackFilter.value = request?.booking?.trackCode || "";
+        loadRequests();
+      });
+    });
     bookingCards.appendChild(card);
   });
 }

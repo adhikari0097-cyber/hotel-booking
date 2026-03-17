@@ -481,6 +481,8 @@ h4 {
 .booking-details-actions {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .booking-group-call {
@@ -880,6 +882,14 @@ h4 {
   white-space: nowrap;
 }
 
+.booking-group-statuses {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  align-items: flex-start;
+}
+
 .booking-group-summary {
   font-size: 13px;
   color: var(--muted);
@@ -908,6 +918,13 @@ h4 {
   gap: 4px;
 }
 
+.booking-room-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .booking-room-row-title {
   font-size: 14px;
   font-weight: 700;
@@ -931,6 +948,22 @@ h4 {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--muted);
+}
+
+.booking-room-row-request,
+.booking-details-request-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.booking-room-row-request {
+  flex-wrap: wrap;
+}
+
+.booking-details-request-banner {
+  margin-top: 12px;
+  flex-wrap: wrap;
 }
 
 .booking-details-services-panel {
@@ -1315,8 +1348,21 @@ h4 {
 }
 
 .tag-pending {
-  background: #f0ebe3;
-  color: var(--muted);
+  background: #efe7ff;
+  color: #6b46c1;
+}
+
+.tag-rejected {
+  background: #fde9e5;
+  color: #c05621;
+}
+
+.request-state-chip {
+  cursor: pointer;
+}
+
+.subtle-btn {
+  background: #fbf7f0;
 }
 
 .request-card {
