@@ -524,7 +524,7 @@ async function renderAdditionalRoomOptions(booking) {
 function renderServiceRequestOptions(booking) {
   state.modalRequestedServices = new Set(extractServicesFromNotes(booking.notes));
   requestServices.innerHTML = "";
-  ["Breakfast", "Lunch", "Dinner", "Liquor", "Kitchen", "Car", "Van"].forEach((service) => {
+  ROOM_SERVICE_OPTIONS.forEach((service) => {
     const id = `request-service-${service.toLowerCase().replace(/\s+/g, "-")}`;
     const item = document.createElement("label");
     item.className = "service-option";
@@ -541,7 +541,9 @@ function renderServiceRequestOptions(booking) {
 function renderRemoveRoomOptions(booking) {
   state.modalRemoveRooms = new Map();
   requestRemoveRooms.innerHTML = "";
-  const group = state.activeBookingGroup.length ? state.activeBookingGroup : [booking];
+  const group = state.requestScope === "group"
+    ? (state.activeBookingGroup.length ? state.activeBookingGroup : [booking])
+    : [booking];
   if (!group.length) {
     requestRemoveRooms.innerHTML = `<p class="inline-note">No rooms found for this booking.</p>`;
     return;
@@ -1830,7 +1832,9 @@ async function approveRequest(requestId) {
   if (request.reason === "additional_services") {
     const groupTrackCode = request.booking?.trackCode || "";
     const groupBookings = Array.from(state.bookingMap.values()).filter((booking) => booking.trackCode === groupTrackCode);
-    const targetBookings = groupBookings.length ? groupBookings : (request.booking ? [request.booking] : []);
+    const targetBookings = request.requestedScope === "group"
+      ? (groupBookings.length ? groupBookings : (request.booking ? [request.booking] : []))
+      : (request.booking ? [request.booking] : []);
     const serviceNotes = mergeNotesAndServices(request.requestedNotes ?? request.booking?.notes ?? "", request.requestedServices || []);
 
     for (const bookingRow of targetBookings) {
@@ -2534,7 +2538,10 @@ async function handleRequestSubmit(event) {
           });
         }
       } else if (requestReasonInput.value === "additional_services") {
-        for (const bookingRow of state.activeBookingGroup) {
+        const targetBookings = state.requestScope === "group"
+          ? (state.activeBookingGroup.length ? state.activeBookingGroup : [state.activeBooking])
+          : [state.activeBooking];
+        for (const bookingRow of targetBookings) {
           await updateBooking(bookingRow.id, {
             guestName: bookingRow.guestName,
             phone: bookingRow.phone,
