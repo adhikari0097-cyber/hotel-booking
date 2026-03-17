@@ -7,6 +7,8 @@ const CONFIG = {
   GOOGLE_SHEETS_BACKUP_URL: "/.netlify/functions/proxy",
 };
 
+const ROOM_SERVICE_OPTIONS = ["Breakfast", "Lunch", "Dinner", "Liquor", "Kitchen", "Car", "Van"];
+
 const ROOM_DEFS = [
   { type: "kitchen", label: "Kitchen Room", count: 2, maxPax: 6 },
   { type: "normal", label: "Normal Room", count: 4, maxPax: 4 },
@@ -21,6 +23,7 @@ const state = {
   currentProfile: null,
   currentSession: null,
   roomPlans: new Map(),
+  roomServices: new Map(),
   bookingMap: new Map(),
   bookingGroups: new Map(),
   requestMap: new Map(),
@@ -86,6 +89,7 @@ const normalPlanner = qs("#planner-normal");
 const driverPlanner = qs("#planner-driver");
 const driversTotalInput = qs("#driversTotal");
 const extraGuestsTotalInput = qs("#extraGuestsTotal");
+const roomServiceAssignments = qs("#room-service-assignments");
 const accountsList = qs("#accounts-list");
 const accountsEmpty = qs("#accounts-empty");
 const refreshAccountsBtn = qs("#refresh-accounts");
@@ -241,6 +245,14 @@ function getRoomKey(type, number) {
   return `${type}-${number}`;
 }
 
+function getRoomServices(type, number) {
+  const key = getRoomKey(type, number);
+  if (!state.roomServices.has(key)) {
+    state.roomServices.set(key, new Set());
+  }
+  return state.roomServices.get(key);
+}
+
 function formatCheckoutFromNights(checkIn, nights) {
   return formatDateKey(addDays(parseDate(checkIn), nights));
 }
@@ -368,6 +380,58 @@ function mergeNotesAndServices(notes, services) {
   const parts = splitNoteParts(notes).filter((part) => !part.toLowerCase().startsWith("services:"));
   if (services.length) parts.push(`Services: ${services.join(", ")}`);
   return parts.join(" | ");
+}
+
+function renderRoomServiceAssignments() {
+  if (!roomServiceAssignments) return;
+  const selectedPlans = buildRoomList()
+    .map((room) => {
+      const plan = state.roomPlans.get(getRoomKey(room.type, room.number));
+      const totalGuests = Number(plan?.pax || 0) + Number(plan?.extraPax || 0);
+      return plan && totalGuests > 0 ? { room, plan } : null;
+    })
+    .filter(Boolean);
+
+  roomServiceAssignments.innerHTML = "";
+
+  if (!selectedPlans.length) {
+    roomServiceAssignments.innerHTML = '<p class="inline-note">Select rooms first to assign services.</p>';
+    return;
+  }
+
+  selectedPlans.forEach(({ room, plan }) => {
+    const selectedServices = getRoomServices(room.type, room.number);
+    const card = document.createElement("div");
+    card.className = "room-service-card";
+    card.innerHTML = `
+      <div class="room-service-head">
+        <div>
+          <div class="room-service-title">${getRoomLabel(room.type, room.number)}</div>
+          <div class="room-service-meta">${getAssignedRoomLabel(room, plan.pax, plan.extraPax)}${room.type === "driver" && plan.pax ? ` · Drivers: ${plan.pax}` : ""}</div>
+        </div>
+      </div>
+      <div class="room-service-grid">
+        ${ROOM_SERVICE_OPTIONS.map((service) => {
+          const id = `room-service-${room.type}-${room.number}-${service.toLowerCase()}`;
+          return `
+            <label class="service-option">
+              <input id="${id}" type="checkbox" value="${service}" ${selectedServices.has(service) ? "checked" : ""} />
+              <span>${service}</span>
+            </label>
+          `;
+        }).join("")}
+      </div>
+    `;
+
+    card.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+      input.addEventListener("change", () => {
+        if (input.checked) selectedServices.add(input.value);
+        else selectedServices.delete(input.value);
+      });
+    });
+
+    roomServiceAssignments.appendChild(card);
+  });
 }
 
 function populateRequestRoomNumbers(roomType, selectedNumber) {
@@ -1123,6 +1187,7 @@ function updateTotalGuests() {
   guestsInput.value = totalGuests ? String(totalGuests) : "";
   driversTotalInput.value = totalDrivers ? String(totalDrivers) : "";
   extraGuestsTotalInput.value = totalExtraGuests ? String(totalExtraGuests) : "";
+  renderRoomServiceAssignments();
 }
 
 function renderPlannerCard(room, isAvailable, booking, plan, defaultNights) {
@@ -1254,6 +1319,8 @@ function updateAvailabilityUI(availability) {
     bookedDriver.textContent = "-";
     availabilityHint.textContent = "Select dates to load room planner.";
     state.roomPlans.clear();
+    state.roomServices.clear();
+    renderRoomServiceAssignments();
     guestsInput.value = "";
     driversTotalInput.value = "";
     extraGuestsTotalInput.value = "";
@@ -1481,12 +1548,21 @@ function renderBookings(bookings) {
     const roomRows = group.bookings
       .map((booking) => {
         const roomGroup = normalizeRoomGroup(booking.roomType);
+        const noteMeta = parseBookingNotes(booking.notes);
+        const metaBits = [
+          booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType),
+          `${booking.guests} guests`,
+          `${booking.checkIn} -> ${booking.checkOut}`,
+        ];
+        if (noteMeta.extraGuests) metaBits.push(`Extra pax / kids: ${noteMeta.extraGuests}`);
+        if (noteMeta.drivers) metaBits.push(`Drivers: ${noteMeta.drivers}`);
         return `
           <div class="booking-room-row">
             <div class="booking-room-row-main">
               <div class="booking-room-row-title">${getRoomLabel(roomGroup, booking.roomNumber)} (#${booking.roomNumber})</div>
-              <div class="booking-room-row-meta">${booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType)} · ${booking.guests} guests · ${booking.checkIn} -> ${booking.checkOut}</div>
-              ${booking.notes ? `<div class="booking-room-row-notes">Notes: ${booking.notes}</div>` : ""}
+              <div class="booking-room-row-meta">${metaBits.join(" · ")}</div>
+              ${noteMeta.services.length ? `<div class="booking-room-row-services"><span class="booking-room-row-label">Services</span>${renderServiceChips(noteMeta.services)}</div>` : ""}
+              ${noteMeta.otherNotes.length ? `<div class="booking-room-row-notes"><span class="booking-room-row-label">Notes</span><div>${noteMeta.otherNotes.join(" | ")}</div></div>` : ""}
             </div>
             <button class="action-btn" type="button" data-booking-action="${canManageRequests() ? "edit" : "request"}" data-booking-id="${booking.id}">
               Update
@@ -2599,7 +2675,6 @@ bookingForm.addEventListener("submit", async (event) => {
       throw new Error("Select at least one room with pax, extra pax / kids, or driver count.");
     }
 
-    const selectedServices = Array.from(document.querySelectorAll('[data-service-option]:checked')).map((input) => input.value);
     const totalGuests = selectedPlans.reduce((sum, plan) => sum + plan.totalGuests, 0);
     const totalDrivers = selectedPlans
       .filter((plan) => plan.room.type === "driver")
@@ -2625,9 +2700,10 @@ bookingForm.addEventListener("submit", async (event) => {
       }
 
       const notesParts = [payload.notes?.trim() || ""];
+      const roomServices = Array.from(getRoomServices(plan.room.type, plan.room.number).values());
       if (plan.extraPax > 0) notesParts.push(`Extra pax / kids: ${plan.extraPax}`);
       if (plan.room.type === "driver" && plan.pax > 0) notesParts.push(`Drivers: ${plan.pax}`);
-      if (selectedServices.length) notesParts.push(`Services: ${selectedServices.join(", ")}`);
+      if (roomServices.length) notesParts.push(`Services: ${roomServices.join(", ")}`);
 
       const bookingPayload = {
         ...payload,
@@ -2653,6 +2729,8 @@ bookingForm.addEventListener("submit", async (event) => {
 
     bookingForm.reset();
     state.roomPlans.clear();
+    state.roomServices.clear();
+    renderRoomServiceAssignments();
     guestsInput.value = "";
     if (backupFailures.length) {
       showToast(`Saved live. Backup failed for ${backupFailures.length} room(s). First code: ${savedTrackCodes[0] || "-"}`, true);
