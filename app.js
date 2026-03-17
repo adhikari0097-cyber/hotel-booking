@@ -1724,7 +1724,6 @@ function openBookingDetailsModal(groupKey) {
             <div class="booking-room-row-title">${getRoomLabel(roomGroup, booking.roomNumber)} (#${booking.roomNumber})</div>
             <div class="booking-room-row-meta">${metaBits.join(" · ")}</div>
             ${bookingRequest ? `<div class="booking-room-row-request">${getRequestStatusMarkup(bookingRequest, "Request")}</div>` : ""}
-            ${noteMeta.services.length ? `<div class="booking-room-row-services"><span class="booking-room-row-label">Services</span>${renderServiceChips(noteMeta.services)}</div>` : ""}
             ${noteMeta.otherNotes.length ? `<div class="booking-room-row-notes"><span class="booking-room-row-label">Notes</span><div>${noteMeta.otherNotes.join(" | ")}</div></div>` : ""}
           </div>
           <div class="booking-room-row-actions">
@@ -2570,7 +2569,7 @@ async function loadBookingsForDate(date) {
   }
 }
 
-function renderMonthCalendar(bookings) {
+function renderMonthCalendar(bookings, requests = Array.from(state.requestMap.values())) {
   const monthStart = startOfMonth(state.currentMonthDate);
   const monthEnd = endOfMonth(state.currentMonthDate);
   const gridStart = addDays(monthStart, -monthStart.getDay());
@@ -2588,13 +2587,42 @@ function renderMonthCalendar(bookings) {
     let cursor = new Date(start);
     while (cursor < end) {
       const key = formatDateKey(cursor);
-      const next = dayMap.get(key) || { bookings: 0, rooms: new Set() };
+      const next = dayMap.get(key) || {
+        bookings: 0,
+        rooms: new Set(),
+        normalRooms: new Set(),
+        kitchenRooms: new Set(),
+        driverRooms: new Set(),
+        pending: 0,
+      };
       next.bookings += 1;
-      next.rooms.add(`${normalizeRoomGroup(booking.roomType)}-${booking.roomNumber}`);
+      const roomKey = `${normalizeRoomGroup(booking.roomType)}-${booking.roomNumber}`;
+      next.rooms.add(roomKey);
+      const roomGroup = normalizeRoomGroup(booking.roomType);
+      if (roomGroup === "normal") next.normalRooms.add(roomKey);
+      if (roomGroup === "kitchen") next.kitchenRooms.add(roomKey);
+      if (roomGroup === "driver") next.driverRooms.add(roomKey);
       dayMap.set(key, next);
       cursor = addDays(cursor, 1);
     }
   });
+
+  requests
+    .filter((request) => String(request.status || "").toLowerCase() === "pending")
+    .forEach((request) => {
+      const key = getRequestRequestedDate(request);
+      if (!key) return;
+      const next = dayMap.get(key) || {
+        bookings: 0,
+        rooms: new Set(),
+        normalRooms: new Set(),
+        kitchenRooms: new Set(),
+        driverRooms: new Set(),
+        pending: 0,
+      };
+      next.pending += 1;
+      dayMap.set(key, next);
+    });
 
   monthLabel.textContent = formatMonthLabel(state.currentMonthDate);
   monthGrid.innerHTML = "";
@@ -2612,14 +2640,16 @@ function renderMonthCalendar(bookings) {
     if (key === todayKey) button.classList.add("today");
     if (meta && meta.rooms.size > 0) button.classList.add("booked");
 
+    const lines = [];
+    if (meta?.pending) lines.push(`<span class="calendar-stat calendar-stat-pending">${meta.pending} Pending</span>`);
+    if (meta?.normalRooms?.size) lines.push(`<span class="calendar-stat calendar-stat-normal">${meta.normalRooms.size} Normal Room</span>`);
+    if (meta?.kitchenRooms?.size) lines.push(`<span class="calendar-stat calendar-stat-kitchen">${meta.kitchenRooms.size} Kitchen Room</span>`);
+    if (meta?.driverRooms?.size) lines.push(`<span class="calendar-stat calendar-stat-driver">${meta.driverRooms.size} Driver Room</span>`);
+
     button.innerHTML = `
       <span class="calendar-day-number">${cursor.getDate()}</span>
       <span class="calendar-day-meta">
-        ${
-          meta
-            ? `<span class="calendar-pill">${meta.rooms.size} rooms</span><span class="calendar-pill subtle">${meta.bookings} bookings</span>`
-            : `<span class="calendar-empty-text">Free</span>`
-        }
+        ${lines.length ? lines.join("") : `<span class="calendar-empty-text">Free</span>`}
       </span>
     `;
 
@@ -2629,7 +2659,7 @@ function renderMonthCalendar(bookings) {
         state.currentMonthDate = startOfMonth(cursor);
         await loadMonthCalendar();
       } else {
-        renderMonthCalendar(bookings);
+        renderMonthCalendar(bookings, requests);
       }
       await loadBookingsForDate(key);
     });
@@ -2644,7 +2674,8 @@ async function loadMonthCalendar() {
     const monthStart = formatDateKey(startOfMonth(state.currentMonthDate));
     const monthAfterEnd = formatDateKey(addDays(endOfMonth(state.currentMonthDate), 1));
     const bookings = await fetchBookingsForPeriod(monthStart, monthAfterEnd);
-    renderMonthCalendar(bookings);
+    const requests = await fetchRequests();
+    renderMonthCalendar(bookings, requests);
   } catch (error) {
     showToast(error.message, true);
   }
