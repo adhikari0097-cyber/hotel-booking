@@ -277,40 +277,46 @@ async function renderAdditionalRoomOptions(booking) {
   state.modalExtraRooms = new Map();
   requestExtraRooms.innerHTML = "";
   const bookings = await fetchBookingsForPeriod(booking.checkIn, booking.checkOut);
-  const occupied = new Set();
+  const occupied = new Map();
 
   bookings.forEach((item) => {
     if (!isBlockingBooking(item)) return;
     if (item.id === booking.id) return;
-    occupied.add(`${normalizeRoomGroup(item.roomType)}-${item.roomNumber}`);
+    occupied.set(`${normalizeRoomGroup(item.roomType)}-${item.roomNumber}`, item);
   });
 
-  const availableRooms = buildRoomList().filter((room) => {
+  const selectableRooms = buildRoomList().filter((room) => {
     const key = `${room.type}-${room.number}`;
-    if (`${normalizeRoomGroup(booking.roomType)}-${booking.roomNumber}` === key) return false;
-    return !occupied.has(key);
+    return `${normalizeRoomGroup(booking.roomType)}-${booking.roomNumber}` !== key;
   });
 
-  if (!availableRooms.length) {
-    requestExtraRooms.innerHTML = `<p class="inline-note">No extra rooms available for the current date range.</p>`;
+  if (!selectableRooms.length) {
+    requestExtraRooms.innerHTML = `<p class="inline-note">No rooms configured.</p>`;
     return;
   }
 
-  availableRooms.forEach((room) => {
+  selectableRooms.forEach((room) => {
     const key = `${room.type}-${room.number}`;
+    const existingBooking = occupied.get(key);
+    const isBooked = Boolean(existingBooking);
     const paxOptions = Array.from({ length: room.maxPax }, (_, index) => {
       const pax = index + 1;
       return `<option value="${pax}">${pax} Pax</option>`;
     }).join("");
 
     const item = document.createElement("label");
-    item.className = "extra-room-option";
+    item.className = `extra-room-option${isBooked ? " booked" : ""}`;
     item.innerHTML = `
       <div class="extra-room-option-head">
-        <input type="checkbox" value="${key}" />
+        <input type="checkbox" value="${key}" ${isBooked ? "disabled" : ""} />
         <div>
           <strong>${getRoomLabel(room.type, room.number)}</strong>
           <span>${room.label} · max ${room.maxPax} Pax</span>
+          ${
+            isBooked
+              ? `<span class="booked-label">Booked: ${existingBooking.guestName || "-"} · ${existingBooking.trackCode || "-"}</span>`
+              : `<span>Available for selected dates</span>`
+          }
         </div>
       </div>
       <select data-extra-room-pax disabled>

@@ -982,6 +982,11 @@ h4 {
   gap: 10px;
 }
 
+.extra-room-option.booked {
+  background: #fff3f1;
+  border-color: #e2b8b2;
+}
+
 .extra-room-option-head {
   display: flex;
   align-items: center;
@@ -1013,6 +1018,11 @@ h4 {
   display: block;
   font-size: 12px;
   color: var(--muted);
+}
+
+.extra-room-option .booked-label {
+  color: var(--danger);
+  font-weight: 700;
 }
 
 .request-filters {
