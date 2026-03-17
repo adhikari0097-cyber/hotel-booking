@@ -1032,6 +1032,48 @@ function renderRoomStatus(bookingsForDate) {
   });
 }
 
+function getBookingGroupKey(booking) {
+  return booking.trackCode || `booking-${booking.id}`;
+}
+
+function groupBookingsForDisplay(bookings) {
+  const groups = new Map();
+
+  bookings.forEach((booking) => {
+    const key = getBookingGroupKey(booking);
+    const current = groups.get(key);
+    if (current) {
+      current.bookings.push(booking);
+      current.totalGuests += Number(booking.guests || 0);
+      current.checkIn = current.checkIn < booking.checkIn ? current.checkIn : booking.checkIn;
+      current.checkOut = current.checkOut > booking.checkOut ? current.checkOut : booking.checkOut;
+      current.statuses.add(booking.status || "Booking");
+      return;
+    }
+
+    groups.set(key, {
+      key,
+      trackCode: booking.trackCode || "-",
+      guestName: booking.guestName || "Guest",
+      phone: booking.phone || "",
+      bookings: [booking],
+      totalGuests: Number(booking.guests || 0),
+      checkIn: booking.checkIn,
+      checkOut: booking.checkOut,
+      statuses: new Set([booking.status || "Booking"]),
+    });
+  });
+
+  return Array.from(groups.values()).map((group) => ({
+    ...group,
+    bookings: group.bookings.sort((a, b) => {
+      const roomDiff = normalizeRoomGroup(a.roomType).localeCompare(normalizeRoomGroup(b.roomType));
+      if (roomDiff !== 0) return roomDiff;
+      return Number(a.roomNumber || 0) - Number(b.roomNumber || 0);
+    }),
+  }));
+}
+
 function renderBookings(bookings) {
   bookingCards.innerHTML = "";
   state.bookingMap = new Map(bookings.map((booking) => [booking.id, booking]));
@@ -1057,30 +1099,49 @@ function renderBookings(bookings) {
   }
 
   bookingEmpty.style.display = "none";
-  filteredBookings.forEach((booking) => {
+  const groupedBookings = groupBookingsForDisplay(filteredBookings);
+
+  groupedBookings.forEach((group) => {
     const card = document.createElement("div");
-    card.className = "booking-card";
-    const roomGroup = normalizeRoomGroup(booking.roomType);
+    card.className = "booking-card booking-group-card";
+    const groupStatus = group.statuses.size === 1 ? Array.from(group.statuses)[0] : "Mixed";
+    const roomRows = group.bookings
+      .map((booking) => {
+        const roomGroup = normalizeRoomGroup(booking.roomType);
+        return `
+          <div class="booking-room-row">
+            <div class="booking-room-row-main">
+              <div class="booking-room-row-title">${getRoomLabel(roomGroup, booking.roomNumber)} (#${booking.roomNumber})</div>
+              <div class="booking-room-row-meta">${booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType)} · ${booking.guests} guests · ${booking.checkIn} -> ${booking.checkOut}</div>
+              ${booking.notes ? `<div class="booking-room-row-notes">Notes: ${booking.notes}</div>` : ""}
+            </div>
+            <button class="action-btn" type="button" data-booking-action="${canManageRequests() ? "edit" : "request"}" data-booking-id="${booking.id}">
+              Update
+            </button>
+          </div>
+        `;
+      })
+      .join("");
+
     card.innerHTML = `
-      <h4>${booking.guestName || "Guest"}</h4>
+      <div class="booking-group-head">
+        <div>
+          <h4>${group.trackCode || "-"} · ${group.guestName || "Guest"}</h4>
+          <div class="booking-group-summary">${group.bookings.length} room(s) · ${group.totalGuests} guest(s) · ${group.checkIn} -> ${group.checkOut}</div>
+        </div>
+        <span class="booking-tag">${groupStatus}</span>
+      </div>
       <div class="booking-meta">
-        <div><strong>Track Code:</strong> ${booking.trackCode || "-"}</div>
-        <div><strong>Phone:</strong> <a href="tel:${booking.phone}">${booking.phone}</a></div>
-        <div><strong>Room:</strong> ${getRoomLabel(roomGroup, booking.roomNumber)} (#${booking.roomNumber})</div>
-        <div><strong>Room type:</strong> ${booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType)}</div>
-        <div><strong>Dates:</strong> ${booking.checkIn} -> ${booking.checkOut}</div>
-        <div><strong>Guests:</strong> ${booking.guests}</div>
-        <div><strong>Notes:</strong> ${booking.notes || "-"}</div>
+        <div><strong>Track Code:</strong> ${group.trackCode || "-"}</div>
+        <div><strong>Phone:</strong> <a href="tel:${group.phone}">${group.phone || "-"}</a></div>
       </div>
-      <span class="booking-tag">${booking.status || "Booking"}</span>
-      <div class="request-actions">
-        <button class="action-btn" type="button" data-booking-action="${canManageRequests() ? "edit" : "request"}" data-booking-id="${booking.id}">
-          Update Booking
-        </button>
-      </div>
+      <div class="booking-room-list">${roomRows}</div>
     `;
-    card.querySelector("[data-booking-action]").addEventListener("click", () => {
-      openRequestModal(booking.id, canManageRequests() ? "edit" : "request");
+
+    card.querySelectorAll("[data-booking-action]").forEach((button) => {
+      button.addEventListener("click", () => {
+        openRequestModal(button.dataset.bookingId, canManageRequests() ? "edit" : "request");
+      });
     });
     bookingCards.appendChild(card);
   });
