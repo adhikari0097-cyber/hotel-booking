@@ -298,6 +298,72 @@ function extractServicesFromNotes(notes) {
     .filter(Boolean);
 }
 
+function parseBookingNotes(notes) {
+  const result = {
+    services: [],
+    drivers: "",
+    extraGuests: "",
+    otherNotes: [],
+  };
+
+  splitNoteParts(notes).forEach((part) => {
+    const lower = part.toLowerCase();
+    if (lower.startsWith("services:")) {
+      result.services = part
+        .slice(part.indexOf(":") + 1)
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+      return;
+    }
+
+    if (lower.startsWith("drivers:")) {
+      result.drivers = part.slice(part.indexOf(":") + 1).trim();
+      return;
+    }
+
+    if (lower.startsWith("extra pax / kids:")) {
+      result.extraGuests = part.slice(part.indexOf(":") + 1).trim();
+      return;
+    }
+
+    result.otherNotes.push(part);
+  });
+
+  return result;
+}
+
+function serviceIconLabel(service) {
+  const map = {
+    Breakfast: "BR",
+    Lunch: "LU",
+    Dinner: "DI",
+    Liquor: "LQ",
+    Kitchen: "KT",
+    Car: "CR",
+    Van: "VN",
+  };
+  return map[service] || service.slice(0, 2).toUpperCase();
+}
+
+function renderServiceChips(services) {
+  if (!services?.length) return "";
+  return `
+    <div class="service-chip-list">
+      ${services
+        .map(
+          (service) => `
+            <span class="service-chip" title="${service}">
+              <span class="service-chip-icon">${serviceIconLabel(service)}</span>
+              <span>${service}</span>
+            </span>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
 function mergeNotesAndServices(notes, services) {
   const parts = splitNoteParts(notes).filter((part) => !part.toLowerCase().startsWith("services:"));
   if (services.length) parts.push(`Services: ${services.join(", ")}`);
@@ -1318,15 +1384,25 @@ function openBookingDetailsModal(groupKey) {
   }
 
   bookingDetailsTitle.textContent = `${group.trackCode || "-"} · ${group.guestName || "Guest"}`;
+  const groupServices = Array.from(new Set(group.bookings.flatMap((booking) => parseBookingNotes(booking.notes).services)));
   const roomRows = group.bookings
     .map((booking) => {
       const roomGroup = normalizeRoomGroup(booking.roomType);
+      const noteMeta = parseBookingNotes(booking.notes);
+      const metaBits = [
+        booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType),
+        `${booking.guests} guests`,
+        `${booking.checkIn} -> ${booking.checkOut}`,
+      ];
+      if (noteMeta.extraGuests) metaBits.push(`Extra pax / kids: ${noteMeta.extraGuests}`);
+      if (noteMeta.drivers) metaBits.push(`Drivers: ${noteMeta.drivers}`);
       return `
         <div class="booking-room-row booking-details-room-row">
           <div class="booking-room-row-main">
             <div class="booking-room-row-title">${getRoomLabel(roomGroup, booking.roomNumber)} (#${booking.roomNumber})</div>
-            <div class="booking-room-row-meta">${booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType)} · ${booking.guests} guests · ${booking.checkIn} -> ${booking.checkOut}</div>
-            ${booking.notes ? `<div class="booking-room-row-notes">Notes: ${booking.notes}</div>` : ""}
+            <div class="booking-room-row-meta">${metaBits.join(" · ")}</div>
+            ${noteMeta.services.length ? `<div class="booking-room-row-services"><span class="booking-room-row-label">Services</span>${renderServiceChips(noteMeta.services)}</div>` : ""}
+            ${noteMeta.otherNotes.length ? `<div class="booking-room-row-notes"><span class="booking-room-row-label">Notes</span><div>${noteMeta.otherNotes.join(" | ")}</div></div>` : ""}
           </div>
           <button class="action-btn" type="button" data-booking-detail-action="${canManageRequests() ? "edit" : "request"}" data-booking-id="${booking.id}">
             Update
@@ -1345,6 +1421,7 @@ function openBookingDetailsModal(groupKey) {
       <div><strong>Dates:</strong> ${group.checkIn} -> ${group.checkOut}</div>
       <div><strong>Status:</strong> ${group.statuses.size === 1 ? Array.from(group.statuses)[0] : "Mixed"}</div>
     </div>
+    ${groupServices.length ? `<div class="booking-details-services-panel"><div class="booking-details-panel-title">Services</div>${renderServiceChips(groupServices)}</div>` : ""}
     <div class="booking-details-actions">
       <button class="primary-btn" type="button" data-booking-group-action="manage">Manage Full Booking</button>
     </div>
