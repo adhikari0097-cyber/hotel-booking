@@ -26,7 +26,7 @@ const state = {
   profileMap: new Map(),
   activeBooking: null,
   activeBookingGroup: [],
-  modalExtraRooms: new Set(),
+  modalExtraRooms: new Map(),
   modalMode: "request",
   bookingListFilter: "active",
   requestsFilterMode: "recent",
@@ -274,7 +274,7 @@ function populateRequestRoomNumbers(roomType, selectedNumber) {
 }
 
 async function renderAdditionalRoomOptions(booking) {
-  state.modalExtraRooms.clear();
+  state.modalExtraRooms = new Map();
   requestExtraRooms.innerHTML = "";
   const bookings = await fetchBookingsForPeriod(booking.checkIn, booking.checkOut);
   const occupied = new Set();
@@ -298,18 +298,48 @@ async function renderAdditionalRoomOptions(booking) {
 
   availableRooms.forEach((room) => {
     const key = `${room.type}-${room.number}`;
+    const paxOptions = Array.from({ length: room.maxPax }, (_, index) => {
+      const pax = index + 1;
+      return `<option value="${pax}">${pax} Pax</option>`;
+    }).join("");
+
     const item = document.createElement("label");
     item.className = "extra-room-option";
     item.innerHTML = `
-      <input type="checkbox" value="${key}" />
-      <div>
-        <strong>${getRoomLabel(room.type, room.number)}</strong>
-        <span>${room.label} · ${room.maxPax} Pax</span>
+      <div class="extra-room-option-head">
+        <input type="checkbox" value="${key}" />
+        <div>
+          <strong>${getRoomLabel(room.type, room.number)}</strong>
+          <span>${room.label} · max ${room.maxPax} Pax</span>
+        </div>
       </div>
+      <select data-extra-room-pax disabled>
+        ${paxOptions}
+      </select>
     `;
-    item.querySelector("input").addEventListener("change", (event) => {
-      if (event.target.checked) state.modalExtraRooms.add(key);
-      else state.modalExtraRooms.delete(key);
+    const checkbox = item.querySelector("input");
+    const paxSelect = item.querySelector("[data-extra-room-pax]");
+
+    checkbox.addEventListener("change", (event) => {
+      paxSelect.disabled = !event.target.checked;
+      if (event.target.checked) {
+        state.modalExtraRooms.set(key, {
+          roomType: room.type,
+          roomNumber: room.number,
+          pax: Number(paxSelect.value),
+        });
+      } else {
+        state.modalExtraRooms.delete(key);
+      }
+    });
+
+    paxSelect.addEventListener("change", () => {
+      if (!checkbox.checked) return;
+      state.modalExtraRooms.set(key, {
+        roomType: room.type,
+        roomNumber: room.number,
+        pax: Number(paxSelect.value),
+      });
     });
     requestExtraRooms.appendChild(item);
   });
@@ -1061,7 +1091,7 @@ function closeRequestModal() {
   requestModal.classList.add("hidden");
   requestForm.reset();
   state.activeBooking = null;
-  state.modalExtraRooms.clear();
+  state.modalExtraRooms = new Map();
   requestExtraRooms.innerHTML = "";
   state.modalMode = "request";
 }
@@ -1220,9 +1250,10 @@ async function approveRequest(requestId) {
       throw new Error("No additional rooms were selected.");
     }
 
-    for (const roomKey of extraRooms) {
-      const [roomType, roomNumberRaw] = String(roomKey).split("-");
-      const roomNumber = Number(roomNumberRaw);
+    for (const roomConfig of extraRooms) {
+      const roomType = roomConfig.roomType;
+      const roomNumber = Number(roomConfig.roomNumber);
+      const pax = Number(roomConfig.pax || getRoomDef(roomType)?.maxPax || request.booking?.guests || 1);
       await ensureBookingAvailabilityForUpdate("", {
         checkIn: request.requestedCheckIn || request.booking?.checkIn || "",
         checkOut: request.requestedCheckOut || request.booking?.checkOut || "",
@@ -1237,9 +1268,9 @@ async function approveRequest(requestId) {
         phone: request.requestedPhone || request.booking?.phone || "",
         checkIn: request.requestedCheckIn || request.booking?.checkIn || "",
         checkOut: request.requestedCheckOut || request.booking?.checkOut || "",
-        guests: String(getRoomDef(roomType)?.maxPax || request.booking?.guests || 1),
+        guests: String(pax),
         roomType,
-        roomTypeLabel: getRoomTypeLabelForGuests(roomType, getRoomDef(roomType)?.maxPax || request.booking?.guests || 1),
+        roomTypeLabel: getRoomTypeLabelForGuests(roomType, pax),
         roomNumber,
         roomsNeeded: 1,
         notes: request.requestedNotes ?? request.booking?.notes ?? "",
@@ -1410,9 +1441,9 @@ function renderRequests(requests) {
         ${
           request.requestedExtraRooms?.length
             ? `<div><strong>Additional Rooms:</strong> ${request.requestedExtraRooms
-                .map((roomKey) => {
-                  const [roomType, roomNumber] = String(roomKey).split("-");
-                  return getRoomLabel(roomType, Number(roomNumber));
+                .map((room) => {
+                  const pax = Number(room.pax || 0);
+                  return `${getRoomLabel(room.roomType, Number(room.roomNumber))}${pax ? ` (${pax} Pax)` : ""}`;
                 })
                 .join(", ")}</div>`
             : ""
@@ -1800,7 +1831,7 @@ async function handleRequestSubmit(event) {
   };
 
   payload.roomTypeLabel = getRoomTypeLabelForGuests(payload.roomType, state.activeBooking.guests || 1);
-  payload.requestedExtraRooms = Array.from(state.modalExtraRooms);
+  payload.requestedExtraRooms = Array.from(state.modalExtraRooms.values());
 
   if (requestReasonInput.value === "additional_rooms" && !payload.requestedExtraRooms.length) {
     showToast("Select at least one additional room.", true);
@@ -1825,9 +1856,10 @@ async function handleRequestSubmit(event) {
   try {
     if (state.modalMode === "edit") {
       if (requestReasonInput.value === "additional_rooms") {
-        for (const roomKey of payload.requestedExtraRooms) {
-          const [roomType, roomNumberRaw] = String(roomKey).split("-");
-          const roomNumber = Number(roomNumberRaw);
+        for (const roomConfig of payload.requestedExtraRooms) {
+          const roomType = roomConfig.roomType;
+          const roomNumber = Number(roomConfig.roomNumber);
+          const pax = Number(roomConfig.pax || getRoomDef(roomType)?.maxPax || state.activeBooking.guests || 1);
           await ensureBookingAvailabilityForUpdate("", {
             checkIn: payload.checkIn,
             checkOut: payload.checkOut,
@@ -1841,9 +1873,9 @@ async function handleRequestSubmit(event) {
             phone: payload.phone,
             checkIn: payload.checkIn,
             checkOut: payload.checkOut,
-            guests: String(getRoomDef(roomType)?.maxPax || state.activeBooking.guests || 1),
+            guests: String(pax),
             roomType,
-            roomTypeLabel: getRoomTypeLabelForGuests(roomType, getRoomDef(roomType)?.maxPax || state.activeBooking.guests || 1),
+            roomTypeLabel: getRoomTypeLabelForGuests(roomType, pax),
             roomNumber,
             roomsNeeded: payload.requestedExtraRooms.length,
             notes: payload.notes,
