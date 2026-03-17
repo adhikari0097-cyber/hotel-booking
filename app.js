@@ -2096,7 +2096,7 @@ async function openRequestModal(bookingId, mode, scope = "single") {
   requestStatusInput.value = booking.status || "Campaign";
   requestNotesInput.value = booking.notes || "";
   requestMessageInput.value = "";
-  requestReasonInput.value = "change_date";
+  requestReasonInput.value = scope === "group" ? "edit_booking_data" : "change_date";
   modalTitle.textContent = scope === "group"
     ? (mode === "edit" ? "Update Full Booking" : "Request Full Booking Change")
     : (mode === "edit" ? "Update Booking" : "Request Booking Change");
@@ -2145,6 +2145,8 @@ function formatRequestReason(reason) {
       return "Customer request to hold";
     case "change_date":
       return "Customer request to change date";
+    case "edit_booking_data":
+      return "Edit Customer booking data";
     case "additional_rooms":
       return "Requesting additional rooms";
     case "additional_services":
@@ -2916,18 +2918,19 @@ async function bootstrapSession() {
 function syncModalReasonDefaults() {
   const reason = requestReasonInput.value;
   const isDateChange = reason === "change_date";
+  const isEditCustomerData = reason === "edit_booking_data";
   const isAdditionalRooms = reason === "additional_rooms";
   const isAdditionalServices = reason === "additional_services";
   const isRemoveRooms = reason === "remove_rooms";
+  const isGroupLike = state.requestScope === "group" || isEditCustomerData;
 
   requestCheckInLabel.textContent = isDateChange ? "New Check-in" : "Check-in";
   requestCheckOutLabel.textContent = isDateChange ? "New Check-out" : "Check-out";
   requestDateHelp.classList.toggle("hidden", !isDateChange);
-  const isGroupScope = state.requestScope === "group";
   requestExtraRoomsSection.classList.toggle("hidden", !isAdditionalRooms);
   requestServicesSection.classList.toggle("hidden", !isAdditionalServices);
   requestRemoveRoomsSection.classList.toggle("hidden", !isRemoveRooms);
-  requestRoomTypeInput.closest(".field.grid-2").classList.toggle("hidden", isGroupScope || isAdditionalRooms || isRemoveRooms || isAdditionalServices);
+  requestRoomTypeInput.closest(".field.grid-2").classList.toggle("hidden", isGroupLike || isAdditionalRooms || isRemoveRooms || isAdditionalServices);
   requestStatusInput.value = getDefaultRequestStatus(requestReasonInput.value, state.activeBooking?.status || "Campaign");
 }
 
@@ -2938,6 +2941,10 @@ async function handleRequestSubmit(event) {
     return;
   }
 
+  const reason = requestReasonInput.value;
+  const effectiveScope = state.requestScope === "group" || reason === "edit_booking_data"
+    ? "group"
+    : state.requestScope;
   const selectedServices = Array.from(state.modalRequestedServices.values());
   const payload = {
     guestName: requestGuestNameInput.value.trim(),
@@ -2956,17 +2963,17 @@ async function handleRequestSubmit(event) {
   payload.roomTypeLabel = getRoomTypeLabelForGuests(payload.roomType, state.activeBooking.guests || 1);
   payload.requestedExtraRooms = Array.from(state.modalExtraRooms.values());
 
-  if (requestReasonInput.value === "additional_rooms" && !payload.requestedExtraRooms.length) {
+  if (reason === "additional_rooms" && !payload.requestedExtraRooms.length) {
     showToast("Select at least one additional room.", true);
     return;
   }
 
-  if (requestReasonInput.value === "additional_services" && !payload.requestedServices.length) {
+  if (reason === "additional_services" && !payload.requestedServices.length) {
     showToast("Select at least one service.", true);
     return;
   }
 
-  if (requestReasonInput.value === "remove_rooms" && !payload.requestedRemoveRooms.length) {
+  if (reason === "remove_rooms" && !payload.requestedRemoveRooms.length) {
     showToast("Select at least one room to remove.", true);
     return;
   }
@@ -2988,7 +2995,7 @@ async function handleRequestSubmit(event) {
 
   try {
     if (state.modalMode === "edit") {
-      if (requestReasonInput.value === "additional_rooms") {
+      if (reason === "additional_rooms") {
         for (const roomConfig of payload.requestedExtraRooms) {
           const roomType = roomConfig.roomType;
           const roomNumber = Number(roomConfig.roomNumber);
@@ -3015,8 +3022,8 @@ async function handleRequestSubmit(event) {
             status: payload.status,
           });
         }
-      } else if (requestReasonInput.value === "additional_services") {
-        const targetBookings = state.requestScope === "group"
+      } else if (reason === "additional_services") {
+        const targetBookings = effectiveScope === "group"
           ? (state.activeBookingGroup.length ? state.activeBookingGroup : [state.activeBooking])
           : [state.activeBooking];
         for (const bookingRow of targetBookings) {
@@ -3032,7 +3039,7 @@ async function handleRequestSubmit(event) {
             status: bookingRow.status,
           });
         }
-      } else if (requestReasonInput.value === "remove_rooms") {
+      } else if (reason === "remove_rooms") {
         for (const roomConfig of payload.requestedRemoveRooms) {
           const bookingRow = state.bookingMap.get(roomConfig.bookingId);
           if (!bookingRow) continue;
@@ -3048,7 +3055,7 @@ async function handleRequestSubmit(event) {
             status: "Cancelled",
           });
         }
-      } else if (state.requestScope === "group") {
+      } else if (effectiveScope === "group") {
         const groupBookings = state.activeBookingGroup.length ? state.activeBookingGroup : [state.activeBooking];
         await ensureGroupAvailabilityForUpdate(groupBookings, payload.checkIn, payload.checkOut, payload.status);
         for (const bookingRow of groupBookings) {
@@ -3071,8 +3078,8 @@ async function handleRequestSubmit(event) {
 
       await insertChangeRequest({
         bookingId: state.activeBooking.id,
-        reason: requestReasonInput.value,
-        requestScope: state.requestScope,
+        reason,
+        requestScope: effectiveScope,
         ...payload,
         requestStatusOverride: "approved",
         adminNote: payload.requestNote,
@@ -3080,19 +3087,19 @@ async function handleRequestSubmit(event) {
         reviewedAt: new Date().toISOString(),
       });
       showToast(
-        requestReasonInput.value === "additional_rooms"
+        reason === "additional_rooms"
           ? "Additional rooms added."
-          : requestReasonInput.value === "additional_services"
+          : reason === "additional_services"
             ? "Services updated."
-            : requestReasonInput.value === "remove_rooms"
+            : reason === "remove_rooms"
               ? "Selected rooms removed."
               : "Booking updated."
       );
     } else {
       await insertChangeRequest({
         bookingId: state.activeBooking.id,
-        reason: requestReasonInput.value,
-        requestScope: state.requestScope,
+        reason,
+        requestScope: effectiveScope,
         ...payload,
       });
       showToast("Request submitted.");
