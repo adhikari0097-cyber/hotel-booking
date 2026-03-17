@@ -420,6 +420,36 @@ h4 {
   gap: 4px;
 }
 
+.booking-meta-actions-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+}
+
+.booking-details-trigger {
+  justify-self: center;
+}
+
+.booking-details-body {
+  display: grid;
+  gap: 14px;
+}
+
+.booking-details-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.booking-details-room-list {
+  gap: 12px;
+}
+
 .booking-group-call {
   display: flex;
   align-items: center;
@@ -827,6 +857,24 @@ h4 {
   font-size: 12px;
   color: var(--muted);
   line-height: 1.4;
+}
+
+@media (max-width: 640px) {
+  .booking-meta-actions-row,
+  .booking-details-summary,
+  .booking-group-head,
+  .booking-room-row {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .booking-details-trigger {
+    justify-self: stretch;
+  }
+
+  .booking-room-row .action-btn {
+    width: 100%;
+  }
 }
 
 @media (max-width: 640px) {

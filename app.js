@@ -119,6 +119,10 @@ const requestStatusInput = qs("#request-status");
 const requestNotesInput = qs("#request-notes");
 const requestMessageInput = qs("#request-message");
 const requestSubmitBtn = qs("#request-submit");
+const bookingDetailsModal = qs("#booking-details-modal");
+const bookingDetailsTitle = qs("#booking-details-title");
+const bookingDetailsBody = qs("#booking-details-body");
+const closeBookingDetailsBtn = qs("#close-booking-details");
 
 const navButtons = {
   booking: qs("#tab-booking"),
@@ -1190,6 +1194,59 @@ function groupBookingsForDisplay(bookings) {
   }));
 }
 
+function closeBookingDetailsModal() {
+  bookingDetailsModal.classList.add("hidden");
+  bookingDetailsBody.innerHTML = "";
+}
+
+function openBookingDetailsModal(groupKey) {
+  const group = state.bookingGroups.get(groupKey);
+  if (!group) {
+    showToast("Booking details not found.", true);
+    return;
+  }
+
+  bookingDetailsTitle.textContent = `${group.trackCode || "-"} · ${group.guestName || "Guest"}`;
+  const roomRows = group.bookings
+    .map((booking) => {
+      const roomGroup = normalizeRoomGroup(booking.roomType);
+      return `
+        <div class="booking-room-row booking-details-room-row">
+          <div class="booking-room-row-main">
+            <div class="booking-room-row-title">${getRoomLabel(roomGroup, booking.roomNumber)} (#${booking.roomNumber})</div>
+            <div class="booking-room-row-meta">${booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType)} · ${booking.guests} guests · ${booking.checkIn} -> ${booking.checkOut}</div>
+            ${booking.notes ? `<div class="booking-room-row-notes">Notes: ${booking.notes}</div>` : ""}
+          </div>
+          <button class="action-btn" type="button" data-booking-detail-action="${canManageRequests() ? "edit" : "request"}" data-booking-id="${booking.id}">
+            Update
+          </button>
+        </div>
+      `;
+    })
+    .join("");
+
+  bookingDetailsBody.innerHTML = `
+    <div class="booking-meta booking-meta-compact booking-details-summary">
+      <div><strong>Track Code:</strong> ${group.trackCode || "-"}</div>
+      <div><strong>Phone:</strong> <a href="tel:${group.phone || ""}">${group.phone || "-"}</a></div>
+      <div><strong>Rooms:</strong> ${group.bookings.length}</div>
+      <div><strong>Guests:</strong> ${group.totalGuests}</div>
+      <div><strong>Dates:</strong> ${group.checkIn} -> ${group.checkOut}</div>
+      <div><strong>Status:</strong> ${group.statuses.size === 1 ? Array.from(group.statuses)[0] : "Mixed"}</div>
+    </div>
+    <div class="booking-room-list booking-details-room-list">${roomRows}</div>
+  `;
+
+  bookingDetailsBody.querySelectorAll("[data-booking-detail-action]").forEach((button) => {
+    button.addEventListener("click", () => {
+      closeBookingDetailsModal();
+      openRequestModal(button.dataset.bookingId, canManageRequests() ? "edit" : "request");
+    });
+  });
+
+  bookingDetailsModal.classList.remove("hidden");
+}
+
 function renderBookings(bookings) {
   bookingCards.innerHTML = "";
   state.bookingMap = new Map(bookings.map((booking) => [booking.id, booking]));
@@ -1216,6 +1273,7 @@ function renderBookings(bookings) {
 
   bookingEmpty.style.display = "none";
   const groupedBookings = groupBookingsForDisplay(filteredBookings);
+  state.bookingGroups = new Map(groupedBookings.map((group) => [group.key, group]));
 
   groupedBookings.forEach((group) => {
     const card = document.createElement("div");
@@ -1250,8 +1308,9 @@ function renderBookings(bookings) {
       <div class="booking-group-call">
         <a class="call-link" href="tel:${group.phone || ""}">Call ${group.guestName || "Guest"}</a>
       </div>
-      <div class="booking-meta booking-meta-compact">
+      <div class="booking-meta booking-meta-compact booking-meta-actions-row">
         <div><strong>Track Code:</strong> ${group.trackCode || "-"}</div>
+        <button class="secondary-btn booking-details-trigger" type="button" data-booking-details="${group.key}">Booking Details</button>
         <div><strong>Phone:</strong> <a href="tel:${group.phone}">${group.phone || "-"}</a></div>
       </div>
       <div class="booking-room-list">${roomRows}</div>
@@ -1262,6 +1321,10 @@ function renderBookings(bookings) {
         openRequestModal(button.dataset.bookingId, canManageRequests() ? "edit" : "request");
       });
     });
+    const detailsBtn = card.querySelector("[data-booking-details]");
+    if (detailsBtn) {
+      detailsBtn.addEventListener("click", () => openBookingDetailsModal(detailsBtn.dataset.bookingDetails));
+    }
     bookingCards.appendChild(card);
   });
 }
@@ -2234,6 +2297,7 @@ loadBookingsBtn.addEventListener("click", () => loadBookingsForDate(viewDateInpu
 refreshAccountsBtn.addEventListener("click", () => loadAccounts());
 refreshRequestsBtn.addEventListener("click", () => loadRequests());
 closeModalBtn.addEventListener("click", closeRequestModal);
+closeBookingDetailsBtn.addEventListener("click", closeBookingDetailsModal);
 requestReasonInput.addEventListener("change", syncModalReasonDefaults);
 requestFilterButtons.forEach((button) => {
   button.addEventListener("click", () => {
@@ -2260,6 +2324,9 @@ requestRoomTypeInput.addEventListener("change", () => {
 });
 requestModal.querySelectorAll("[data-close-modal]").forEach((element) => {
   element.addEventListener("click", closeRequestModal);
+});
+bookingDetailsModal.querySelectorAll("[data-close-booking-details]").forEach((element) => {
+  element.addEventListener("click", closeBookingDetailsModal);
 });
 
 viewDateInput.addEventListener("change", async (event) => {
