@@ -1538,6 +1538,12 @@ function getLatestRequestCollections() {
   return { byTrack, byBooking };
 }
 
+function getRequestsForTrack(trackCode) {
+  return Array.from(state.requestMap.values())
+    .filter((request) => (request.booking?.trackCode || request.bookingId || request.id) === trackCode)
+    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+}
+
 function getRequestStatusClass(status) {
   if (status === "approved") return "tag-success";
   if (status === "pending") return "tag-pending";
@@ -1596,7 +1602,8 @@ function openBookingDetailsModal(groupKey) {
     return;
   }
   const requestCollections = getLatestRequestCollections();
-  const groupRequest = requestCollections.byTrack.get(group.trackCode || group.key);
+  const requestHistory = getRequestsForTrack(group.trackCode || group.key);
+  const groupRequest = requestHistory[0] || requestCollections.byTrack.get(group.trackCode || group.key);
 
   bookingDetailsTitle.textContent = `${group.trackCode || "-"} · ${group.guestName || "Guest"}`;
   const groupServices = Array.from(new Set(group.bookings.flatMap((booking) => parseBookingNotes(booking.notes).services)));
@@ -1635,6 +1642,25 @@ function openBookingDetailsModal(groupKey) {
     })
     .join("");
 
+  const requestHistoryMarkup = requestHistory.length
+    ? `
+      <div class="booking-details-history-panel">
+        <div class="booking-details-panel-title">Request History</div>
+        <div class="booking-history-list">
+          ${requestHistory.map((request) => `
+            <div class="booking-history-item">
+              <div class="booking-history-head">
+                ${getRequestStatusMarkup(request)}
+                <span class="booking-history-date">${getRequestRequestedDate(request) || "-"}</span>
+              </div>
+              <div class="booking-history-meta">${formatRequestReason(request.reason)}</div>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+    `
+    : "";
+
   bookingDetailsBody.innerHTML = `
     <div class="booking-meta booking-meta-compact booking-details-summary">
       <div><strong>Track Code:</strong> ${group.trackCode || "-"}</div>
@@ -1644,8 +1670,9 @@ function openBookingDetailsModal(groupKey) {
       <div><strong>Dates:</strong> ${group.checkIn} -> ${group.checkOut}</div>
       <div><strong>Status:</strong> ${group.statuses.size === 1 ? Array.from(group.statuses)[0] : "Mixed"}</div>
     </div>
-    ${groupRequest ? `<div class="booking-details-request-banner">${getRequestStatusMarkup(groupRequest, "Latest request")}</div>` : ""}
+    ${groupRequest ? `<div class="booking-details-request-banner">${getRequestStatusMarkup(groupRequest, "Latest request")}<span class="booking-history-meta">${formatRequestReason(groupRequest.reason)} · ${getRequestRequestedDate(groupRequest) || "-"}</span></div>` : ""}
     ${groupServices.length ? `<div class="booking-details-services-panel"><div class="booking-details-panel-title">Services</div>${renderServiceChips(groupServices)}</div>` : ""}
+    ${requestHistoryMarkup}
     <div class="booking-details-actions">
       <button class="primary-btn" type="button" data-booking-group-action="manage">Manage Full Booking</button>
       ${isPendingGroupRemovalRequest(groupRequest)
@@ -1736,7 +1763,8 @@ function renderBookings(bookings) {
     const card = document.createElement("div");
     card.className = "booking-card booking-group-card";
     const groupStatus = group.statuses.size === 1 ? Array.from(group.statuses)[0] : "Mixed";
-    const groupRequest = requestCollections.byTrack.get(group.trackCode || group.key);
+    const requestHistory = getRequestsForTrack(group.trackCode || group.key);
+    const groupRequest = requestHistory[0] || requestCollections.byTrack.get(group.trackCode || group.key);
     const roomRows = group.bookings
       .map((booking) => {
         const bookingRequest = requestCollections.byBooking.get(booking.id);
@@ -1772,25 +1800,36 @@ function renderBookings(bookings) {
       })
       .join("");
 
+    const requestButton = groupRequest
+      ? getRequestStatusMarkup(groupRequest)
+      : `<span class="booking-tag">No Request</span>`;
+    const requestBrief = groupRequest
+      ? `<button class="booking-request-brief" type="button" data-request-focus="${groupRequest.id}">${formatRequestReason(groupRequest.reason)} · ${getRequestRequestedDate(groupRequest) || "-"}</button>`
+      : `<span class="booking-request-brief muted">No pending or approval activity.</span>`;
+
     card.innerHTML = `
-      <div class="booking-group-head">
+      <div class="booking-group-head booking-group-head-dense">
         <div>
           <h4>${group.trackCode || "-"} · ${group.guestName || "Guest"}</h4>
-          <div class="booking-group-summary">${group.bookings.length} room(s) · ${group.totalGuests} guest(s) · ${group.checkIn} -> ${group.checkOut}</div>
+          <div class="booking-group-summary">${group.bookings.length} room(s) · ${group.totalGuests} guest(s)</div>
         </div>
-        <div class="booking-group-statuses">
-          ${groupRequest ? getRequestStatusMarkup(groupRequest) : ""}
+        <div class="booking-group-statuses booking-group-controls">
+          ${requestButton}
           <span class="booking-tag">${groupStatus}</span>
+          <button class="secondary-btn booking-details-trigger" type="button" data-booking-details="${group.key}">Booking Details</button>
         </div>
       </div>
-      <div class="booking-group-call">
-        <a class="call-link" href="tel:${group.phone || ""}">Call ${group.guestName || "Guest"}</a>
+      <div class="booking-date-strip">
+        <div class="booking-date-pill"><span>check in</span><strong>${group.checkIn}</strong></div>
+        <div class="booking-date-pill"><span>check out</span><strong>${group.checkOut}</strong></div>
       </div>
-      <div class="booking-meta booking-meta-compact booking-meta-actions-row">
-        <div><strong>Track Code:</strong> ${group.trackCode || "-"}</div>
-        <button class="secondary-btn booking-details-trigger" type="button" data-booking-details="${group.key}">Booking Details</button>
-        <div><strong>Phone:</strong> <a href="tel:${group.phone}">${group.phone || "-"}</a></div>
+      <div class="booking-group-meta-row">
+        <div class="booking-group-call">
+          <a class="call-link" href="tel:${group.phone || ""}">Call ${group.guestName || "Guest"}</a>
+        </div>
+        <div class="booking-group-phone"><strong>Phone:</strong> <a href="tel:${group.phone}">${group.phone || "-"}</a></div>
       </div>
+      ${requestBrief}
       <div class="booking-room-list">${roomRows}</div>
     `;
 
