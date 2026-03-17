@@ -23,7 +23,7 @@ const state = {
   currentProfile: null,
   currentSession: null,
   roomPlans: new Map(),
-  roomServices: new Map(),
+  bookingServices: new Set(),
   bookingMap: new Map(),
   bookingGroups: new Map(),
   requestMap: new Map(),
@@ -251,12 +251,8 @@ function getRoomKey(type, number) {
   return `${type}-${number}`;
 }
 
-function getRoomServices(type, number) {
-  const key = getRoomKey(type, number);
-  if (!state.roomServices.has(key)) {
-    state.roomServices.set(key, new Set());
-  }
-  return state.roomServices.get(key);
+function getSelectedBookingServices() {
+  return state.bookingServices;
 }
 
 function formatCheckoutFromNights(checkIn, nights) {
@@ -555,39 +551,41 @@ function renderRoomServiceAssignments() {
     return;
   }
 
-  selectedPlans.forEach(({ room, plan }) => {
-    const selectedServices = getRoomServices(room.type, room.number);
-    const card = document.createElement("div");
-    card.className = "room-service-card";
-    card.innerHTML = `
-      <div class="room-service-head">
-        <div>
-          <div class="room-service-title">${getRoomLabel(room.type, room.number)}</div>
-          <div class="room-service-meta">${getAssignedRoomLabel(room, plan.pax, plan.extraPax)}${room.type === "driver" && plan.pax ? ` · Drivers: ${plan.pax}` : ""}</div>
-        </div>
-      </div>
-      <div class="room-service-grid">
-        ${ROOM_SERVICE_OPTIONS.map((service) => {
-          const id = `room-service-${room.type}-${room.number}-${service.toLowerCase()}`;
-          return `
-            <label class="service-option">
-              <input id="${id}" type="checkbox" value="${service}" ${selectedServices.has(service) ? "checked" : ""} />
-              <span>${service}</span>
-            </label>
-          `;
-        }).join("")}
-      </div>
-    `;
+  const selectedServices = getSelectedBookingServices();
+  const roomSummary = selectedPlans
+    .map(({ room, plan }) => `${getRoomLabel(room.type, room.number)}${room.type === "driver" && plan.pax ? ` · Drivers: ${plan.pax}` : ""}`)
+    .join(" · ");
 
-    card.querySelectorAll('input[type="checkbox"]').forEach((input) => {
-      input.addEventListener("change", () => {
-        if (input.checked) selectedServices.add(input.value);
-        else selectedServices.delete(input.value);
-      });
+  const card = document.createElement("div");
+  card.className = "room-service-card";
+  card.innerHTML = `
+    <div class="room-service-head">
+      <div>
+        <div class="room-service-title">Booking Services</div>
+        <div class="room-service-meta">Applies to all selected rooms: ${roomSummary}</div>
+      </div>
+    </div>
+    <div class="room-service-grid">
+      ${ROOM_SERVICE_OPTIONS.map((service) => {
+        const id = `booking-service-${service.toLowerCase().replace(/\s+/g, "-")}`;
+        return `
+          <label class="service-option">
+            <input id="${id}" type="checkbox" value="${service}" ${selectedServices.has(service) ? "checked" : ""} />
+            <span>${service}</span>
+          </label>
+        `;
+      }).join("")}
+    </div>
+  `;
+
+  card.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+    input.addEventListener("change", () => {
+      if (input.checked) selectedServices.add(input.value);
+      else selectedServices.delete(input.value);
     });
-
-    roomServiceAssignments.appendChild(card);
   });
+
+  roomServiceAssignments.appendChild(card);
 }
 
 function populateRequestRoomNumbers(roomType, selectedNumber) {
@@ -1483,7 +1481,7 @@ function updateAvailabilityUI(availability) {
     bookedDriver.textContent = "-";
     availabilityHint.textContent = "Select dates to load room planner.";
     state.roomPlans.clear();
-    state.roomServices.clear();
+    state.bookingServices.clear();
     renderRoomServiceAssignments();
     guestsInput.value = "";
     driversTotalInput.value = "";
@@ -3111,7 +3109,7 @@ bookingForm.addEventListener("submit", async (event) => {
       }
 
       const notesParts = [payload.notes?.trim() || ""];
-      const roomServices = Array.from(getRoomServices(plan.room.type, plan.room.number).values());
+      const roomServices = Array.from(getSelectedBookingServices().values());
       if (plan.extraPax > 0) notesParts.push(`Extra pax / kids: ${plan.extraPax}`);
       if (plan.room.type === "driver" && plan.pax > 0) notesParts.push(`Drivers: ${plan.pax}`);
       if (roomServices.length) notesParts.push(`Services: ${roomServices.join(", ")}`);
@@ -3143,7 +3141,7 @@ bookingForm.addEventListener("submit", async (event) => {
     const tomorrow = addDays(today, 1);
     setBookingDateRange(toDateInputValue(today), toDateInputValue(tomorrow));
     state.roomPlans.clear();
-    state.roomServices.clear();
+    state.bookingServices.clear();
     renderRoomServiceAssignments();
     guestsInput.value = "";
     if (backupFailures.length) {
