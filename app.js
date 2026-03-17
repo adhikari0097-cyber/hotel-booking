@@ -31,6 +31,7 @@ const state = {
   modalRemoveRooms: new Map(),
   modalRequestedServices: new Set(),
   modalMode: "request",
+  requestScope: "single",
   bookingListFilter: "active",
   requestsFilterMode: "recent",
   requestsFilterStatus: "pending",
@@ -461,6 +462,23 @@ async function ensureBookingAvailabilityForUpdate(bookingId, values) {
   }
 }
 
+async function ensureGroupAvailabilityForUpdate(bookings, checkIn, checkOut, status) {
+  if (String(status || "").toLowerCase() === "cancelled") return;
+  const bookingIds = new Set(bookings.map((booking) => booking.id));
+  for (const booking of bookings) {
+    const roomGroup = normalizeRoomGroup(booking.roomType);
+    const roomBookings = await fetchRangeBookings(roomGroup, checkIn, checkOut);
+    const hasConflict = roomBookings.some((item) => {
+      if (!isBlockingBooking(item)) return false;
+      if (bookingIds.has(item.id)) return false;
+      return Number(item.roomNumber) === Number(booking.roomNumber);
+    });
+    if (hasConflict) {
+      throw new Error(`${getRoomLabel(roomGroup, Number(booking.roomNumber))} is already booked for the selected dates.`);
+    }
+  }
+}
+
 function getRoomPlan(type, number, defaultNights) {
   const key = getRoomKey(type, number);
   if (!state.roomPlans.has(key)) {
@@ -878,6 +896,8 @@ async function getNextTrackCode(status) {
 
 async function insertBooking(payload) {
   ensureSupabase();
+  const hasFixedTrackCode = Boolean(payload.trackCode);
+
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const row = {
       track_code: payload.trackCode || (await getNextTrackCode(payload.status)),
@@ -901,8 +921,13 @@ async function insertBooking(payload) {
     }
 
     const message = String(error.message || "");
-    if (!message.toLowerCase().includes("track_code") && !message.toLowerCase().includes("duplicate")) {
+    const isTrackCodeConflict = message.toLowerCase().includes("track_code") || message.toLowerCase().includes("duplicate");
+    if (!isTrackCodeConflict) {
       throw new Error(message);
+    }
+
+    if (hasFixedTrackCode) {
+      throw new Error("This booking group could not reuse the same track code. Supabase still has a unique track code constraint. Run the track_code index fix SQL first.");
     }
 
     payload.trackCode = "";
@@ -1320,8 +1345,19 @@ function openBookingDetailsModal(groupKey) {
       <div><strong>Dates:</strong> ${group.checkIn} -> ${group.checkOut}</div>
       <div><strong>Status:</strong> ${group.statuses.size === 1 ? Array.from(group.statuses)[0] : "Mixed"}</div>
     </div>
+    <div class="booking-details-actions">
+      <button class="primary-btn" type="button" data-booking-group-action="manage">Manage Full Booking</button>
+    </div>
     <div class="booking-room-list booking-details-room-list">${roomRows}</div>
   `;
+
+  const manageBtn = bookingDetailsBody.querySelector('[data-booking-group-action="manage"]');
+  if (manageBtn) {
+    manageBtn.addEventListener('click', () => {
+      closeBookingDetailsModal();
+      openRequestModal(group.bookings[0].id, canManageRequests() ? "edit" : "request", "group");
+    });
+  }
 
   bookingDetailsBody.querySelectorAll("[data-booking-detail-action]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -1436,7 +1472,7 @@ function closeRequestModal() {
   state.modalMode = "request";
 }
 
-async function openRequestModal(bookingId, mode) {
+async function openRequestModal(bookingId, mode, scope = "single") {
   const booking = state.bookingMap.get(bookingId);
   if (!booking) {
     showToast("Booking not found.", true);
@@ -1445,6 +1481,7 @@ async function openRequestModal(bookingId, mode) {
 
   state.activeBooking = booking;
   state.activeBookingGroup = state.bookingGroups.get(getBookingGroupKey(booking))?.bookings || [booking];
+  state.requestScope = scope;
   state.modalMode = mode;
   modalBookingId.value = booking.id;
   requestGuestNameInput.value = booking.guestName || "";
@@ -1459,7 +1496,9 @@ async function openRequestModal(bookingId, mode) {
   requestNotesInput.value = booking.notes || "";
   requestMessageInput.value = "";
   requestReasonInput.value = "change_date";
-  modalTitle.textContent = mode === "edit" ? "Update Booking" : "Request Booking Change";
+  modalTitle.textContent = scope === "group"
+    ? (mode === "edit" ? "Update Full Booking" : "Request Full Booking Change")
+    : (mode === "edit" ? "Update Booking" : "Request Booking Change");
   requestSubmitBtn.textContent = mode === "edit" ? "Save Booking Update" : "Submit Change Request";
   syncModalReasonDefaults();
   await renderAdditionalRoomOptions(booking);
@@ -1482,6 +1521,7 @@ function mapRequest(row) {
     requestedRoomType: row.requested_room_type || "",
     requestedRoomTypeLabel: row.requested_room_type_label || "",
     requestedRoomNumber: Number(row.requested_room_number || 0),
+    requestedScope: row.requested_scope || "single",
     requestedExtraRooms: Array.isArray(row.requested_extra_rooms) ? row.requested_extra_rooms : [],
     requestedServices: Array.isArray(row.requested_services) ? row.requested_services : [],
     requestedRemoveRooms: Array.isArray(row.requested_remove_rooms) ? row.requested_remove_rooms : [],
@@ -1559,6 +1599,7 @@ async function insertChangeRequest(payload) {
     requested_by: state.currentSession.user.id,
     reason: payload.reason,
     request_note: payload.requestNote || "",
+    requested_scope: payload.requestScope || "single",
     requested_guest_name: payload.guestName || null,
     requested_phone: payload.phone || null,
     requested_check_in: payload.checkIn || null,
@@ -1691,25 +1732,54 @@ async function approveRequest(requestId) {
         ? "Cancelled"
       : (request.requestedBookingStatus || request.booking?.status || "Campaign");
 
-  await ensureBookingAvailabilityForUpdate(request.bookingId, {
-    checkIn: request.requestedCheckIn || request.booking?.checkIn || "",
-    checkOut: request.requestedCheckOut || request.booking?.checkOut || "",
-    roomType: request.requestedRoomType || request.booking?.roomType || "",
-    roomNumber: request.requestedRoomNumber || request.booking?.roomNumber || 0,
-    status: targetStatus,
-  });
+  const targetTrackCode = request.booking?.trackCode || "";
+  const grouped = Array.from(state.bookingMap.values()).filter((booking) => booking.trackCode === targetTrackCode);
+  const targetBookings = request.requestedScope === "group"
+    ? (grouped.length ? grouped : (request.booking ? [request.booking] : []))
+    : (request.booking ? [request.booking] : []);
 
-  await updateBooking(request.bookingId, {
-    guestName: request.requestedGuestName || request.booking?.guestName || "",
-    phone: request.requestedPhone || request.booking?.phone || "",
-    checkIn: request.requestedCheckIn || request.booking?.checkIn || "",
-    checkOut: request.requestedCheckOut || request.booking?.checkOut || "",
-    roomType: request.requestedRoomType || request.booking?.roomType || "",
-    roomTypeLabel: request.requestedRoomTypeLabel || request.booking?.roomTypeLabel || "",
-    roomNumber: request.requestedRoomNumber || request.booking?.roomNumber || 0,
-    notes: request.requestedNotes ?? request.booking?.notes ?? "",
-    status: targetStatus,
-  });
+  if (request.requestedScope === "group") {
+    await ensureGroupAvailabilityForUpdate(
+      targetBookings,
+      request.requestedCheckIn || request.booking?.checkIn || "",
+      request.requestedCheckOut || request.booking?.checkOut || "",
+      targetStatus,
+    );
+
+    for (const bookingRow of targetBookings) {
+      await updateBooking(bookingRow.id, {
+        guestName: request.requestedGuestName || bookingRow.guestName || "",
+        phone: request.requestedPhone || bookingRow.phone || "",
+        checkIn: request.requestedCheckIn || bookingRow.checkIn || "",
+        checkOut: request.requestedCheckOut || bookingRow.checkOut || "",
+        roomType: bookingRow.roomType,
+        roomTypeLabel: bookingRow.roomTypeLabel,
+        roomNumber: bookingRow.roomNumber,
+        notes: request.requestedNotes ?? bookingRow.notes ?? "",
+        status: targetStatus,
+      });
+    }
+  } else {
+    await ensureBookingAvailabilityForUpdate(request.bookingId, {
+      checkIn: request.requestedCheckIn || request.booking?.checkIn || "",
+      checkOut: request.requestedCheckOut || request.booking?.checkOut || "",
+      roomType: request.requestedRoomType || request.booking?.roomType || "",
+      roomNumber: request.requestedRoomNumber || request.booking?.roomNumber || 0,
+      status: targetStatus,
+    });
+
+    await updateBooking(request.bookingId, {
+      guestName: request.requestedGuestName || request.booking?.guestName || "",
+      phone: request.requestedPhone || request.booking?.phone || "",
+      checkIn: request.requestedCheckIn || request.booking?.checkIn || "",
+      checkOut: request.requestedCheckOut || request.booking?.checkOut || "",
+      roomType: request.requestedRoomType || request.booking?.roomType || "",
+      roomTypeLabel: request.requestedRoomTypeLabel || request.booking?.roomTypeLabel || "",
+      roomNumber: request.requestedRoomNumber || request.booking?.roomNumber || 0,
+      notes: request.requestedNotes ?? request.booking?.notes ?? "",
+      status: targetStatus,
+    });
+  }
   await updateRequestStatus(requestId, { status: "approved" });
 }
 
@@ -1835,6 +1905,7 @@ function renderRequests(requests) {
         </div>
       </div>
       <div class="request-meta request-detail">
+        <div><strong>Scope:</strong> ${request.requestedScope === "group" ? "Full Booking" : "Single Room"}</div>
         <div><strong>Current:</strong> ${booking?.checkIn || "-"} -> ${booking?.checkOut || "-"} · ${booking?.status || "-"}</div>
         <div><strong>Requested:</strong> ${request.requestedCheckIn || booking?.checkIn || "-"} -> ${request.requestedCheckOut || booking?.checkOut || "-"} · ${request.requestedBookingStatus || booking?.status || "-"}</div>
         <div><strong>Current Room:</strong> ${booking?.roomTypeLabel || "-"} · ${getRoomLabel(normalizeRoomGroup(booking?.roomType || ""), booking?.roomNumber || 0)}</div>
@@ -2217,10 +2288,11 @@ function syncModalReasonDefaults() {
   requestCheckInLabel.textContent = isDateChange ? "New Check-in" : "Check-in";
   requestCheckOutLabel.textContent = isDateChange ? "New Check-out" : "Check-out";
   requestDateHelp.classList.toggle("hidden", !isDateChange);
+  const isGroupScope = state.requestScope === "group";
   requestExtraRoomsSection.classList.toggle("hidden", !isAdditionalRooms);
   requestServicesSection.classList.toggle("hidden", !isAdditionalServices);
   requestRemoveRoomsSection.classList.toggle("hidden", !isRemoveRooms);
-  requestRoomTypeInput.closest(".field.grid-2").classList.toggle("hidden", isAdditionalRooms || isRemoveRooms);
+  requestRoomTypeInput.closest(".field.grid-2").classList.toggle("hidden", isGroupScope || isAdditionalRooms || isRemoveRooms || isAdditionalServices);
   requestStatusInput.value = getDefaultRequestStatus(requestReasonInput.value, state.activeBooking?.status || "Campaign");
 }
 
@@ -2338,6 +2410,22 @@ async function handleRequestSubmit(event) {
             status: "Cancelled",
           });
         }
+      } else if (state.requestScope === "group") {
+        const groupBookings = state.activeBookingGroup.length ? state.activeBookingGroup : [state.activeBooking];
+        await ensureGroupAvailabilityForUpdate(groupBookings, payload.checkIn, payload.checkOut, payload.status);
+        for (const bookingRow of groupBookings) {
+          await updateBooking(bookingRow.id, {
+            guestName: payload.guestName,
+            phone: payload.phone,
+            checkIn: payload.checkIn,
+            checkOut: payload.checkOut,
+            roomType: bookingRow.roomType,
+            roomTypeLabel: bookingRow.roomTypeLabel,
+            roomNumber: bookingRow.roomNumber,
+            notes: payload.notes,
+            status: payload.status,
+          });
+        }
       } else {
         await ensureBookingAvailabilityForUpdate(state.activeBooking.id, payload);
         await updateBooking(state.activeBooking.id, payload);
@@ -2346,6 +2434,7 @@ async function handleRequestSubmit(event) {
       await insertChangeRequest({
         bookingId: state.activeBooking.id,
         reason: requestReasonInput.value,
+        requestScope: state.requestScope,
         ...payload,
         requestStatusOverride: "approved",
         adminNote: payload.requestNote,
@@ -2365,6 +2454,7 @@ async function handleRequestSubmit(event) {
       await insertChangeRequest({
         bookingId: state.activeBooking.id,
         reason: requestReasonInput.value,
+        requestScope: state.requestScope,
         ...payload,
       });
       showToast("Request submitted.");
