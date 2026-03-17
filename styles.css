@@ -122,7 +122,7 @@ h4 {
 
 .grid-2 {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 14px;
 }
 
@@ -598,6 +598,99 @@ h4 {
 .planner-room.booked .planner-control select {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.planner-room-caption {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.driver-room-panel {
+  border: 2px solid #1b1b1b;
+  border-radius: 16px;
+  background: #fff;
+  padding: 12px;
+  display: grid;
+  gap: 12px;
+}
+
+.driver-room-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.driver-room-count {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.driver-slot-btn {
+  border: 2px solid #1b1b1b;
+  background: #fff;
+  border-radius: 12px;
+  min-height: 48px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.driver-slot-btn.active {
+  background: #eef6f2;
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.driver-slot-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.totals-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.services-panel {
+  border: 1px solid #ebdfca;
+  background: #fffdf9;
+  border-radius: 16px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.services-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.service-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+}
+
+.service-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.service-option input {
+  width: 20px;
+  height: 20px;
 }
 
 .booking-card {
@@ -1193,4 +1286,18 @@ h4 {
 .action-btn.danger {
   border-color: #e5b7b2;
   color: var(--danger);
+}
+
+@media (max-width: 640px) {
+  .availability-stats-wide,
+  .totals-grid,
+  .service-grid,
+  .planner-grid-kitchen,
+  .planner-grid-normal {
+    grid-template-columns: 1fr;
+  }
+
+  .driver-room-count {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }

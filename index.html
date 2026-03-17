@@ -109,14 +109,10 @@
               <label for="notes">Notes</label>
               <textarea id="notes" name="notes" placeholder="Special requests"></textarea>
             </div>
-            <div class="field">
-              <label for="guests">Number of Guests *</label>
-              <input id="guests" name="guests" type="number" min="0" max="40" placeholder="Auto total" readonly />
-            </div>
             <button class="secondary-btn" id="checkAvailability" type="button">Check Availability</button>
             <div class="availability-panel">
               <h3>Availability</h3>
-              <div class="availability-stats">
+              <div class="availability-stats availability-stats-wide">
                 <div>
                   <p>Normal Rooms</p>
                   <h4 id="avail-normal">-</h4>
@@ -127,9 +123,14 @@
                   <h4 id="avail-kitchen">-</h4>
                   <span id="booked-kitchen" class="availability-sub">-</span>
                 </div>
+                <div>
+                  <p>Driver Room</p>
+                  <h4 id="avail-driver">-</h4>
+                  <span id="booked-driver" class="availability-sub">-</span>
+                </div>
               </div>
               <div class="availability-detail">
-                <p>Choose rooms, nights, and pax</p>
+                <p>Choose rooms, nights, pax, and extra pax / kids.</p>
                 <p id="availability-hint" class="availability-hint"></p>
               </div>
               <div class="planner-sections">
@@ -147,6 +148,39 @@
                   </div>
                   <div id="planner-normal" class="planner-grid planner-grid-normal"></div>
                 </section>
+                <section class="planner-group driver-room-group">
+                  <div class="planner-group-header">
+                    <h4>Driver Room</h4>
+                    <span>1 room x 4 pax</span>
+                  </div>
+                  <div id="planner-driver" class="driver-room-panel"></div>
+                </section>
+              </div>
+            </div>
+            <div class="totals-grid">
+              <div class="field">
+                <label for="guests">Number of Guests *</label>
+                <input id="guests" name="guests" type="number" min="0" max="60" placeholder="Auto total" readonly />
+              </div>
+              <div class="field">
+                <label for="driversTotal">Number of Drivers</label>
+                <input id="driversTotal" type="number" min="0" max="4" placeholder="Auto total" readonly />
+              </div>
+              <div class="field">
+                <label for="extraGuestsTotal">Extra Pax / Kids</label>
+                <input id="extraGuestsTotal" type="number" min="0" max="40" placeholder="Auto total" readonly />
+              </div>
+            </div>
+            <div class="services-panel">
+              <p class="services-title">Service / Transport</p>
+              <div class="service-grid">
+                <label class="service-option"><input type="checkbox" value="Breakfast" data-service-option /> <span>Breakfast</span></label>
+                <label class="service-option"><input type="checkbox" value="Liquor" data-service-option /> <span>Liquor</span></label>
+                <label class="service-option"><input type="checkbox" value="Lunch" data-service-option /> <span>Lunch</span></label>
+                <label class="service-option"><input type="checkbox" value="Kitchen" data-service-option /> <span>Kitchen</span></label>
+                <label class="service-option"><input type="checkbox" value="Dinner" data-service-option /> <span>Dinner</span></label>
+                <label class="service-option"><input type="checkbox" value="Car" data-service-option /> <span>Car</span></label>
+                <label class="service-option"><input type="checkbox" value="Van" data-service-option /> <span>Van</span></label>
               </div>
             </div>
             <div class="field">
@@ -348,6 +382,7 @@
               <select id="request-room-type">
                 <option value="normal">Normal Room</option>
                 <option value="kitchen">Kitchen Room</option>
+                <option value="driver">Driver Room</option>
               </select>
             </div>
             <div>

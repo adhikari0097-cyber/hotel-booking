@@ -10,6 +10,7 @@ const CONFIG = {
 const ROOM_DEFS = [
   { type: "kitchen", label: "Kitchen Room", count: 2, maxPax: 6 },
   { type: "normal", label: "Normal Room", count: 4, maxPax: 4 },
+  { type: "driver", label: "Driver Room", count: 1, maxPax: 4 },
 ];
 
 const TOTAL_ROOMS = ROOM_DEFS.reduce((sum, room) => sum + room.count, 0);
@@ -72,11 +73,16 @@ const loadBookingsBtn = qs("#loadBookings");
 const checkAvailabilityBtn = qs("#checkAvailability");
 const availNormal = qs("#avail-normal");
 const availKitchen = qs("#avail-kitchen");
+const availDriver = qs("#avail-driver");
 const bookedNormal = qs("#booked-normal");
 const bookedKitchen = qs("#booked-kitchen");
+const bookedDriver = qs("#booked-driver");
 const availabilityHint = qs("#availability-hint");
 const kitchenPlanner = qs("#planner-kitchen");
 const normalPlanner = qs("#planner-normal");
+const driverPlanner = qs("#planner-driver");
+const driversTotalInput = qs("#driversTotal");
+const extraGuestsTotalInput = qs("#extraGuestsTotal");
 const accountsList = qs("#accounts-list");
 const accountsEmpty = qs("#accounts-empty");
 const refreshAccountsBtn = qs("#refresh-accounts");
@@ -368,15 +374,19 @@ async function ensureBookingAvailabilityForUpdate(bookingId, values) {
 function getRoomPlan(type, number, defaultNights) {
   const key = getRoomKey(type, number);
   if (!state.roomPlans.has(key)) {
-    state.roomPlans.set(key, { pax: 0, nights: defaultNights });
+    state.roomPlans.set(key, { type, number, pax: 0, nights: defaultNights, extraPax: 0 });
   }
   const plan = state.roomPlans.get(key);
+  plan.type = type;
+  plan.number = number;
   if (plan.nights < 1) plan.nights = defaultNights;
+  if (typeof plan.extraPax !== "number") plan.extraPax = 0;
   return plan;
 }
 
-function getAssignedRoomLabel(room, pax) {
-  return `${room.label} - ${pax} Pax`;
+function getAssignedRoomLabel(room, pax, extraPax = 0) {
+  const totalPax = Number(pax || 0) + Number(extraPax || 0);
+  return `${room.label} - ${totalPax} Pax`;
 }
 
 function normalizeRoomGroup(type) {
@@ -401,10 +411,20 @@ function getRoomTypeDisplay(type) {
       return "Normal Room - 4 Pax";
     case "kitchen-6":
       return "Kitchen Room - 6 Pax";
+    case "driver-1":
+      return "Driver Room - 1 Pax";
+    case "driver-2":
+      return "Driver Room - 2 Pax";
+    case "driver-3":
+      return "Driver Room - 3 Pax";
+    case "driver-4":
+      return "Driver Room - 4 Pax";
     case "normal":
       return "Normal Room";
     case "kitchen":
       return "Kitchen Room";
+    case "driver":
+      return "Driver Room";
     case "4-pax":
       return "Normal Room - 4 Pax";
     case "6-pax":
@@ -891,101 +911,197 @@ async function getAvailability(checkIn, checkOut) {
   return availability;
 }
 
+function buildPaxOptions(maxPax, selectedValue, suffix = "Pax", includeZero = true) {
+  const start = includeZero ? 0 : 1;
+  return Array.from({ length: maxPax - start + 1 }, (_, index) => {
+    const value = index + start;
+    return `<option value="${value}"${value === selectedValue ? " selected" : ""}>${value} ${suffix}</option>`;
+  }).join("");
+}
+
+function buildNightOptions(selectedNights) {
+  return Array.from({ length: 30 }, (_, index) => {
+    const value = index + 1;
+    return `<option value="${value}"${value === selectedNights ? " selected" : ""}>${value} Night${value > 1 ? "s" : ""}</option>`;
+  }).join("");
+}
+
 function updateTotalGuests() {
-  let total = 0;
+  let totalGuests = 0;
+  let totalDrivers = 0;
+  let totalExtraGuests = 0;
+
   state.roomPlans.forEach((plan) => {
-    total += Number(plan.pax || 0);
+    const pax = Number(plan.pax || 0);
+    const extraPax = Number(plan.extraPax || 0);
+    if (plan.type === "driver") totalDrivers += pax;
+    totalGuests += pax + extraPax;
+    totalExtraGuests += extraPax;
   });
-  guestsInput.value = total ? String(total) : "";
+
+  guestsInput.value = totalGuests ? String(totalGuests) : "";
+  driversTotalInput.value = totalDrivers ? String(totalDrivers) : "";
+  extraGuestsTotalInput.value = totalExtraGuests ? String(totalExtraGuests) : "";
+}
+
+function renderPlannerCard(room, isAvailable, booking, plan, defaultNights) {
+  if (!isAvailable) {
+    plan.pax = 0;
+    plan.extraPax = 0;
+    plan.nights = defaultNights;
+  } else if (plan.pax === 0) {
+    plan.nights = defaultNights;
+  }
+
+  const card = document.createElement("article");
+  card.className = `planner-room ${isAvailable ? "available" : "booked"}${plan.pax > 0 && isAvailable ? " selected" : ""}`;
+  card.innerHTML = `
+    <div class="planner-room-head">
+      <div class="planner-room-name">${getRoomLabel(room.type, room.number)}</div>
+      <div class="planner-room-status ${isAvailable ? "available" : "booked"}">${isAvailable ? "Empty" : "Booked"}</div>
+    </div>
+    <div class="planner-room-caption">
+      ${
+        isAvailable
+          ? "Available for selected dates"
+          : `${booking?.guestName || "Occupied"}<br>${booking?.trackCode || "-"} · ${booking?.checkIn || ""} -> ${booking?.checkOut || ""}`
+      }
+    </div>
+    <div class="planner-controls">
+      <div class="planner-control">
+        <label>Nights</label>
+        <select data-role="nights" ${isAvailable ? "" : "disabled"}>${buildNightOptions(plan.nights)}</select>
+      </div>
+      <div class="planner-control">
+        <label>Pax</label>
+        <select data-role="pax" ${isAvailable ? "" : "disabled"}>${buildPaxOptions(room.maxPax, plan.pax)}</select>
+      </div>
+      <div class="planner-control">
+        <label>Extra pax / Kids</label>
+        <select data-role="extra-pax" ${isAvailable ? "" : "disabled"}>${buildPaxOptions(4, Number(plan.extraPax || 0))}</select>
+      </div>
+    </div>
+  `;
+
+  if (isAvailable) {
+    const nightsSelect = card.querySelector('[data-role="nights"]');
+    const paxSelect = card.querySelector('[data-role="pax"]');
+    const extraPaxSelect = card.querySelector('[data-role="extra-pax"]');
+
+    nightsSelect.addEventListener("change", () => {
+      plan.nights = Number(nightsSelect.value);
+    });
+
+    paxSelect.addEventListener("change", () => {
+      plan.pax = Number(paxSelect.value);
+      card.classList.toggle("selected", plan.pax > 0 || Number(plan.extraPax || 0) > 0);
+      updateTotalGuests();
+    });
+
+    extraPaxSelect.addEventListener("change", () => {
+      plan.extraPax = Number(extraPaxSelect.value);
+      card.classList.toggle("selected", plan.pax > 0 || Number(plan.extraPax || 0) > 0);
+      updateTotalGuests();
+    });
+  }
+
+  return card;
+}
+
+function renderDriverRoom(room, isAvailable, booking, plan, defaultNights) {
+  if (!isAvailable) {
+    plan.pax = 0;
+    plan.extraPax = 0;
+    plan.nights = defaultNights;
+  } else if (plan.nights < 1) {
+    plan.nights = defaultNights;
+  }
+
+  const container = document.createElement("div");
+  container.className = `driver-room-panel ${isAvailable ? "available" : "booked"}`;
+  container.innerHTML = `
+    <div class="driver-room-top">
+      <div>
+        <div class="planner-room-name">${room.label}</div>
+        <div class="planner-room-caption">
+          ${
+            isAvailable
+              ? "Choose driver count for selected dates"
+              : `${booking?.guestName || "Occupied"}<br>${booking?.trackCode || "-"} · ${booking?.checkIn || ""} -> ${booking?.checkOut || ""}`
+          }
+        </div>
+      </div>
+      <div class="planner-room-status ${isAvailable ? "available" : "booked"}">${isAvailable ? "Empty" : "Booked"}</div>
+    </div>
+    <div class="driver-room-count">
+      ${Array.from({ length: room.maxPax }, (_, index) => {
+        const value = index + 1;
+        return `<button class="driver-slot-btn${plan.pax === value ? " active" : ""}" type="button" data-driver-count="${value}" ${isAvailable ? "" : "disabled"}>${value}</button>`;
+      }).join("")}
+    </div>
+    <div class="inline-note">Tap the same number again to clear driver selection.</div>
+  `;
+
+  if (isAvailable) {
+    container.querySelectorAll("[data-driver-count]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const count = Number(button.dataset.driverCount);
+        plan.pax = plan.pax === count ? 0 : count;
+        container.querySelectorAll("[data-driver-count]").forEach((item) => {
+          item.classList.toggle("active", Number(item.dataset.driverCount) === plan.pax);
+        });
+        updateTotalGuests();
+      });
+    });
+  }
+
+  return container;
 }
 
 function updateAvailabilityUI(availability) {
   const defaultNights = getNightCount(qs("#checkIn").value, qs("#checkOut").value);
   kitchenPlanner.innerHTML = "";
   normalPlanner.innerHTML = "";
+  driverPlanner.innerHTML = "";
 
   if (!availability) {
     availNormal.textContent = "-";
     availKitchen.textContent = "-";
+    availDriver.textContent = "-";
     bookedNormal.textContent = "-";
     bookedKitchen.textContent = "-";
+    bookedDriver.textContent = "-";
     availabilityHint.textContent = "Select dates to load room planner.";
     state.roomPlans.clear();
     guestsInput.value = "";
+    driversTotalInput.value = "";
+    extraGuestsTotalInput.value = "";
     return;
   }
 
   const normal = availability.normal;
   const kitchen = availability.kitchen;
+  const driver = availability.driver;
   availNormal.textContent = `${normal.available.length} / ${normal.total}`;
   bookedNormal.textContent = `${normal.booked} booked`;
   availKitchen.textContent = `${kitchen.available.length} / ${kitchen.total}`;
   bookedKitchen.textContent = `${kitchen.booked} booked`;
-  availabilityHint.textContent = `Nights default from selected dates: ${defaultNights}. Change per room if needed.`;
+  availDriver.textContent = `${driver.available.length} / ${driver.total}`;
+  bookedDriver.textContent = `${driver.booked} booked`;
+  availabilityHint.textContent = `Nights default from selected dates: ${defaultNights}. Per-room pax, extra pax / kids, and driver count can be adjusted.`;
 
   buildRoomList().forEach((room) => {
     const groupAvailability = availability[room.type];
     const isAvailable = groupAvailability.available.includes(room.number);
     const plan = getRoomPlan(room.type, room.number, defaultNights);
-    if (!isAvailable) {
-      plan.pax = 0;
-      plan.nights = defaultNights;
-    } else if (plan.pax === 0) {
-      plan.nights = defaultNights;
-    }
     const booking = groupAvailability.occupied.get(room.number);
 
-    const card = document.createElement("article");
-    card.className = `planner-room ${isAvailable ? "available" : "booked"}${plan.pax > 0 && isAvailable ? " selected" : ""}`;
-
-    const paxOptions = Array.from({ length: room.maxPax + 1 }, (_, index) =>
-      `<option value="${index}"${index === plan.pax ? " selected" : ""}>${index} Pax</option>`
-    ).join("");
-
-    const nightOptions = Array.from({ length: 30 }, (_, index) => {
-      const value = index + 1;
-      return `<option value="${value}"${value === plan.nights ? " selected" : ""}>${value} Night${value > 1 ? "s" : ""}</option>`;
-    }).join("");
-
-    card.innerHTML = `
-      <div class="planner-room-head">
-        <div class="planner-room-name">${getRoomLabel(room.type, room.number)}</div>
-        <div class="planner-room-status ${isAvailable ? "available" : "booked"}">${isAvailable ? "Empty" : "Booked"}</div>
-      </div>
-      <div class="planner-room-guest">
-        ${
-          isAvailable
-            ? "Available for selected dates"
-            : `${booking?.guestName || "Occupied"}<br>${booking?.checkIn || ""} -> ${booking?.checkOut || ""}`
-        }
-      </div>
-      <div class="planner-controls">
-        <div class="planner-control">
-          <label>Nights</label>
-          <select data-role="nights" ${isAvailable ? "" : "disabled"}>${nightOptions}</select>
-        </div>
-        <div class="planner-control">
-          <label>Pax</label>
-          <select data-role="pax" ${isAvailable ? "" : "disabled"}>${paxOptions}</select>
-        </div>
-      </div>
-    `;
-
-    if (isAvailable) {
-      const nightsSelect = card.querySelector('[data-role="nights"]');
-      const paxSelect = card.querySelector('[data-role="pax"]');
-
-      nightsSelect.addEventListener("change", () => {
-        plan.nights = Number(nightsSelect.value);
-      });
-
-      paxSelect.addEventListener("change", () => {
-        plan.pax = Number(paxSelect.value);
-        card.classList.toggle("selected", plan.pax > 0);
-        updateTotalGuests();
-      });
+    if (room.type === "driver") {
+      driverPlanner.appendChild(renderDriverRoom(room, isAvailable, booking, plan, defaultNights));
+      return;
     }
 
+    const card = renderPlannerCard(room, isAvailable, booking, plan, defaultNights);
     if (room.type === "kitchen") kitchenPlanner.appendChild(card);
     else normalPlanner.appendChild(card);
   });
@@ -2018,18 +2134,32 @@ bookingForm.addEventListener("submit", async (event) => {
     const selectedPlans = buildRoomList()
       .map((room) => {
         const plan = state.roomPlans.get(getRoomKey(room.type, room.number));
-        return plan && Number(plan.pax) > 0
-          ? { room, pax: Number(plan.pax), nights: Number(plan.nights || getNightCount(payload.checkIn, payload.checkOut)) }
+        const totalPlanGuests = Number(plan?.pax || 0) + Number(plan?.extraPax || 0);
+        return plan && totalPlanGuests > 0
+          ? {
+              room,
+              pax: Number(plan.pax || 0),
+              extraPax: Number(plan.extraPax || 0),
+              totalGuests: totalPlanGuests,
+              nights: Number(plan.nights || getNightCount(payload.checkIn, payload.checkOut)),
+            }
           : null;
       })
       .filter(Boolean);
 
     if (!selectedPlans.length) {
-      throw new Error("Select at least one room with pax.");
+      throw new Error("Select at least one room with pax, extra pax / kids, or driver count.");
     }
 
-    const totalGuests = selectedPlans.reduce((sum, plan) => sum + plan.pax, 0);
+    const selectedServices = Array.from(document.querySelectorAll('[data-service-option]:checked')).map((input) => input.value);
+    const totalGuests = selectedPlans.reduce((sum, plan) => sum + plan.totalGuests, 0);
+    const totalDrivers = selectedPlans
+      .filter((plan) => plan.room.type === "driver")
+      .reduce((sum, plan) => sum + plan.pax, 0);
+    const totalExtraGuests = selectedPlans.reduce((sum, plan) => sum + Number(plan.extraPax || 0), 0);
     guestsInput.value = String(totalGuests);
+    driversTotalInput.value = totalDrivers ? String(totalDrivers) : "";
+    extraGuestsTotalInput.value = totalExtraGuests ? String(totalExtraGuests) : "";
     const backupFailures = [];
     const savedTrackCodes = [];
 
@@ -2045,13 +2175,19 @@ bookingForm.addEventListener("submit", async (event) => {
         throw new Error(`${getRoomLabel(plan.room.type, plan.room.number)} is already booked.`);
       }
 
+      const notesParts = [payload.notes?.trim() || ""];
+      if (plan.extraPax > 0) notesParts.push(`Extra pax / kids: ${plan.extraPax}`);
+      if (plan.room.type === "driver" && plan.pax > 0) notesParts.push(`Drivers: ${plan.pax}`);
+      if (selectedServices.length) notesParts.push(`Services: ${selectedServices.join(", ")}`);
+
       const bookingPayload = {
         ...payload,
+        notes: notesParts.filter(Boolean).join(" | "),
         trackCode: "",
-        guests: String(plan.pax),
+        guests: String(plan.totalGuests),
         checkOut: roomCheckOut,
         roomType: plan.room.type,
-        roomTypeLabel: getAssignedRoomLabel(plan.room, plan.pax),
+        roomTypeLabel: getAssignedRoomLabel(plan.room, plan.pax, plan.extraPax),
         roomNumber: plan.room.number,
         roomsNeeded: selectedPlans.length,
       };
