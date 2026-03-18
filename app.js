@@ -8,6 +8,8 @@ const CONFIG = {
   GOOGLE_SHEETS_BACKUP_URL: "/.netlify/functions/proxy",
 };
 
+const RESERVATION_WHATSAPP_NUMBER = "+94719707597";
+
 const ROOM_SERVICE_OPTIONS = ["Breakfast", "Lunch", "Dinner", "Liquor", "Kitchen", "Car", "Van"];
 
 const ROOM_DEFS = [
@@ -2782,6 +2784,55 @@ function exportBookingGroupPdf(groupKey) {
   }, 700);
 }
 
+function normalizeWhatsappPhone(value) {
+  return String(value || "").replace(/[^\d]/g, "");
+}
+
+function buildReservationWhatsappMessage(group) {
+  const roomLines = group.bookings.map((booking) => {
+    const noteMeta = parseBookingNotes(booking.notes);
+    const extraBits = [];
+    if (noteMeta.extraGuests) extraBits.push(`Extra pax/kids ${noteMeta.extraGuests}`);
+    if (noteMeta.drivers) extraBits.push(`Drivers ${noteMeta.drivers}`);
+    return [
+      `${getRoomLabel(normalizeRoomGroup(booking.roomType), booking.roomNumber)}`,
+      booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType),
+      `${Number(booking.guests || 0)} pax`,
+      formatMoney(booking.roomTotal || 0),
+      extraBits.join(" | "),
+    ].filter(Boolean).join(" | ");
+  });
+
+  return [
+    `Reservation Details`,
+    ``,
+    `Track Code: ${group.trackCode || "-"}`,
+    `Customer: ${group.guestName || "Guest"}`,
+    `Phone: ${group.phone || "-"}`,
+    `Booked By: ${group.bookings[0]?.createdByName || "-"}`,
+    `Stay: ${group.checkIn || "-"} -> ${group.checkOut || "-"}`,
+    `Total Pax: ${group.totalGuests || 0}`,
+    `Rooms: ${group.bookings.length || 0}`,
+    `Total Price: ${formatMoney(group.totalPrice || 0)}`,
+    ``,
+    `Room Details:`,
+    ...roomLines.map((line, index) => `${index + 1}. ${line}`),
+  ].join("\n");
+}
+
+function openReservationWhatsapp(groupKey) {
+  const group = state.bookingGroups.get(groupKey);
+  if (!group) {
+    showToast("Booking details not found.", true);
+    return;
+  }
+
+  const phone = normalizeWhatsappPhone(RESERVATION_WHATSAPP_NUMBER);
+  const message = encodeURIComponent(buildReservationWhatsappMessage(group));
+  const url = `https://wa.me/${phone}?text=${message}`;
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
 function isPendingRoomRemovalRequest(request, bookingId) {
   if (!request || request.status !== "pending" || request.reason !== "remove_rooms") return false;
   return Array.isArray(request.requestedRemoveRooms)
@@ -2903,6 +2954,7 @@ function openBookingDetailsModal(groupKey) {
     ${groupServices.length ? `<div class="booking-details-services-panel"><div class="booking-details-panel-title">Services</div>${renderServiceChips(groupServices)}</div>` : ""}
     ${requestHistoryMarkup}
     <div class="booking-details-actions">
+      <button class="action-btn" type="button" data-booking-group-action="whatsapp">WhatsApp</button>
       <button class="action-btn" type="button" data-booking-group-action="pdf">Export PDF</button>
       <button class="primary-btn" type="button" data-booking-group-action="manage">Manage Full Booking</button>
       ${isPendingGroupRemovalRequest(groupRequest)
@@ -2938,6 +2990,12 @@ function openBookingDetailsModal(groupKey) {
   if (pdfBtn) {
     pdfBtn.addEventListener("click", () => {
       exportBookingGroupPdf(group.key);
+    });
+  }
+  const whatsappBtn = bookingDetailsBody.querySelector('[data-booking-group-action="whatsapp"]');
+  if (whatsappBtn) {
+    whatsappBtn.addEventListener("click", () => {
+      openReservationWhatsapp(group.key);
     });
   }
 
@@ -3083,6 +3141,7 @@ function renderBookings(bookings) {
         <div class="booking-group-statuses booking-group-controls booking-group-controls-stack">
           ${requestButton}
           ${requestActions}
+          <button class="secondary-btn" type="button" data-booking-group-whatsapp="${group.key}">WhatsApp</button>
           <button class="secondary-btn" type="button" data-booking-group-pdf="${group.key}">Export PDF</button>
           <button class="secondary-btn booking-type-trigger" type="button" data-booking-group-manage="${group.bookings[0].id}">Booking Type</button>
           <button class="secondary-btn remove-reservation-trigger" type="button" data-booking-group-remove="${group.bookings[0].id}">Remove reservation</button>
@@ -3191,6 +3250,12 @@ function renderBookings(bookings) {
     if (exportPdfBtn) {
       exportPdfBtn.addEventListener("click", () => {
         exportBookingGroupPdf(exportPdfBtn.dataset.bookingGroupPdf);
+      });
+    }
+    const whatsappGroupBtn = card.querySelector("[data-booking-group-whatsapp]");
+    if (whatsappGroupBtn) {
+      whatsappGroupBtn.addEventListener("click", () => {
+        openReservationWhatsapp(whatsappGroupBtn.dataset.bookingGroupWhatsapp);
       });
     }
     const removeReservationBtn = card.querySelector("[data-booking-group-remove]");
