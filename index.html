@@ -86,14 +86,20 @@
 
     <div id="app-shell" class="hidden">
       <header class="app-header">
-        <div>
+        <div class="app-header-main">
           <p class="eyebrow">Hotel Reception</p>
           <h1>Quick Booking</h1>
         </div>
         <div class="header-actions">
-          <div class="status-pill" id="sync-status">Offline</div>
-          <div id="user-chip" class="user-chip"></div>
-          <button id="logout-btn" class="ghost-btn" type="button">Logout</button>
+          <div class="view-mode-toggle app-view-toggle" id="app-view-toggle" aria-label="App view mode">
+            <button id="app-view-mobile" class="view-mode-btn view-mode-btn-active" type="button">Mobile View</button>
+            <button id="app-view-desktop" class="view-mode-btn" type="button">Desktop View</button>
+          </div>
+          <div class="header-meta">
+            <div class="status-pill" id="sync-status">Offline</div>
+            <div id="user-chip" class="user-chip"></div>
+            <button id="logout-btn" class="ghost-btn" type="button">Logout</button>
+          </div>
         </div>
       </header>
 
@@ -315,10 +321,6 @@
           <div class="card" id="booking-list">
             <div class="booking-list-head">
               <h3>Bookings</h3>
-              <div class="view-mode-toggle" id="booking-view-toggle" aria-label="Booking view mode">
-                <button id="booking-view-mobile" class="view-mode-btn view-mode-btn-active" type="button">Mobile View</button>
-                <button id="booking-view-desktop" class="view-mode-btn" type="button">Desktop View</button>
-              </div>
             </div>
             <div class="booking-list-filters">
               <button id="booking-filter-active" class="filter-chip filter-chip-active" type="button">Active</button>

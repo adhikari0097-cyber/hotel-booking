@@ -86,7 +86,7 @@ function toggleHidden(node, hidden) {
 
 function getStoredBookingViewMode() {
   try {
-    return window.localStorage.getItem("booking-view-mode");
+    return window.localStorage.getItem("app-view-mode") || window.localStorage.getItem("booking-view-mode");
   } catch (error) {
     return null;
   }
@@ -99,8 +99,9 @@ function getDefaultBookingViewMode() {
 }
 
 function applyBookingViewMode() {
-  if (!bookingListCard) return;
-  const effectiveMode = state.bookingViewMode === "desktop" && window.innerWidth >= 900 ? "desktop" : "mobile";
+  const effectiveMode = state.bookingViewMode === "desktop" && window.innerWidth >= 980 ? "desktop" : "mobile";
+  appShell?.classList.toggle("view-desktop", effectiveMode === "desktop");
+  appShell?.classList.toggle("view-mobile", effectiveMode !== "desktop");
   bookingListCard.classList.toggle("booking-view-desktop", effectiveMode === "desktop");
   bookingListCard.classList.toggle("booking-view-mobile", effectiveMode !== "desktop");
   bookingViewMobileBtn?.classList.toggle("view-mode-btn-active", state.bookingViewMode === "mobile");
@@ -110,6 +111,7 @@ function applyBookingViewMode() {
 function setBookingViewMode(mode) {
   state.bookingViewMode = mode === "desktop" ? "desktop" : "mobile";
   try {
+    window.localStorage.setItem("app-view-mode", state.bookingViewMode);
     window.localStorage.setItem("booking-view-mode", state.bookingViewMode);
   } catch (error) {
     // Ignore storage failures.
@@ -205,8 +207,8 @@ const guestsInput = qs("#guests");
 const bookingCards = qs("#booking-cards");
 const bookingEmpty = qs("#booking-empty");
 const bookingListCard = qs("#booking-list");
-const bookingViewMobileBtn = qs("#booking-view-mobile");
-const bookingViewDesktopBtn = qs("#booking-view-desktop");
+const bookingViewMobileBtn = qs("#app-view-mobile");
+const bookingViewDesktopBtn = qs("#app-view-desktop");
 const bookingFilterButtons = {
   active: qs("#booking-filter-active"),
   cancelled: qs("#booking-filter-cancelled"),
