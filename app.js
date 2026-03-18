@@ -1062,6 +1062,7 @@ function mapBooking(row) {
     trackCode: row.track_code || "",
     guestName: row.guest_name,
     phone: row.phone,
+    createdByName: row.created_by_name || '',
     checkIn: row.check_in,
     checkOut: row.check_out,
     guests: Number(row.guests || 0),
@@ -1413,6 +1414,7 @@ async function insertBooking(payload) {
       track_code: payload.trackCode || (await getNextTrackCode(payload.status)),
       guest_name: payload.guestName,
       phone: payload.phone,
+      created_by_name: payload.createdByName || state.currentProfile?.full_name || state.currentProfile?.username || '',
       check_in: payload.checkIn,
       check_out: payload.checkOut,
       guests: Number(payload.guests),
@@ -1798,7 +1800,7 @@ function renderRoomStatus(bookingsForDate) {
     item.innerHTML = `
       <div class="room-item-main">
         <span>${room.fullLabel}</span>
-        ${booking ? `<div class="muted">${booking.guestName || "-"}</div><div class="muted">${bookingSummary}</div>` : ""}
+        ${booking ? `<div class="muted">${booking.guestName || "-"}</div><div class="muted"><strong>Booked by:</strong> ${booking.createdByName || "-"}</div><div class="muted">${bookingSummary}</div>` : ""}
       </div>
       <div class="status ${booking ? "status-booked" : "status-available"}">
         ${booking ? "BOOKED" : "AVAILABLE"}
@@ -2036,6 +2038,7 @@ function openBookingDetailsModal(groupKey) {
     <div class="booking-meta booking-meta-compact booking-details-summary">
       <div><strong>Track Code:</strong> ${group.trackCode || "-"}</div>
       <div><strong>Phone:</strong> <a href="tel:${group.phone || ""}">${group.phone || "-"}</a></div>
+      <div><strong>Booked by:</strong> ${group.bookings[0]?.createdByName || "-"}</div>
       <div><strong>Rooms:</strong> ${group.bookings.length}</div>
       <div><strong>Guests:</strong> ${group.totalGuests}</div>
       <div><strong>Dates:</strong> ${group.checkIn} -> ${group.checkOut}</div>
@@ -2219,6 +2222,7 @@ function renderBookings(bookings) {
         </div>
         <div class="booking-group-phone"><strong>Phone:</strong> <a href="tel:${group.phone}">${group.phone || "-"}</a></div>
       </div>
+      <div class="booking-group-created-by muted"><strong>Booked by:</strong> ${group.bookings[0]?.createdByName || "-"}</div>
       ${requestBrief}
       ${group.bookings.length ? `<div class="booking-room-row-services booking-group-services"><span class="booking-room-row-label">Services</span>${renderGroupServiceToggleButtons(group)}</div>` : ""}
       <div class="booking-room-list">${roomRows}</div>
@@ -3307,6 +3311,7 @@ async function handleRequestSubmit(event) {
             trackCode: state.activeBooking.trackCode || "",
             guestName: payload.guestName,
             phone: payload.phone,
+      created_by_name: payload.createdByName || state.currentProfile?.full_name || state.currentProfile?.username || '',
             checkIn: payload.checkIn,
             checkOut: payload.checkOut,
             guests: String(pax),
@@ -3361,6 +3366,7 @@ async function handleRequestSubmit(event) {
           await updateBooking(bookingRow.id, {
             guestName: payload.guestName,
             phone: payload.phone,
+      created_by_name: payload.createdByName || state.currentProfile?.full_name || state.currentProfile?.username || '',
             checkIn: payload.checkIn,
             checkOut: payload.checkOut,
             roomType: bookingRow.roomType,

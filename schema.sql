@@ -5,6 +5,7 @@ create table if not exists public.bookings (
   track_code text,
   guest_name text not null,
   phone text not null,
+  created_by_name text not null default '',
   check_in date not null,
   check_out date not null,
   guests integer not null check (guests > 0),
@@ -18,6 +19,7 @@ create table if not exists public.bookings (
 );
 
 alter table public.bookings add column if not exists track_code text;
+alter table public.bookings add column if not exists created_by_name text not null default '';
 
 drop index if exists bookings_track_code_idx;
 
