@@ -1854,6 +1854,32 @@ async function fetchBookingsForPeriod(start, end) {
   return (data || []).map(mapBooking);
 }
 
+async function fetchBookingsByIds(ids = []) {
+  ensureSupabase();
+  const normalizedIds = Array.from(new Set((ids || []).filter(Boolean).map(String)));
+  if (!normalizedIds.length) return [];
+  const { data, error } = await state.supabase
+    .from(CONFIG.SUPABASE_TABLE)
+    .select("*")
+    .in("id", normalizedIds);
+
+  if (error) throw new Error(error.message);
+  return (data || []).map(mapBooking);
+}
+
+async function fetchBookingsByTrackCode(trackCode) {
+  ensureSupabase();
+  if (!trackCode) return [];
+  const { data, error } = await state.supabase
+    .from(CONFIG.SUPABASE_TABLE)
+    .select("*")
+    .eq("track_code", trackCode)
+    .order("room_number", { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return (data || []).map(mapBooking);
+}
+
 function getStatusTrackPrefix(status) {
   switch (String(status || "").trim().toUpperCase()) {
     case "BKC":
@@ -3371,7 +3397,9 @@ async function approveRequest(requestId) {
 
   if (request.reason === "additional_services") {
     const groupTrackCode = request.booking?.trackCode || "";
-    const groupBookings = Array.from(state.bookingMap.values()).filter((booking) => booking.trackCode === groupTrackCode);
+    const groupBookings = groupTrackCode
+      ? await fetchBookingsByTrackCode(groupTrackCode)
+      : [];
     const targetBookings = request.requestedScope === "group"
       ? (groupBookings.length ? groupBookings : (request.booking ? [request.booking] : []))
       : (request.booking ? [request.booking] : []);
@@ -3401,8 +3429,13 @@ async function approveRequest(requestId) {
       throw new Error("No rooms were selected for removal.");
     }
 
+    const fetchedBookings = await fetchBookingsByIds(removeRooms.map((room) => room.bookingId));
+    const fetchedById = new Map(fetchedBookings.map((booking) => [String(booking.id), booking]));
+
     for (const roomConfig of removeRooms) {
-      const bookingRow = state.bookingMap.get(roomConfig.bookingId);
+      const bookingRow = fetchedById.get(String(roomConfig.bookingId))
+        || state.bookingMap.get(roomConfig.bookingId)
+        || (String(request.booking?.id || "") === String(roomConfig.bookingId) ? request.booking : null);
       if (!bookingRow) continue;
       await updateBooking(bookingRow.id, {
         guestName: bookingRow.guestName,
@@ -3450,7 +3483,9 @@ async function approveRequest(requestId) {
       : (request.requestedBookingStatus || request.booking?.status || "Campaign");
 
   const targetTrackCode = request.booking?.trackCode || "";
-  const grouped = Array.from(state.bookingMap.values()).filter((booking) => booking.trackCode === targetTrackCode);
+  const grouped = targetTrackCode
+    ? await fetchBookingsByTrackCode(targetTrackCode)
+    : [];
   const targetBookings = request.requestedScope === "group"
     ? (grouped.length ? grouped : (request.booking ? [request.booking] : []))
     : (request.booking ? [request.booking] : []);
