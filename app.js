@@ -68,6 +68,15 @@ function setText(node, text) {
   if (node) node.textContent = text;
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function toggleHidden(node, hidden) {
   if (node) node.classList.toggle("hidden", hidden);
 }
@@ -2607,6 +2616,135 @@ function renderBookingRoomFacts(booking) {
   `;
 }
 
+function buildBookingPdfMarkup(group) {
+  const allServices = Array.from(new Set(group.bookings.flatMap((booking) => parseBookingNotes(booking.notes).services)));
+  const roomCards = group.bookings.map((booking) => {
+    const noteMeta = parseBookingNotes(booking.notes);
+    const details = [
+      booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType),
+      `${Number(booking.guests || 0)} guest(s)`,
+      `${booking.checkIn || "-"} -> ${booking.checkOut || "-"}`,
+      formatMoney(booking.roomTotal || 0),
+    ];
+    if (noteMeta.extraGuests) details.push(`Extra pax / kids: ${noteMeta.extraGuests}`);
+    if (noteMeta.drivers) details.push(`Drivers: ${noteMeta.drivers}`);
+
+    return `
+      <section class="pdf-room-card">
+        <div class="pdf-room-head">
+          <h3>${escapeHtml(getRoomLabel(normalizeRoomGroup(booking.roomType), booking.roomNumber))}</h3>
+          <span>${escapeHtml(booking.status || "Active")}</span>
+        </div>
+        <div class="pdf-room-grid">
+          <div><strong>Room Type</strong><span>${escapeHtml(booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType))}</span></div>
+          <div><strong>Pax Count</strong><span>${escapeHtml(`${Number(booking.guests || 0)} guest(s)`)}</span></div>
+          <div><strong>Room Price</strong><span>${escapeHtml(formatMoney(booking.roomTotal || 0))}</span></div>
+          <div><strong>Stay</strong><span>${escapeHtml(`${booking.checkIn || "-"} -> ${booking.checkOut || "-"}`)}</span></div>
+        </div>
+        <div class="pdf-room-meta">${escapeHtml(details.join(" | "))}</div>
+        ${noteMeta.otherNotes.length ? `<div class="pdf-notes"><strong>Notes:</strong> ${escapeHtml(noteMeta.otherNotes.join(" | "))}</div>` : ""}
+      </section>
+    `;
+  }).join("");
+
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>${escapeHtml(group.trackCode || "Reservation")} PDF</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 0; background: #f6f1e7; color: #173d35; }
+          .pdf-shell { max-width: 900px; margin: 0 auto; padding: 28px; }
+          .pdf-card { background: #fff; border: 1px solid #e8ddc9; border-radius: 18px; padding: 22px; }
+          .pdf-kicker { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #7f725d; margin: 0 0 6px; }
+          .pdf-title-row { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 18px; }
+          .pdf-title-row h1 { margin: 0 0 6px; font-size: 28px; }
+          .pdf-title-row p { margin: 0; color: #5f6f6b; }
+          .pdf-badge { border: 1px solid #d7cab2; border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 700; background: #f9f3e4; }
+          .pdf-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+          .pdf-summary div { border: 1px solid #e8ddc9; border-radius: 14px; padding: 12px 14px; background: #fcfaf6; }
+          .pdf-summary strong { display: block; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #7f725d; margin-bottom: 6px; }
+          .pdf-summary span { font-size: 17px; font-weight: 700; color: #173d35; word-break: break-word; }
+          .pdf-services { margin-bottom: 18px; }
+          .pdf-services strong { display: block; margin-bottom: 8px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #7f725d; }
+          .pdf-chip-list { display: flex; flex-wrap: wrap; gap: 8px; }
+          .pdf-chip { border: 1px solid #e0d1b0; border-radius: 999px; padding: 8px 12px; background: #fff9ed; font-size: 12px; font-weight: 700; color: #8b6d2a; }
+          .pdf-room-list { display: grid; gap: 14px; }
+          .pdf-room-card { border: 1px solid #e8ddc9; border-radius: 16px; padding: 16px; background: #fff; }
+          .pdf-room-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 12px; }
+          .pdf-room-head h3 { margin: 0; font-size: 18px; }
+          .pdf-room-head span { padding: 6px 10px; border-radius: 999px; background: #e7f0ea; color: #1f6c4d; font-size: 12px; font-weight: 700; }
+          .pdf-room-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+          .pdf-room-grid div { border: 1px solid #eee5d6; border-radius: 12px; padding: 10px 12px; background: #fcfaf6; }
+          .pdf-room-grid strong { display: block; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #7f725d; margin-bottom: 4px; }
+          .pdf-room-grid span { font-size: 14px; font-weight: 700; color: #173d35; }
+          .pdf-room-meta, .pdf-notes { margin-top: 10px; font-size: 13px; color: #4d5f5a; line-height: 1.5; }
+          @media print {
+            body { background: #fff; }
+            .pdf-shell { padding: 0; }
+            .pdf-card { border: 0; border-radius: 0; padding: 0; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="pdf-shell">
+          <div class="pdf-card">
+            <p class="pdf-kicker">Reservation Export</p>
+            <div class="pdf-title-row">
+              <div>
+                <h1>${escapeHtml(group.trackCode || "-")}</h1>
+                <p>${escapeHtml(group.guestName || "Guest")} · ${escapeHtml(group.phone || "-")}</p>
+              </div>
+              <div class="pdf-badge">${escapeHtml(group.statuses.size === 1 ? Array.from(group.statuses)[0] : "Mixed")}</div>
+            </div>
+            <div class="pdf-summary">
+              <div><strong>Customer</strong><span>${escapeHtml(group.guestName || "Guest")}</span></div>
+              <div><strong>Booked By</strong><span>${escapeHtml(group.bookings[0]?.createdByName || "-")}</span></div>
+              <div><strong>Phone</strong><span>${escapeHtml(group.phone || "-")}</span></div>
+              <div><strong>Stay</strong><span>${escapeHtml(`${group.checkIn || "-"} -> ${group.checkOut || "-"}`)}</span></div>
+              <div><strong>Total Pax</strong><span>${escapeHtml(String(group.totalGuests || 0))}</span></div>
+              <div><strong>Rooms</strong><span>${escapeHtml(String(group.bookings.length || 0))}</span></div>
+              <div><strong>Total Price</strong><span>${escapeHtml(formatMoney(group.totalPrice || 0))}</span></div>
+              <div><strong>Exported At</strong><span>${escapeHtml(new Date().toLocaleString("en-GB"))}</span></div>
+            </div>
+            ${allServices.length ? `
+              <div class="pdf-services">
+                <strong>Services</strong>
+                <div class="pdf-chip-list">${allServices.map((service) => `<span class="pdf-chip">${escapeHtml(service)}</span>`).join("")}</div>
+              </div>
+            ` : ""}
+            <div class="pdf-room-list">${roomCards}</div>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+}
+
+function exportBookingGroupPdf(groupKey) {
+  const group = state.bookingGroups.get(groupKey);
+  if (!group) {
+    showToast("Booking details not found.", true);
+    return;
+  }
+
+  const printWindow = window.open("", "_blank", "noopener,noreferrer,width=960,height=900");
+  if (!printWindow) {
+    showToast("Popup blocked. Allow popups and try again.", true);
+    return;
+  }
+
+  printWindow.document.open();
+  printWindow.document.write(buildBookingPdfMarkup(group));
+  printWindow.document.close();
+  printWindow.focus();
+  window.setTimeout(() => {
+    printWindow.print();
+  }, 300);
+}
+
 function isPendingRoomRemovalRequest(request, bookingId) {
   if (!request || request.status !== "pending" || request.reason !== "remove_rooms") return false;
   return Array.isArray(request.requestedRemoveRooms)
@@ -2728,6 +2866,7 @@ function openBookingDetailsModal(groupKey) {
     ${groupServices.length ? `<div class="booking-details-services-panel"><div class="booking-details-panel-title">Services</div>${renderServiceChips(groupServices)}</div>` : ""}
     ${requestHistoryMarkup}
     <div class="booking-details-actions">
+      <button class="action-btn" type="button" data-booking-group-action="pdf">Export PDF</button>
       <button class="primary-btn" type="button" data-booking-group-action="manage">Manage Full Booking</button>
       ${isPendingGroupRemovalRequest(groupRequest)
         ? `<span class="booking-tag tag-pending">Pending Remove</span>`
@@ -2756,6 +2895,12 @@ function openBookingDetailsModal(groupKey) {
         reason: "delete_booking",
         mode: "request",
       });
+    });
+  }
+  const pdfBtn = bookingDetailsBody.querySelector('[data-booking-group-action="pdf"]');
+  if (pdfBtn) {
+    pdfBtn.addEventListener("click", () => {
+      exportBookingGroupPdf(group.key);
     });
   }
 
@@ -2901,6 +3046,7 @@ function renderBookings(bookings) {
         <div class="booking-group-statuses booking-group-controls booking-group-controls-stack">
           ${requestButton}
           ${requestActions}
+          <button class="secondary-btn" type="button" data-booking-group-pdf="${group.key}">Export PDF</button>
           <button class="secondary-btn booking-type-trigger" type="button" data-booking-group-manage="${group.bookings[0].id}">Booking Type</button>
           <button class="secondary-btn remove-reservation-trigger" type="button" data-booking-group-remove="${group.bookings[0].id}">Remove reservation</button>
         </div>
@@ -3002,6 +3148,12 @@ function renderBookings(bookings) {
         } catch (error) {
           showToast(error.message || "Unable to open booking type editor.", true);
         }
+      });
+    }
+    const exportPdfBtn = card.querySelector("[data-booking-group-pdf]");
+    if (exportPdfBtn) {
+      exportPdfBtn.addEventListener("click", () => {
+        exportBookingGroupPdf(exportPdfBtn.dataset.bookingGroupPdf);
       });
     }
     const removeReservationBtn = card.querySelector("[data-booking-group-remove]");
