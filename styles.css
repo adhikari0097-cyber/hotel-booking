@@ -2204,6 +2204,42 @@ h4 {
   cursor: pointer;
 }
 
+.action-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.action-btn-icon::before {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.action-btn-icon-whatsapp::before {
+  content: "\2709";
+}
+
+.action-btn-icon-pdf::before {
+  content: "\2399";
+}
+
+.action-btn-icon-view::before {
+  content: "\25F3";
+}
+
+.action-btn-icon-price::before {
+  content: "\20A8";
+}
+
+.action-btn-icon-edit::before {
+  content: "\270E";
+}
+
+.action-btn-icon-remove::before {
+  content: "\2715";
+}
+
 .action-btn.danger {
   border-color: #e5b7b2;
   color: var(--danger);

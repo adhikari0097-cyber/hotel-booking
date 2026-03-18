@@ -2911,7 +2911,7 @@ function openBookingDetailsModal(groupKey) {
           </div>
           <div class="booking-room-row-actions">
             ${removeControl}
-            <button class="action-btn" type="button" data-booking-detail-action="edit" data-booking-id="${booking.id}">
+            <button class="action-btn action-btn-icon action-btn-icon-edit" type="button" data-booking-detail-action="edit" data-booking-id="${booking.id}">
               Update
             </button>
           </div>
@@ -2954,8 +2954,8 @@ function openBookingDetailsModal(groupKey) {
     ${groupServices.length ? `<div class="booking-details-services-panel"><div class="booking-details-panel-title">Services</div>${renderServiceChips(groupServices)}</div>` : ""}
     ${requestHistoryMarkup}
     <div class="booking-details-actions">
-      <button class="action-btn" type="button" data-booking-group-action="whatsapp">WhatsApp</button>
-      <button class="action-btn" type="button" data-booking-group-action="pdf">Export PDF</button>
+      <button class="action-btn action-btn-icon action-btn-icon-whatsapp" type="button" data-booking-group-action="whatsapp">WhatsApp</button>
+      <button class="action-btn action-btn-icon action-btn-icon-pdf" type="button" data-booking-group-action="pdf">Export PDF</button>
       <button class="primary-btn" type="button" data-booking-group-action="manage">Manage Full Booking</button>
       ${isPendingGroupRemovalRequest(groupRequest)
         ? `<span class="booking-tag tag-pending">Pending Remove</span>`
@@ -3089,7 +3089,7 @@ function renderBookings(bookings) {
         if (noteMeta.otherNotes.length) roomNotes.push(...noteMeta.otherNotes);
         const removeControl = isPendingRoomRemovalRequest(bookingRequest, booking.id)
           ? `<span class="booking-tag tag-pending">Pending Remove</span>`
-          : `<button class="action-btn subtle-btn" type="button" data-booking-remove="${booking.id}">Remove Room</button>`;
+          : `<button class="action-btn subtle-btn action-btn-icon action-btn-icon-remove" type="button" data-booking-remove="${booking.id}">Remove Room</button>`;
         return `
           <div class="booking-room-row">
             <div class="booking-room-row-main">
@@ -3102,13 +3102,13 @@ function renderBookings(bookings) {
             </div>
             <div class="booking-room-row-actions">
               ${removeControl}
-              <button class="action-btn" type="button" data-booking-updates="${group.key}">
+              <button class="action-btn action-btn-icon action-btn-icon-view" type="button" data-booking-updates="${group.key}">
                 View Updates
               </button>
-              <button class="action-btn" type="button" data-booking-price-action="${booking.id}">
+              <button class="action-btn action-btn-icon action-btn-icon-price" type="button" data-booking-price-action="${booking.id}">
                 Change Price
               </button>
-              <button class="action-btn" type="button" data-booking-action="edit" data-booking-id="${booking.id}">
+              <button class="action-btn action-btn-icon action-btn-icon-edit" type="button" data-booking-action="edit" data-booking-id="${booking.id}">
                 Update
               </button>
             </div>
@@ -3141,10 +3141,10 @@ function renderBookings(bookings) {
         <div class="booking-group-statuses booking-group-controls booking-group-controls-stack">
           ${requestButton}
           ${requestActions}
-          <button class="secondary-btn" type="button" data-booking-group-whatsapp="${group.key}">WhatsApp</button>
-          <button class="secondary-btn" type="button" data-booking-group-pdf="${group.key}">Export PDF</button>
-          <button class="secondary-btn booking-type-trigger" type="button" data-booking-group-manage="${group.bookings[0].id}">Booking Type</button>
-          <button class="secondary-btn remove-reservation-trigger" type="button" data-booking-group-remove="${group.bookings[0].id}">Remove reservation</button>
+          <button class="secondary-btn action-btn-icon action-btn-icon-whatsapp" type="button" data-booking-group-whatsapp="${group.key}">WhatsApp</button>
+          <button class="secondary-btn action-btn-icon action-btn-icon-pdf" type="button" data-booking-group-pdf="${group.key}">Export PDF</button>
+          <button class="secondary-btn booking-type-trigger action-btn-icon action-btn-icon-edit" type="button" data-booking-group-manage="${group.bookings[0].id}">Booking Type</button>
+          <button class="secondary-btn remove-reservation-trigger action-btn-icon action-btn-icon-remove" type="button" data-booking-group-remove="${group.bookings[0].id}">Remove reservation</button>
         </div>
       </div>
       ${renderBookingGroupOverview(group, groupStatus)}
