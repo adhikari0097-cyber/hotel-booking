@@ -638,7 +638,7 @@ function populateRequestGuestsOptions(roomType, selectedGuests) {
 async function renderAdditionalRoomOptions(booking) {
   state.modalExtraRooms = new Map();
   if (!requestExtraRooms) return;
-  requestExtraRooms.innerHTML = "";
+  setHTML(requestExtraRooms, "");
   const bookings = await fetchBookingsForPeriod(booking.checkIn, booking.checkOut);
   const occupied = new Map();
 
@@ -654,7 +654,7 @@ async function renderAdditionalRoomOptions(booking) {
   });
 
   if (!selectableRooms.length) {
-    requestExtraRooms.innerHTML = `<p class="inline-note">No rooms configured.</p>`;
+    setHTML(requestExtraRooms, `<p class="inline-note">No rooms configured.</p>`);
     return;
   }
 
@@ -689,6 +689,11 @@ async function renderAdditionalRoomOptions(booking) {
     const checkbox = item.querySelector("input");
     const paxSelect = item.querySelector("[data-extra-room-pax]");
 
+    if (!checkbox || !paxSelect) {
+      requestExtraRooms.appendChild(item);
+      return;
+    }
+
     checkbox.addEventListener("change", (event) => {
       paxSelect.disabled = !event.target.checked;
       if (event.target.checked) {
@@ -717,13 +722,17 @@ async function renderAdditionalRoomOptions(booking) {
 function renderServiceRequestOptions(booking) {
   state.modalRequestedServices = new Set(extractServicesFromNotes(booking.notes));
   if (!requestServices) return;
-  requestServices.innerHTML = "";
+  setHTML(requestServices, "");
   ROOM_SERVICE_OPTIONS.forEach((service) => {
     const id = `request-service-${service.toLowerCase().replace(/\s+/g, "-")}`;
     const item = document.createElement("label");
     item.className = "service-option";
     item.innerHTML = `<input id="${id}" type="checkbox" value="${service}" ${state.modalRequestedServices.has(service) ? "checked" : ""} /> <span>${service}</span>`;
     const checkbox = item.querySelector("input");
+    if (!checkbox) {
+      requestServices.appendChild(item);
+      return;
+    }
     checkbox.addEventListener("change", () => {
       if (checkbox.checked) state.modalRequestedServices.add(service);
       else state.modalRequestedServices.delete(service);
@@ -735,12 +744,12 @@ function renderServiceRequestOptions(booking) {
 function renderRemoveRoomOptions(booking) {
   state.modalRemoveRooms = new Map();
   if (!requestRemoveRooms) return;
-  requestRemoveRooms.innerHTML = "";
+  setHTML(requestRemoveRooms, "");
   const group = state.requestScope === "group"
     ? (state.activeBookingGroup.length ? state.activeBookingGroup : [booking])
     : [booking];
   if (!group.length) {
-    requestRemoveRooms.innerHTML = `<p class="inline-note">No rooms found for this booking.</p>`;
+    setHTML(requestRemoveRooms, `<p class="inline-note">No rooms found for this booking.</p>`);
     return;
   }
 
@@ -766,6 +775,10 @@ function renderRemoveRoomOptions(booking) {
       </div>
     `;
     const checkbox = option.querySelector("input");
+    if (!checkbox) {
+      requestRemoveRooms.appendChild(option);
+      return;
+    }
     checkbox.addEventListener("change", () => {
       if (checkbox.checked) {
         state.modalRemoveRooms.set(key, {
@@ -805,11 +818,11 @@ function serializeBookingRoomEdits() {
 function renderBookingRoomEditors(booking) {
   state.modalBookingRoomEdits = new Map();
   if (!requestBookingRooms) return;
-  requestBookingRooms.innerHTML = "";
+  setHTML(requestBookingRooms, "");
   const group = state.activeBookingGroup.length ? state.activeBookingGroup : [booking];
 
   if (!group.length) {
-    requestBookingRooms.innerHTML = `<p class="inline-note">No rooms found for this booking.</p>`;
+    setHTML(requestBookingRooms, `<p class="inline-note">No rooms found for this booking.</p>`);
     return;
   }
 
@@ -834,18 +847,18 @@ function renderBookingRoomEditors(booking) {
       <div class="field grid-2 compact-grid">
         <div>
           <label>Room Group</label>
-          <select data-booking-room-type="${item.id}">
+          <select data-booking-room-type>
             ${ROOM_DEFS.map((def) => `<option value="${def.type}" ${def.type === roomEdit.roomType ? "selected" : ""}>${def.label}</option>`).join("")}
           </select>
         </div>
         <div>
           <label>Room Number</label>
-          <select data-booking-room-number="${item.id}"></select>
+          <select data-booking-room-number></select>
         </div>
       </div>
       <div class="field compact-field">
         <label>Pax Count</label>
-        <select data-booking-room-guests="${item.id}">${paxOptions}</select>
+        <select data-booking-room-guests>${paxOptions}</select>
       </div>
       <div class="booking-room-service-editor">
         <span class="booking-room-row-label">Services</span>
@@ -854,7 +867,7 @@ function renderBookingRoomEditors(booking) {
             <button
               class="service-chip service-chip-toggle ${roomEdit.services.includes(service) ? "service-chip-active" : "service-chip-inactive"}"
               type="button"
-              data-booking-room-service="${item.id}"
+              data-booking-room-service
               data-service-name="${service}"
               aria-pressed="${roomEdit.services.includes(service) ? "true" : "false"}"
             >
@@ -866,24 +879,24 @@ function renderBookingRoomEditors(booking) {
       </div>
     `;
 
-    const roomTypeSelect = option.querySelector(`[data-booking-room-type="${item.id}"]`);
-    const roomNumberSelect = option.querySelector(`[data-booking-room-number="${item.id}"]`);
-    const paxSelect = option.querySelector(`[data-booking-room-guests="${item.id}"]`);
+    const roomTypeSelect = option.querySelector("[data-booking-room-type]");
+    const roomNumberSelect = option.querySelector("[data-booking-room-number]");
+    const paxSelect = option.querySelector("[data-booking-room-guests]");
 
     const syncRoomNumbers = () => {
       if (!roomTypeSelect || !roomNumberSelect || !paxSelect) return;
       const selectedType = roomTypeSelect.value;
       const def = getRoomDef(selectedType);
-      roomNumberSelect.innerHTML = Array.from({ length: def?.count || 0 }, (_, index) => {
+      setHTML(roomNumberSelect, Array.from({ length: def?.count || 0 }, (_, index) => {
         const number = index + 1;
         const selected = number === Number(state.modalBookingRoomEdits.get(String(item.id))?.roomNumber || 1) ? "selected" : "";
         return `<option value="${number}" ${selected}>Room ${number}</option>`;
-      }).join("");
-      paxSelect.innerHTML = Array.from({ length: def?.maxPax || 6 }, (_, index) => {
+      }).join(""));
+      setHTML(paxSelect, Array.from({ length: def?.maxPax || 6 }, (_, index) => {
         const pax = index + 1;
         const selected = pax === Number(state.modalBookingRoomEdits.get(String(item.id))?.guests || 1) ? "selected" : "";
         return `<option value="${pax}" ${selected}>${pax} Pax</option>`;
-      }).join("");
+      }).join(""));
     };
 
     syncRoomNumbers();
@@ -916,7 +929,7 @@ function renderBookingRoomEditors(booking) {
       });
     });
 
-    option.querySelectorAll(`[data-booking-room-service="${item.id}"]`).forEach((button) => {
+    option.querySelectorAll(`[data-booking-room-service]`).forEach((button) => {
       button.addEventListener("click", () => {
         const current = state.modalBookingRoomEdits.get(String(item.id));
         const nextServices = new Set(current?.services || []);
@@ -1977,6 +1990,7 @@ function isPendingGroupRemovalRequest(request) {
 }
 
 function preselectRemoveRoomIds(bookingIds) {
+  if (!requestRemoveRooms) return;
   const bookingIdSet = new Set((bookingIds || []).map(String));
   requestRemoveRooms.querySelectorAll("[data-remove-booking-id]").forEach((checkbox) => {
     const key = String(checkbox.dataset.removeBookingId);
