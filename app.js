@@ -597,6 +597,7 @@ function renderRoomServiceAssignments() {
 }
 
 function populateRequestRoomNumbers(roomType, selectedNumber) {
+  if (!requestRoomNumberInput) return;
   const def = getRoomDef(normalizeRoomGroup(roomType));
   const count = def?.count || 0;
   requestRoomNumberInput.innerHTML = Array.from({ length: count }, (_, index) => {
@@ -607,6 +608,7 @@ function populateRequestRoomNumbers(roomType, selectedNumber) {
 
 async function renderAdditionalRoomOptions(booking) {
   state.modalExtraRooms = new Map();
+  if (!requestExtraRooms) return;
   requestExtraRooms.innerHTML = "";
   const bookings = await fetchBookingsForPeriod(booking.checkIn, booking.checkOut);
   const occupied = new Map();
@@ -685,6 +687,7 @@ async function renderAdditionalRoomOptions(booking) {
 
 function renderServiceRequestOptions(booking) {
   state.modalRequestedServices = new Set(extractServicesFromNotes(booking.notes));
+  if (!requestServices) return;
   requestServices.innerHTML = "";
   ROOM_SERVICE_OPTIONS.forEach((service) => {
     const id = `request-service-${service.toLowerCase().replace(/\s+/g, "-")}`;
@@ -702,6 +705,7 @@ function renderServiceRequestOptions(booking) {
 
 function renderRemoveRoomOptions(booking) {
   state.modalRemoveRooms = new Map();
+  if (!requestRemoveRooms) return;
   requestRemoveRooms.innerHTML = "";
   const group = state.requestScope === "group"
     ? (state.activeBookingGroup.length ? state.activeBookingGroup : [booking])
@@ -771,6 +775,7 @@ function serializeBookingRoomEdits() {
 
 function renderBookingRoomEditors(booking) {
   state.modalBookingRoomEdits = new Map();
+  if (!requestBookingRooms) return;
   requestBookingRooms.innerHTML = "";
   const group = state.activeBookingGroup.length ? state.activeBookingGroup : [booking];
 
@@ -837,6 +842,7 @@ function renderBookingRoomEditors(booking) {
     const paxSelect = option.querySelector(`[data-booking-room-guests="${item.id}"]`);
 
     const syncRoomNumbers = () => {
+      if (!roomTypeSelect || !roomNumberSelect || !paxSelect) return;
       const selectedType = roomTypeSelect.value;
       const def = getRoomDef(selectedType);
       roomNumberSelect.innerHTML = Array.from({ length: def?.count || 0 }, (_, index) => {
@@ -853,7 +859,7 @@ function renderBookingRoomEditors(booking) {
 
     syncRoomNumbers();
 
-    roomTypeSelect.addEventListener("change", () => {
+    roomTypeSelect?.addEventListener("change", () => {
       const current = state.modalBookingRoomEdits.get(String(item.id));
       const def = getRoomDef(roomTypeSelect.value);
       state.modalBookingRoomEdits.set(String(item.id), {
@@ -865,7 +871,7 @@ function renderBookingRoomEditors(booking) {
       syncRoomNumbers();
     });
 
-    roomNumberSelect.addEventListener("change", () => {
+    roomNumberSelect?.addEventListener("change", () => {
       const current = state.modalBookingRoomEdits.get(String(item.id));
       state.modalBookingRoomEdits.set(String(item.id), {
         ...current,
@@ -873,7 +879,7 @@ function renderBookingRoomEditors(booking) {
       });
     });
 
-    paxSelect.addEventListener("change", () => {
+    paxSelect?.addEventListener("change", () => {
       const current = state.modalBookingRoomEdits.get(String(item.id));
       state.modalBookingRoomEdits.set(String(item.id), {
         ...current,
@@ -2333,10 +2339,10 @@ function closeRequestModal() {
   state.modalRemoveRooms = new Map();
   state.modalBookingRoomEdits = new Map();
   state.modalRequestedServices = new Set();
-  requestExtraRooms.innerHTML = "";
-  requestServices.innerHTML = "";
-  requestRemoveRooms.innerHTML = "";
-  requestBookingRooms.innerHTML = "";
+  if (requestExtraRooms) requestExtraRooms.innerHTML = "";
+  if (requestServices) requestServices.innerHTML = "";
+  if (requestRemoveRooms) requestRemoveRooms.innerHTML = "";
+  if (requestBookingRooms) requestBookingRooms.innerHTML = "";
   state.modalMode = "request";
 }
 
