@@ -21,6 +21,7 @@ create table if not exists public.bookings (
   base_room_total numeric(12,2) not null default 0,
   offer_percentage numeric(8,2) not null default 0,
   advance_paid boolean not null default false,
+  advance_amount numeric(12,2) not null default 0,
   room_total numeric(12,2) not null default 0,
   notes text not null default '',
   booking_status text not null,
@@ -37,6 +38,7 @@ alter table public.bookings add column if not exists weekday_nights integer not 
 alter table public.bookings add column if not exists base_room_total numeric(12,2) not null default 0;
 alter table public.bookings add column if not exists offer_percentage numeric(8,2) not null default 0;
 alter table public.bookings add column if not exists advance_paid boolean not null default false;
+alter table public.bookings add column if not exists advance_amount numeric(12,2) not null default 0;
 alter table public.bookings add column if not exists room_total numeric(12,2) not null default 0;
 
 drop index if exists bookings_track_code_idx;
