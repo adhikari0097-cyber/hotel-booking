@@ -127,6 +127,8 @@ const requestCheckOutInput = qs("#request-check-out");
 const requestDateHelp = qs("#request-date-help");
 const requestRoomTypeInput = qs("#request-room-type");
 const requestRoomNumberInput = qs("#request-room-number");
+const requestGuestsField = qs("#request-guests-field");
+const requestGuestsInput = qs("#request-guests");
 const requestExtraRoomsSection = qs("#request-extra-rooms-section");
 const requestExtraRooms = qs("#request-extra-rooms");
 const requestServicesSection = qs("#request-services-section");
@@ -603,6 +605,17 @@ function populateRequestRoomNumbers(roomType, selectedNumber) {
   requestRoomNumberInput.innerHTML = Array.from({ length: count }, (_, index) => {
     const value = index + 1;
     return `<option value="${value}"${Number(selectedNumber) === value ? " selected" : ""}>Room ${value}</option>`;
+  }).join("");
+}
+
+function populateRequestGuestsOptions(roomType, selectedGuests) {
+  if (!requestGuestsInput) return;
+  const def = getRoomDef(normalizeRoomGroup(roomType));
+  const maxPax = def?.maxPax || 1;
+  const chosenGuests = Math.min(Math.max(Number(selectedGuests) || 1, 1), maxPax);
+  requestGuestsInput.innerHTML = Array.from({ length: maxPax }, (_, index) => {
+    const pax = index + 1;
+    return `<option value="${pax}"${pax === chosenGuests ? " selected" : ""}>${pax} Pax</option>`;
   }).join("");
 }
 
@@ -2366,6 +2379,7 @@ async function openRequestModal(bookingId, mode, scope = "single") {
   requestCheckOutInput.value = booking.checkOut || "";
   requestRoomTypeInput.value = normalizeRoomGroup(booking.roomType) || "normal";
   populateRequestRoomNumbers(requestRoomTypeInput.value, booking.roomNumber);
+  populateRequestGuestsOptions(requestRoomTypeInput.value, booking.guests || 1);
   requestStatusInput.value = booking.status || "Campaign";
   requestNotesInput.value = booking.notes || "";
   requestMessageInput.value = "";
@@ -2396,6 +2410,7 @@ function mapRequest(row) {
     requestedRoomType: row.requested_room_type || "",
     requestedRoomTypeLabel: row.requested_room_type_label || "",
     requestedRoomNumber: Number(row.requested_room_number || 0),
+    requestedGuests: Number(row.requested_guests || 0),
     requestedScope: row.requested_scope || "single",
     requestedExtraRooms: Array.isArray(row.requested_extra_rooms) ? row.requested_extra_rooms : [],
     requestedServices: Array.isArray(row.requested_services) ? row.requested_services : [],
@@ -2486,6 +2501,7 @@ async function insertChangeRequest(payload) {
     requested_room_type: payload.roomType || null,
     requested_room_type_label: payload.roomTypeLabel || null,
     requested_room_number: payload.roomNumber ? Number(payload.roomNumber) : null,
+    requested_guests: payload.guests ? Number(payload.guests) : null,
     requested_extra_rooms: payload.requestedExtraRooms || [],
     requested_services: payload.requestedServices || [],
     requested_remove_rooms: payload.requestedRemoveRooms || [],
@@ -2681,8 +2697,12 @@ async function approveRequest(requestId) {
       checkIn: request.requestedCheckIn || request.booking?.checkIn || "",
       checkOut: request.requestedCheckOut || request.booking?.checkOut || "",
       roomType: request.requestedRoomType || request.booking?.roomType || "",
-      roomTypeLabel: request.requestedRoomTypeLabel || request.booking?.roomTypeLabel || "",
+      roomTypeLabel: getRoomTypeLabelForGuests(
+        request.requestedRoomType || request.booking?.roomType || "",
+        Number(request.requestedGuests || request.booking?.guests || 1),
+      ),
       roomNumber: request.requestedRoomNumber || request.booking?.roomNumber || 0,
+      guests: Number(request.requestedGuests || request.booking?.guests || 1),
       notes: request.requestedNotes ?? request.booking?.notes ?? "",
       status: targetStatus,
     });
@@ -3226,6 +3246,7 @@ function syncModalReasonDefaults() {
   const isRemoveRooms = reason === "remove_rooms";
   const isGroupLike = state.requestScope === "group" || isEditCustomerData;
   const roomPickerField = requestRoomTypeInput ? requestRoomTypeInput.closest(".field.grid-2") : null;
+  const showSingleRoomFields = !(isGroupLike || isAdditionalRooms || isRemoveRooms || isAdditionalServices);
 
   if (requestCheckInLabel) requestCheckInLabel.textContent = isDateChange ? "New Check-in" : "Check-in";
   if (requestCheckOutLabel) requestCheckOutLabel.textContent = isDateChange ? "New Check-out" : "Check-out";
@@ -3234,7 +3255,8 @@ function syncModalReasonDefaults() {
   if (requestServicesSection) requestServicesSection.classList.toggle("hidden", !isAdditionalServices);
   if (requestRemoveRoomsSection) requestRemoveRoomsSection.classList.toggle("hidden", !isRemoveRooms);
   if (requestBookingRoomsSection) requestBookingRoomsSection.classList.toggle("hidden", !isEditCustomerData || state.requestScope !== "group");
-  if (roomPickerField) roomPickerField.classList.toggle("hidden", isGroupLike || isAdditionalRooms || isRemoveRooms || isAdditionalServices);
+  if (roomPickerField) roomPickerField.classList.toggle("hidden", !showSingleRoomFields);
+  if (requestGuestsField) requestGuestsField.classList.toggle("hidden", !showSingleRoomFields);
   if (requestStatusInput) requestStatusInput.value = getDefaultRequestStatus(requestReasonInput.value, state.activeBooking?.status || "Campaign");
 }
 
@@ -3257,6 +3279,7 @@ async function handleRequestSubmit(event) {
     checkOut: requestCheckOutInput.value,
     roomType: requestRoomTypeInput.value,
     roomNumber: Number(requestRoomNumberInput.value),
+    guests: Number(requestGuestsInput?.value || state.activeBooking.guests || 1),
     status: requestStatusInput.value,
     notes: mergeNotesAndServices(requestNotesInput.value.trim(), selectedServices),
     requestNote: requestMessageInput.value.trim(),
@@ -3264,7 +3287,7 @@ async function handleRequestSubmit(event) {
     requestedRemoveRooms: Array.from(state.modalRemoveRooms.values()),
   };
 
-  payload.roomTypeLabel = getRoomTypeLabelForGuests(payload.roomType, state.activeBooking.guests || 1);
+  payload.roomTypeLabel = getRoomTypeLabelForGuests(payload.roomType, payload.guests);
   payload.requestedExtraRooms = Array.from(state.modalExtraRooms.values());
   payload.requestedBookingRooms = reason === "edit_booking_data" && effectiveScope === "group"
     ? serializeBookingRoomEdits()
@@ -3591,6 +3614,10 @@ requestsTrackFilter.addEventListener("input", () => loadRequests());
 requestsRequestedByFilter.addEventListener("input", () => loadRequests());
 requestRoomTypeInput.addEventListener("change", () => {
   populateRequestRoomNumbers(requestRoomTypeInput.value, 1);
+  populateRequestGuestsOptions(requestRoomTypeInput.value, requestGuestsInput?.value || 1);
+});
+requestGuestsInput?.addEventListener("change", () => {
+  populateRequestGuestsOptions(requestRoomTypeInput.value, requestGuestsInput.value);
 });
 requestModal.querySelectorAll("[data-close-modal]").forEach((element) => {
   element.addEventListener("click", closeRequestModal);

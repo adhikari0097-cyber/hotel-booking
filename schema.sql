@@ -59,6 +59,7 @@ create table if not exists public.booking_change_requests (
   requested_room_type text,
   requested_room_type_label text,
   requested_room_number integer,
+  requested_guests integer,
   requested_extra_rooms jsonb not null default '[]'::jsonb,
   requested_services jsonb not null default '[]'::jsonb,
   requested_remove_rooms jsonb not null default '[]'::jsonb,
@@ -78,6 +79,7 @@ create index if not exists booking_change_requests_booking_idx
 alter table public.booking_change_requests add column if not exists requested_room_type text;
 alter table public.booking_change_requests add column if not exists requested_room_type_label text;
 alter table public.booking_change_requests add column if not exists requested_room_number integer;
+alter table public.booking_change_requests add column if not exists requested_guests integer;
 alter table public.booking_change_requests add column if not exists requested_extra_rooms jsonb not null default '[]'::jsonb;
 alter table public.booking_change_requests add column if not exists requested_scope text not null default 'single';
 alter table public.booking_change_requests add column if not exists requested_services jsonb not null default '[]'::jsonb;
