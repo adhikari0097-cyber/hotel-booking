@@ -267,56 +267,58 @@
         </section>
 
         <section class="screen" id="screen-view" aria-labelledby="tab-view">
-          <div class="view-layout">
-            <div class="card month-card">
-              <div class="month-header">
-                <button class="month-nav-btn" id="month-prev" type="button" aria-label="Previous month">Prev</button>
-                <div>
-                  <p class="eyebrow">Monthly Calendar</p>
-                  <h3 id="month-label">Month</h3>
+          <aside class="view-sidebar">
+            <div class="view-layout">
+              <div class="card month-card">
+                <div class="month-header">
+                  <button class="month-nav-btn" id="month-prev" type="button" aria-label="Previous month">Prev</button>
+                  <div>
+                    <p class="eyebrow">Monthly Calendar</p>
+                    <h3 id="month-label">Month</h3>
+                  </div>
+                  <button class="month-nav-btn" id="month-next" type="button" aria-label="Next month">Next</button>
                 </div>
-                <button class="month-nav-btn" id="month-next" type="button" aria-label="Next month">Next</button>
+                <div class="calendar-weekdays">
+                  <span>Sun</span>
+                  <span>Mon</span>
+                  <span>Tue</span>
+                  <span>Wed</span>
+                  <span>Thu</span>
+                  <span>Fri</span>
+                  <span>Sat</span>
+                </div>
+                <div id="month-grid" class="month-grid"></div>
               </div>
-              <div class="calendar-weekdays">
-                <span>Sun</span>
-                <span>Mon</span>
-                <span>Tue</span>
-                <span>Wed</span>
-                <span>Thu</span>
-                <span>Fri</span>
-                <span>Sat</span>
+
+              <div class="card view-insights-card">
+                <div class="field">
+                  <label for="viewDate">Select Date</label>
+                  <input id="viewDate" type="date" />
+                </div>
+                <button class="secondary-btn" id="loadBookings" type="button">View Bookings</button>
+
+                <div class="stats">
+                  <div>
+                    <p>Total bookings</p>
+                    <h2 id="stat-total">0</h2>
+                  </div>
+                  <div>
+                    <p>Occupied rooms</p>
+                    <h2 id="stat-occupied">0</h2>
+                  </div>
+                  <div>
+                    <p>Available rooms</p>
+                    <h2 id="stat-available">6</h2>
+                  </div>
+                </div>
               </div>
-              <div id="month-grid" class="month-grid"></div>
             </div>
 
-            <div class="card view-insights-card">
-              <div class="field">
-                <label for="viewDate">Select Date</label>
-                <input id="viewDate" type="date" />
-              </div>
-              <button class="secondary-btn" id="loadBookings" type="button">View Bookings</button>
-
-              <div class="stats">
-                <div>
-                  <p>Total bookings</p>
-                  <h2 id="stat-total">0</h2>
-                </div>
-                <div>
-                  <p>Occupied rooms</p>
-                  <h2 id="stat-occupied">0</h2>
-                </div>
-                <div>
-                  <p>Available rooms</p>
-                  <h2 id="stat-available">6</h2>
-                </div>
-              </div>
+            <div class="card room-status-card" id="room-status">
+              <h3>Room Status</h3>
+              <div id="room-status-list" class="room-list"></div>
             </div>
-          </div>
-
-          <div class="card room-status-card" id="room-status">
-            <h3>Room Status</h3>
-            <div id="room-status-list" class="room-list"></div>
-          </div>
+          </aside>
 
           <div class="card booking-board-card" id="booking-list">
             <div class="booking-list-head">

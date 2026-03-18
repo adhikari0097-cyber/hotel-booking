@@ -1800,7 +1800,7 @@ h4 {
 }
 
 #app-shell.view-desktop .app-header {
-  width: min(1680px, calc(100vw - 56px));
+  width: min(1760px, calc(100vw - 72px));
   max-width: none;
   margin: 18px auto 0;
   padding: 18px 26px;
@@ -1832,7 +1832,7 @@ h4 {
 }
 
 #app-shell.view-desktop .app-main {
-  width: min(1680px, calc(100vw - 56px));
+  width: min(1760px, calc(100vw - 72px));
   max-width: none;
   margin: 22px auto 40px;
   padding: 78px 0 48px;
@@ -1851,7 +1851,7 @@ h4 {
   right: auto;
   bottom: auto;
   transform: translateX(-50%);
-  width: min(1680px, calc(100vw - 56px));
+  width: min(1760px, calc(100vw - 72px));
   max-width: none;
   margin: 0;
   padding: 10px;
@@ -1885,7 +1885,7 @@ h4 {
 
 #app-shell.view-desktop .screen-active {
   display: grid;
-  gap: 28px;
+  gap: 32px;
 }
 
 #app-shell.view-desktop #screen-booking #booking-form {
@@ -1938,25 +1938,30 @@ h4 {
 }
 
 #app-shell.view-desktop #screen-view {
-  grid-template-columns: minmax(420px, 480px) minmax(0, 1.35fr);
+  grid-template-columns: minmax(440px, 540px) minmax(0, 1.6fr);
   align-items: start;
-  column-gap: 28px;
+  column-gap: 36px;
+}
+
+#app-shell.view-desktop .view-sidebar {
+  display: grid;
+  gap: 24px;
+  position: sticky;
+  top: 158px;
+  align-self: start;
 }
 
 #app-shell.view-desktop #screen-view .view-layout {
-  grid-column: 1 / 2;
   grid-template-columns: 1fr;
-  gap: 22px;
+  gap: 24px;
 }
 
 #app-shell.view-desktop #room-status {
-  grid-column: 1 / 2;
   align-self: start;
 }
 
 #app-shell.view-desktop #booking-list {
-  grid-column: 2 / 3;
-  grid-row: 1 / span 2;
+  min-width: 0;
 }
 
 #app-shell.view-desktop #screen-requests > .card,
@@ -1996,26 +2001,26 @@ h4 {
 }
 
 #app-shell.view-desktop .month-card {
-  padding: 30px;
+  padding: 32px;
 }
 
 #app-shell.view-desktop .month-header {
-  gap: 14px;
-  margin-bottom: 18px;
+  gap: 16px;
+  margin-bottom: 22px;
 }
 
 #app-shell.view-desktop .month-header h3 {
-  font-size: 18px;
+  font-size: 22px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #5f5572;
 }
 
 #app-shell.view-desktop .month-nav-btn {
-  min-width: 68px;
-  min-height: 54px;
-  padding: 10px 12px;
-  border-radius: 18px;
+  min-width: 78px;
+  min-height: 60px;
+  padding: 12px 14px;
+  border-radius: 20px;
   font-size: 13px;
   border-width: 1px;
   box-shadow: none;
@@ -2032,9 +2037,9 @@ h4 {
 }
 
 #app-shell.view-desktop .calendar-day {
-  min-height: 88px;
-  padding: 10px 8px;
-  border-radius: 18px;
+  min-height: 108px;
+  padding: 14px 10px;
+  border-radius: 20px;
   justify-content: flex-start;
   gap: 6px;
   background: #fff;
@@ -2057,7 +2062,7 @@ h4 {
 }
 
 #app-shell.view-desktop .calendar-day-number {
-  font-size: 18px;
+  font-size: 21px;
 }
 
 #app-shell.view-desktop .calendar-day-meta {
@@ -2072,7 +2077,7 @@ h4 {
 
 #app-shell.view-desktop .view-insights-card {
   display: grid;
-  gap: 18px;
+  gap: 20px;
 }
 
 #app-shell.view-desktop .view-insights-card .field {
@@ -2094,8 +2099,8 @@ h4 {
   justify-content: space-between;
   align-items: center;
   text-align: left;
-  padding: 18px 20px;
-  border-radius: 20px;
+  padding: 20px 22px;
+  border-radius: 22px;
   background: #fff;
   border: 1px solid #ece2d3;
 }
@@ -2119,12 +2124,12 @@ h4 {
 }
 
 #app-shell.view-desktop .room-list {
-  gap: 14px;
+  gap: 16px;
 }
 
 #app-shell.view-desktop .room-item {
-  padding: 16px 18px;
-  border-radius: 20px;
+  padding: 18px 20px;
+  border-radius: 22px;
   background: #fff;
   border-color: #ece2d3;
 }
@@ -2135,11 +2140,11 @@ h4 {
 }
 
 #app-shell.view-desktop .booking-board-card {
-  padding: 28px;
+  padding: 32px;
 }
 
 #app-shell.view-desktop .booking-cards {
-  gap: 22px;
+  gap: 26px;
 }
 
 #app-shell.view-desktop .booking-list-head {
@@ -2148,7 +2153,7 @@ h4 {
 
 #app-shell.view-desktop .booking-list-filters {
   margin-top: 0;
-  margin-bottom: 22px;
+  margin-bottom: 26px;
 }
 
 #app-shell.view-desktop .filter-chip {
@@ -2162,17 +2167,48 @@ h4 {
 }
 
 #app-shell.view-desktop .booking-overview-panel {
-  padding: 18px;
-  border-radius: 20px;
+  padding: 20px;
+  border-radius: 22px;
 }
 
 #app-shell.view-desktop .booking-overview-item {
-  padding: 14px 15px;
-  border-radius: 16px;
+  padding: 16px 17px;
+  border-radius: 18px;
 }
 
 #app-shell.view-desktop .booking-overview-item strong {
-  font-size: 15px;
+  font-size: 16px;
+}
+
+#app-shell.view-desktop #screen-requests > .card,
+#app-shell.view-desktop #screen-accounts > .card,
+#app-shell.view-desktop #screen-pricing > .card,
+#app-shell.view-desktop #screen-booking #booking-form {
+  max-width: none;
+}
+
+#app-shell.view-desktop #screen-requests > .card {
+  display: grid;
+  gap: 22px;
+}
+
+#app-shell.view-desktop .request-filters {
+  gap: 18px;
+}
+
+#app-shell.view-desktop .request-card-head,
+#app-shell.view-desktop .accounts-header {
+  align-items: flex-start;
+}
+
+#app-shell.view-desktop .request-summary-grid,
+#app-shell.view-desktop .request-compare-grid {
+  gap: 16px;
+}
+
+#app-shell.view-desktop .request-extra-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
 }
 
 @media (max-width: 1180px) {
@@ -2188,18 +2224,17 @@ h4 {
     grid-template-columns: 1fr;
   }
 
-  #app-shell.view-desktop #screen-view .view-layout {
-    grid-column: 1 / -1;
-  }
-
-  #app-shell.view-desktop #room-status,
-  #app-shell.view-desktop #booking-list {
-    grid-column: 1 / -1;
+  #app-shell.view-desktop .view-sidebar {
     position: static;
   }
 
+  #app-shell.view-desktop #screen-view .view-layout,
   #app-shell.view-desktop #booking-list {
-    grid-row: auto;
+    grid-column: auto;
+  }
+
+  #app-shell.view-desktop .request-extra-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
