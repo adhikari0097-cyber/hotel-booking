@@ -2443,12 +2443,20 @@ function renderBookingGroupOverview(group, groupStatus) {
         <strong>${group.phone || "-"}</strong>
       </div>
       <div class="booking-overview-item">
-        <span>Stay</span>
-        <strong>${group.checkIn || "-"} -> ${group.checkOut || "-"}</strong>
+        <span>Check In</span>
+        <strong>${group.checkIn || "-"}</strong>
+      </div>
+      <div class="booking-overview-item">
+        <span>Check Out</span>
+        <strong>${group.checkOut || "-"}</strong>
       </div>
       <div class="booking-overview-item">
         <span>Status</span>
         <strong>${groupStatus}</strong>
+      </div>
+      <div class="booking-overview-item">
+        <span>Total Pax</span>
+        <strong>${group.totalGuests}</strong>
       </div>
       <div class="booking-overview-item">
         <span>Rooms</span>
@@ -2475,19 +2483,15 @@ function renderBookingRoomFacts(booking) {
         <strong>${booking.guests} guest(s)</strong>
       </div>
       <div class="booking-room-fact">
-        <span>Stay</span>
-        <strong>${booking.checkIn} -> ${booking.checkOut}</strong>
+        <span>Check In</span>
+        <strong>${booking.checkIn}</strong>
       </div>
       <div class="booking-room-fact">
-        <span>Weekend Rate</span>
-        <strong>${pricing.weekendNights} x ${formatMoney(pricing.weekendRate)}</strong>
-      </div>
-      <div class="booking-room-fact">
-        <span>Weekday Rate</span>
-        <strong>${pricing.weekdayNights} x ${formatMoney(pricing.weekdayRate)}</strong>
+        <span>Check Out</span>
+        <strong>${booking.checkOut}</strong>
       </div>
       <div class="booking-room-fact booking-room-fact-total">
-        <span>Total</span>
+        <span>Room Price</span>
         <strong>${formatMoney(pricing.roomTotal)}</strong>
       </div>
     </div>
@@ -2781,7 +2785,7 @@ function renderBookings(bookings) {
       <div class="booking-group-head booking-group-head-dense">
         <div>
           <h4>${group.trackCode || "-"} · ${group.guestName || "Guest"}</h4>
-          <div class="booking-group-summary">${group.bookings.length} room(s) · ${group.totalGuests} guest(s) · Total ${formatMoney(group.totalPrice || 0)}</div>
+          <div class="booking-group-summary">${group.bookings.length} room(s) · Total Pax ${group.totalGuests} · Total ${formatMoney(group.totalPrice || 0)}</div>
         </div>
         <div class="booking-group-statuses booking-group-controls booking-group-controls-stack">
           ${requestButton}
