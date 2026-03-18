@@ -2055,9 +2055,13 @@ function openBookingDetailsModal(groupKey) {
 
   const manageBtn = bookingDetailsBody.querySelector('[data-booking-group-action="manage"]');
   if (manageBtn) {
-    manageBtn.addEventListener('click', () => {
-      closeBookingDetailsModal();
-      openRequestModal(group.bookings[0].id, canManageRequests() ? "edit" : "request", "group");
+    manageBtn.addEventListener('click', async () => {
+      try {
+        closeBookingDetailsModal();
+        await openRequestModal(group.bookings[0].id, canManageRequests() ? "edit" : "request", "group");
+      } catch (error) {
+        showToast(error.message || "Unable to open full booking editor.", true);
+      }
     });
   }
   const removeGroupBtn = bookingDetailsBody.querySelector('[data-booking-group-action="remove"]');
@@ -2073,9 +2077,13 @@ function openBookingDetailsModal(groupKey) {
   }
 
   bookingDetailsBody.querySelectorAll("[data-booking-detail-action]").forEach((button) => {
-    button.addEventListener("click", () => {
-      closeBookingDetailsModal();
-      openRequestModal(button.dataset.bookingId, canManageRequests() ? "edit" : "request");
+    button.addEventListener("click", async () => {
+      try {
+        closeBookingDetailsModal();
+        await openRequestModal(button.dataset.bookingId, canManageRequests() ? "edit" : "request");
+      } catch (error) {
+        showToast(error.message || "Unable to open booking update.", true);
+      }
     });
   });
   bookingDetailsBody.querySelectorAll("[data-booking-remove]").forEach((button) => {
@@ -2220,8 +2228,12 @@ function renderBookings(bookings) {
     `;
 
     card.querySelectorAll("[data-booking-action]").forEach((button) => {
-      button.addEventListener("click", () => {
-        openRequestModal(button.dataset.bookingId, canManageRequests() ? "edit" : "request");
+      button.addEventListener("click", async () => {
+        try {
+          await openRequestModal(button.dataset.bookingId, canManageRequests() ? "edit" : "request");
+        } catch (error) {
+          showToast(error.message || "Unable to open booking update.", true);
+        }
       });
     });
     card.querySelectorAll("[data-booking-remove]").forEach((button) => {
@@ -2254,8 +2266,12 @@ function renderBookings(bookings) {
     });
     const bookingTypeBtn = card.querySelector("[data-booking-group-manage]");
     if (bookingTypeBtn) {
-      bookingTypeBtn.addEventListener("click", () => {
-        openRequestModal(bookingTypeBtn.dataset.bookingGroupManage, canManageRequests() ? "edit" : "request", "group");
+      bookingTypeBtn.addEventListener("click", async () => {
+        try {
+          await openRequestModal(bookingTypeBtn.dataset.bookingGroupManage, canManageRequests() ? "edit" : "request", "group");
+        } catch (error) {
+          showToast(error.message || "Unable to open booking type editor.", true);
+        }
       });
     }
     const removeReservationBtn = card.querySelector("[data-booking-group-remove]");
