@@ -43,6 +43,22 @@ const state = {
 
 const qs = (selector) => document.querySelector(selector);
 
+function setHTML(node, html) {
+  if (node) node.innerHTML = html;
+}
+
+function setValue(node, value) {
+  if (node) node.value = value;
+}
+
+function setText(node, text) {
+  if (node) node.textContent = text;
+}
+
+function toggleHidden(node, hidden) {
+  if (node) node.classList.toggle("hidden", hidden);
+}
+
 const authShell = qs("#auth-shell");
 const pendingShell = qs("#pending-shell");
 const appShell = qs("#app-shell");
@@ -602,10 +618,10 @@ function populateRequestRoomNumbers(roomType, selectedNumber) {
   if (!requestRoomNumberInput) return;
   const def = getRoomDef(normalizeRoomGroup(roomType));
   const count = def?.count || 0;
-  requestRoomNumberInput.innerHTML = Array.from({ length: count }, (_, index) => {
+  setHTML(requestRoomNumberInput, Array.from({ length: count }, (_, index) => {
     const value = index + 1;
     return `<option value="${value}"${Number(selectedNumber) === value ? " selected" : ""}>Room ${value}</option>`;
-  }).join("");
+  }).join(""));
 }
 
 function populateRequestGuestsOptions(roomType, selectedGuests) {
@@ -613,10 +629,10 @@ function populateRequestGuestsOptions(roomType, selectedGuests) {
   const def = getRoomDef(normalizeRoomGroup(roomType));
   const maxPax = def?.maxPax || 1;
   const chosenGuests = Math.min(Math.max(Number(selectedGuests) || 1, 1), maxPax);
-  requestGuestsInput.innerHTML = Array.from({ length: maxPax }, (_, index) => {
+  setHTML(requestGuestsInput, Array.from({ length: maxPax }, (_, index) => {
     const pax = index + 1;
     return `<option value="${pax}"${pax === chosenGuests ? " selected" : ""}>${pax} Pax</option>`;
-  }).join("");
+  }).join(""));
 }
 
 async function renderAdditionalRoomOptions(booking) {
@@ -2344,18 +2360,18 @@ function getDefaultRequestStatus(reason, currentStatus) {
 }
 
 function closeRequestModal() {
-  requestModal.classList.add("hidden");
-  requestForm.reset();
+  if (requestModal) requestModal.classList.add("hidden");
+  if (requestForm) requestForm.reset();
   state.activeBooking = null;
   state.activeBookingGroup = [];
   state.modalExtraRooms = new Map();
   state.modalRemoveRooms = new Map();
   state.modalBookingRoomEdits = new Map();
   state.modalRequestedServices = new Set();
-  if (requestExtraRooms) requestExtraRooms.innerHTML = "";
-  if (requestServices) requestServices.innerHTML = "";
-  if (requestRemoveRooms) requestRemoveRooms.innerHTML = "";
-  if (requestBookingRooms) requestBookingRooms.innerHTML = "";
+  setHTML(requestExtraRooms, "");
+  setHTML(requestServices, "");
+  setHTML(requestRemoveRooms, "");
+  setHTML(requestBookingRooms, "");
   state.modalMode = "request";
 }
 
@@ -2370,30 +2386,34 @@ async function openRequestModal(bookingId, mode, scope = "single") {
   state.activeBookingGroup = state.bookingGroups.get(getBookingGroupKey(booking))?.bookings || [booking];
   state.requestScope = scope;
   state.modalMode = mode;
-  modalBookingId.value = booking.id;
-  requestGuestNameInput.value = booking.guestName || "";
-  requestPhoneInput.value = booking.phone || "";
-  requestCurrentDates.textContent = `Current booking dates: ${booking.checkIn || "-"} -> ${booking.checkOut || "-"}`;
-  requestCurrentRoom.textContent = `Current room: ${getRoomLabel(normalizeRoomGroup(booking.roomType), booking.roomNumber)} · ${booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType)}`;
-  requestCheckInInput.value = booking.checkIn || "";
-  requestCheckOutInput.value = booking.checkOut || "";
-  requestRoomTypeInput.value = normalizeRoomGroup(booking.roomType) || "normal";
-  populateRequestRoomNumbers(requestRoomTypeInput.value, booking.roomNumber);
-  populateRequestGuestsOptions(requestRoomTypeInput.value, booking.guests || 1);
-  requestStatusInput.value = booking.status || "Campaign";
-  requestNotesInput.value = booking.notes || "";
-  requestMessageInput.value = "";
-  requestReasonInput.value = scope === "group" ? "edit_booking_data" : "change_date";
-  modalTitle.textContent = scope === "group"
+  setValue(modalBookingId, booking.id);
+  setValue(requestGuestNameInput, booking.guestName || "");
+  setValue(requestPhoneInput, booking.phone || "");
+  setText(requestCurrentDates, `Current booking dates: ${booking.checkIn || "-"} -> ${booking.checkOut || "-"}`);
+  setText(
+    requestCurrentRoom,
+    `Current room: ${getRoomLabel(normalizeRoomGroup(booking.roomType), booking.roomNumber)} · ${booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType)}`
+  );
+  setValue(requestCheckInInput, booking.checkIn || "");
+  setValue(requestCheckOutInput, booking.checkOut || "");
+  const selectedRoomType = normalizeRoomGroup(booking.roomType) || "normal";
+  setValue(requestRoomTypeInput, selectedRoomType);
+  populateRequestRoomNumbers(selectedRoomType, booking.roomNumber);
+  populateRequestGuestsOptions(selectedRoomType, booking.guests || 1);
+  setValue(requestStatusInput, booking.status || "Campaign");
+  setValue(requestNotesInput, booking.notes || "");
+  setValue(requestMessageInput, "");
+  setValue(requestReasonInput, scope === "group" ? "edit_booking_data" : "change_date");
+  setText(modalTitle, scope === "group"
     ? (mode === "edit" ? "Update Full Booking" : "Request Full Booking Change")
-    : (mode === "edit" ? "Update Booking" : "Request Booking Change");
-  requestSubmitBtn.textContent = mode === "edit" ? "Save Booking Update" : "Submit Change Request";
+    : (mode === "edit" ? "Update Booking" : "Request Booking Change"));
+  setText(requestSubmitBtn, mode === "edit" ? "Save Booking Update" : "Submit Change Request");
   syncModalReasonDefaults();
   await renderAdditionalRoomOptions(booking);
   renderServiceRequestOptions(booking);
   renderRemoveRoomOptions(booking);
   renderBookingRoomEditors(booking);
-  requestModal.classList.remove("hidden");
+  if (requestModal) requestModal.classList.remove("hidden");
 }
 
 function mapRequest(row) {
@@ -3238,26 +3258,27 @@ async function bootstrapSession() {
 }
 
 function syncModalReasonDefaults() {
+  if (!requestReasonInput) return;
   const reason = requestReasonInput.value;
   const isDateChange = reason === "change_date";
   const isEditCustomerData = reason === "edit_booking_data";
   const isAdditionalRooms = reason === "additional_rooms";
   const isAdditionalServices = reason === "additional_services";
   const isRemoveRooms = reason === "remove_rooms";
-  const isGroupLike = state.requestScope === "group" || isEditCustomerData;
+  const isGroupLike = state.requestScope === "group";
   const roomPickerField = requestRoomTypeInput ? requestRoomTypeInput.closest(".field.grid-2") : null;
   const showSingleRoomFields = !(isGroupLike || isAdditionalRooms || isRemoveRooms || isAdditionalServices);
 
-  if (requestCheckInLabel) requestCheckInLabel.textContent = isDateChange ? "New Check-in" : "Check-in";
-  if (requestCheckOutLabel) requestCheckOutLabel.textContent = isDateChange ? "New Check-out" : "Check-out";
-  if (requestDateHelp) requestDateHelp.classList.toggle("hidden", !isDateChange);
-  if (requestExtraRoomsSection) requestExtraRoomsSection.classList.toggle("hidden", !isAdditionalRooms);
-  if (requestServicesSection) requestServicesSection.classList.toggle("hidden", !isAdditionalServices);
-  if (requestRemoveRoomsSection) requestRemoveRoomsSection.classList.toggle("hidden", !isRemoveRooms);
-  if (requestBookingRoomsSection) requestBookingRoomsSection.classList.toggle("hidden", !isEditCustomerData || state.requestScope !== "group");
-  if (roomPickerField) roomPickerField.classList.toggle("hidden", !showSingleRoomFields);
-  if (requestGuestsField) requestGuestsField.classList.toggle("hidden", !showSingleRoomFields);
-  if (requestStatusInput) requestStatusInput.value = getDefaultRequestStatus(requestReasonInput.value, state.activeBooking?.status || "Campaign");
+  setText(requestCheckInLabel, isDateChange ? "New Check-in" : "Check-in");
+  setText(requestCheckOutLabel, isDateChange ? "New Check-out" : "Check-out");
+  toggleHidden(requestDateHelp, !isDateChange);
+  toggleHidden(requestExtraRoomsSection, !isAdditionalRooms);
+  toggleHidden(requestServicesSection, !isAdditionalServices);
+  toggleHidden(requestRemoveRoomsSection, !isRemoveRooms);
+  toggleHidden(requestBookingRoomsSection, !isEditCustomerData || state.requestScope !== "group");
+  toggleHidden(roomPickerField, !showSingleRoomFields);
+  toggleHidden(requestGuestsField, !showSingleRoomFields);
+  setValue(requestStatusInput, getDefaultRequestStatus(requestReasonInput.value, state.activeBooking?.status || "Campaign"));
 }
 
 async function handleRequestSubmit(event) {
