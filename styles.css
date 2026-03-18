@@ -988,6 +988,35 @@ h4 {
   margin-top: 4px;
 }
 
+.booking-group-overview {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.booking-overview-item {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fff;
+  padding: 12px;
+  display: grid;
+  gap: 4px;
+}
+
+.booking-overview-item span {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.booking-overview-item strong {
+  font-size: 14px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
 .booking-group-controls {
   align-items: center;
 }
@@ -1131,20 +1160,73 @@ h4 {
 .booking-room-row-main {
   min-width: 0;
   display: grid;
-  gap: 4px;
+  gap: 8px;
 }
 
 .booking-room-row-actions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: 8px;
-  justify-content: flex-end;
+  justify-content: stretch;
+  min-width: 152px;
 }
 
 .booking-room-row-title {
   font-size: 14px;
   font-weight: 700;
   color: var(--text);
+}
+
+.booking-room-row-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.booking-room-track {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: #f6eee0;
+  color: #7d6a43;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.booking-room-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.booking-room-fact {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fcfaf6;
+  padding: 10px 12px;
+  display: grid;
+  gap: 4px;
+}
+
+.booking-room-fact span {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.booking-room-fact strong {
+  font-size: 13px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.booking-room-fact-total {
+  background: #f8f1dc;
+  border-color: #ead9a3;
 }
 
 .booking-room-row-meta,
@@ -1175,6 +1257,13 @@ h4 {
 
 .booking-room-row-request {
   flex-wrap: wrap;
+}
+
+.booking-room-row-actions .action-btn,
+.booking-room-row-actions .booking-tag {
+  width: 100%;
+  justify-content: center;
+  text-align: center;
 }
 
 .booking-details-request-banner {
@@ -1293,6 +1382,12 @@ h4 {
 
   .booking-room-row .action-btn {
     width: 100%;
+  }
+
+  .booking-group-overview,
+  .booking-room-facts,
+  .request-price-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -2028,6 +2123,16 @@ h4 {
   line-height: 1.5;
   min-height: 72px;
   white-space: pre-wrap;
+}
+
+.request-price-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.request-price-grid input {
+  width: 100%;
 }
 
 .request-actions {

@@ -235,6 +235,10 @@ let requestRemoveRoomsSection = qs("#request-remove-rooms-section");
 let requestRemoveRooms = qs("#request-remove-rooms");
 let requestBookingRoomsSection = qs("#request-booking-rooms-section");
 let requestBookingRooms = qs("#request-booking-rooms");
+const requestPriceSection = qs("#request-price-section");
+const requestCurrentPrice = qs("#request-current-price");
+const requestWeekendRateInput = qs("#request-weekend-rate");
+const requestWeekdayRateInput = qs("#request-weekday-rate");
 const requestStatusInput = qs("#request-status");
 const requestNotesInput = qs("#request-notes");
 const requestMessageInput = qs("#request-message");
@@ -506,12 +510,14 @@ function countStayNightsByType(checkIn, checkOut) {
   return { weekendNights, weekdayNights };
 }
 
-function computeBookingPrice({ checkIn, checkOut, roomType, guests }) {
+function computeBookingPrice({ checkIn, checkOut, roomType, guests, weekendRateOverride = null, weekdayRateOverride = null }) {
   const pricingPax = getPricingPaxTier(roomType, guests);
   const pricingRule = getPricingConfig(roomType, pricingPax);
-  const weekendRate = roundCurrency(pricingRule.weekendPrice);
+  const defaultWeekendRate = roundCurrency(pricingRule.weekendPrice);
   const weekdayPercentage = Number(pricingRule.weekdayPercentage || 100);
-  const weekdayRate = roundCurrency((weekendRate * weekdayPercentage) / 100);
+  const defaultWeekdayRate = roundCurrency((defaultWeekendRate * weekdayPercentage) / 100);
+  const weekendRate = weekendRateOverride == null ? defaultWeekendRate : roundCurrency(Number(weekendRateOverride || 0));
+  const weekdayRate = weekdayRateOverride == null ? defaultWeekdayRate : roundCurrency(Number(weekdayRateOverride || 0));
   const { weekendNights, weekdayNights } = countStayNightsByType(checkIn, checkOut);
   const roomTotal = roundCurrency((weekendNights * weekendRate) + (weekdayNights * weekdayRate));
 
@@ -524,6 +530,38 @@ function computeBookingPrice({ checkIn, checkOut, roomType, guests }) {
     weekdayPercentage,
     roomTotal,
   };
+}
+
+function getBookingPricingSnapshot(values = {}) {
+  const weekendRate = Number(values.weekendRate || 0);
+  const weekdayRate = Number(values.weekdayRate || 0);
+  const weekendNights = "weekendNights" in values ? Number(values.weekendNights || 0) : countStayNightsByType(values.checkIn, values.checkOut).weekendNights;
+  const weekdayNights = "weekdayNights" in values ? Number(values.weekdayNights || 0) : countStayNightsByType(values.checkIn, values.checkOut).weekdayNights;
+  const roomTotal = "roomTotal" in values
+    ? Number(values.roomTotal || 0)
+    : roundCurrency((weekendNights * weekendRate) + (weekdayNights * weekdayRate));
+
+  return {
+    weekendRate,
+    weekdayRate,
+    weekendNights,
+    weekdayNights,
+    roomTotal,
+  };
+}
+
+function formatBookingPriceBreakdown(values = {}) {
+  const snapshot = getBookingPricingSnapshot(values);
+  return `Weekend ${snapshot.weekendNights} x ${formatMoney(snapshot.weekendRate)} · Weekday ${snapshot.weekdayNights} x ${formatMoney(snapshot.weekdayRate)} · Total ${formatMoney(snapshot.roomTotal)}`;
+}
+
+function getRequestPriceSnapshot(request, booking) {
+  return getBookingPricingSnapshot({
+    checkIn: request?.requestedCheckIn || booking?.checkIn || "",
+    checkOut: request?.requestedCheckOut || booking?.checkOut || "",
+    weekendRate: request?.requestedWeekendRate ?? booking?.weekendRate ?? 0,
+    weekdayRate: request?.requestedWeekdayRate ?? booking?.weekdayRate ?? 0,
+  });
 }
 
 async function loadRoomPricing() {
@@ -1480,12 +1518,19 @@ function shouldRetryWithoutPricingColumns(message) {
   return text.includes("pricing_pax") || text.includes("weekend_rate") || text.includes("weekday_rate") || text.includes("weekend_nights") || text.includes("weekday_nights") || text.includes("room_total");
 }
 
+function shouldRetryWithoutRequestPricingColumns(message) {
+  const text = String(message || "").toLowerCase();
+  return text.includes("requested_weekend_rate") || text.includes("requested_weekday_rate");
+}
+
 function applyPricingToBookingRow(row, values) {
   const pricing = computeBookingPrice({
     checkIn: values.checkIn,
     checkOut: values.checkOut,
     roomType: normalizeRoomGroup(values.roomType),
     guests: Number(values.guests || 0),
+    weekendRateOverride: "weekendRate" in values ? values.weekendRate : null,
+    weekdayRateOverride: "weekdayRate" in values ? values.weekdayRate : null,
   });
 
   row.pricing_pax = pricing.pricingPax;
@@ -2378,6 +2423,77 @@ function getActiveStatusMarkup(label = "Active") {
   return `<span class="booking-tag tag-success">${label}</span>`;
 }
 
+function renderBookingGroupOverview(group, groupStatus) {
+  return `
+    <div class="booking-group-overview">
+      <div class="booking-overview-item">
+        <span>Track Code</span>
+        <strong>${group.trackCode || "-"}</strong>
+      </div>
+      <div class="booking-overview-item">
+        <span>Customer</span>
+        <strong>${group.guestName || "Guest"}</strong>
+      </div>
+      <div class="booking-overview-item">
+        <span>Booked By</span>
+        <strong>${group.bookings[0]?.createdByName || "-"}</strong>
+      </div>
+      <div class="booking-overview-item">
+        <span>Phone</span>
+        <strong>${group.phone || "-"}</strong>
+      </div>
+      <div class="booking-overview-item">
+        <span>Stay</span>
+        <strong>${group.checkIn || "-"} -> ${group.checkOut || "-"}</strong>
+      </div>
+      <div class="booking-overview-item">
+        <span>Status</span>
+        <strong>${groupStatus}</strong>
+      </div>
+      <div class="booking-overview-item">
+        <span>Rooms</span>
+        <strong>${group.bookings.length}</strong>
+      </div>
+      <div class="booking-overview-item">
+        <span>Total Price</span>
+        <strong>${formatMoney(group.totalPrice || 0)}</strong>
+      </div>
+    </div>
+  `;
+}
+
+function renderBookingRoomFacts(booking) {
+  const pricing = getBookingPricingSnapshot(booking);
+  return `
+    <div class="booking-room-facts">
+      <div class="booking-room-fact">
+        <span>Room Type</span>
+        <strong>${booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType)}</strong>
+      </div>
+      <div class="booking-room-fact">
+        <span>Guests</span>
+        <strong>${booking.guests} guest(s)</strong>
+      </div>
+      <div class="booking-room-fact">
+        <span>Stay</span>
+        <strong>${booking.checkIn} -> ${booking.checkOut}</strong>
+      </div>
+      <div class="booking-room-fact">
+        <span>Weekend Rate</span>
+        <strong>${pricing.weekendNights} x ${formatMoney(pricing.weekendRate)}</strong>
+      </div>
+      <div class="booking-room-fact">
+        <span>Weekday Rate</span>
+        <strong>${pricing.weekdayNights} x ${formatMoney(pricing.weekdayRate)}</strong>
+      </div>
+      <div class="booking-room-fact booking-room-fact-total">
+        <span>Total</span>
+        <strong>${formatMoney(pricing.roomTotal)}</strong>
+      </div>
+    </div>
+  `;
+}
+
 function isPendingRoomRemovalRequest(request, bookingId) {
   if (!request || request.status !== "pending" || request.reason !== "remove_rooms") return false;
   return Array.isArray(request.requestedRemoveRooms)
@@ -2608,34 +2724,35 @@ function renderBookings(bookings) {
     const card = document.createElement("div");
     card.className = "booking-card booking-group-card";
     const groupStatus = group.statuses.size === 1 ? Array.from(group.statuses)[0] : "Mixed";
-    const requestHistory = getRequestsForTrack(group.trackCode || group.key);
     const groupRequest = pendingCollections.byTrack.get(group.trackCode || group.key);
     const roomRows = group.bookings
       .map((booking) => {
         const bookingRequest = pendingCollections.byBooking.get(booking.id);
         const roomGroup = normalizeRoomGroup(booking.roomType);
         const noteMeta = parseBookingNotes(booking.notes);
-      const metaBits = [
-        booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType),
-        `${booking.guests} guests`,
-        `${booking.checkIn} -> ${booking.checkOut}`,
-        formatMoney(booking.roomTotal || 0),
-      ];
-        if (noteMeta.extraGuests) metaBits.push(`Extra pax / kids: ${noteMeta.extraGuests}`);
-        if (noteMeta.drivers) metaBits.push(`Drivers: ${noteMeta.drivers}`);
+        const roomNotes = [];
+        if (noteMeta.extraGuests) roomNotes.push(`Extra pax / kids: ${noteMeta.extraGuests}`);
+        if (noteMeta.drivers) roomNotes.push(`Drivers: ${noteMeta.drivers}`);
+        if (noteMeta.otherNotes.length) roomNotes.push(...noteMeta.otherNotes);
         const removeControl = isPendingRoomRemovalRequest(bookingRequest, booking.id)
           ? `<span class="booking-tag tag-pending">Pending Remove</span>`
           : `<button class="action-btn subtle-btn" type="button" data-booking-remove="${booking.id}">Remove Room</button>`;
         return `
           <div class="booking-room-row">
             <div class="booking-room-row-main">
-              <div class="booking-room-row-title">${getRoomLabel(roomGroup, booking.roomNumber)} (#${booking.roomNumber})</div>
-              <div class="booking-room-row-meta">${metaBits.join(" · ")}</div>
+              <div class="booking-room-row-head">
+                <div class="booking-room-row-title">${getRoomLabel(roomGroup, booking.roomNumber)} (#${booking.roomNumber})</div>
+                <span class="booking-room-track">${booking.trackCode || "-"}</span>
+              </div>
+              ${renderBookingRoomFacts(booking)}
               ${bookingRequest ? `<div class="booking-room-row-request">${getRequestStatusMarkup(bookingRequest, "Request")}</div>` : `<div class="booking-room-row-request">${getActiveStatusMarkup("Active")}</div>`}
-              ${noteMeta.otherNotes.length ? `<div class="booking-room-row-notes"><span class="booking-room-row-label">Notes</span><div>${noteMeta.otherNotes.join(" | ")}</div></div>` : ""}
+              ${roomNotes.length ? `<div class="booking-room-row-notes"><span class="booking-room-row-label">Notes</span><div>${roomNotes.join(" | ")}</div></div>` : ""}
             </div>
             <div class="booking-room-row-actions">
               ${removeControl}
+              <button class="action-btn" type="button" data-booking-price-action="${booking.id}">
+                Change Price
+              </button>
               <button class="action-btn" type="button" data-booking-action="${canManageRequests() ? "edit" : "request"}" data-booking-id="${booking.id}">
                 Update
               </button>
@@ -2664,7 +2781,7 @@ function renderBookings(bookings) {
       <div class="booking-group-head booking-group-head-dense">
         <div>
           <h4>${group.trackCode || "-"} · ${group.guestName || "Guest"}</h4>
-          <div class="booking-group-summary">${group.bookings.length} room(s) · ${group.totalGuests} guest(s) · ${formatMoney(group.totalPrice || 0)}</div>
+          <div class="booking-group-summary">${group.bookings.length} room(s) · ${group.totalGuests} guest(s) · Total ${formatMoney(group.totalPrice || 0)}</div>
         </div>
         <div class="booking-group-statuses booking-group-controls booking-group-controls-stack">
           ${requestButton}
@@ -2673,17 +2790,12 @@ function renderBookings(bookings) {
           <button class="secondary-btn remove-reservation-trigger" type="button" data-booking-group-remove="${group.bookings[0].id}">Remove reservation</button>
         </div>
       </div>
-      <div class="booking-date-strip booking-date-strip-wide">
-        <div class="booking-date-pill"><span>check in</span><strong>${group.checkIn}</strong></div>
-        <div class="booking-date-pill"><span>check out</span><strong>${group.checkOut}</strong></div>
-      </div>
+      ${renderBookingGroupOverview(group, groupStatus)}
       <div class="booking-group-meta-row booking-group-meta-row-tight">
         <div class="booking-group-call">
           <a class="call-link" href="tel:${group.phone || ""}">Call ${group.guestName || "Guest"}</a>
         </div>
-        <div class="booking-group-phone"><strong>Phone:</strong> <a href="tel:${group.phone}">${group.phone || "-"}</a></div>
       </div>
-      <div class="booking-group-created-by muted"><strong>Booked by:</strong> ${group.bookings[0]?.createdByName || "-"}</div>
       ${requestBrief}
       ${group.bookings.length ? `<div class="booking-room-row-services booking-group-services"><span class="booking-room-row-label">Services</span>${renderGroupServiceToggleButtons(group)}</div>` : ""}
       <div class="booking-room-list">${roomRows}</div>
@@ -2716,6 +2828,18 @@ function renderBookings(bookings) {
           await loadRequests();
         } catch (error) {
           showToast(error.message, true);
+        }
+      });
+    });
+    card.querySelectorAll("[data-booking-price-action]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        try {
+          await launchBookingAction(button.dataset.bookingPriceAction, {
+            scope: "single",
+            reason: "change_room_price",
+          });
+        } catch (error) {
+          showToast(error.message || "Unable to open room price change.", true);
         }
       });
     });
@@ -2818,6 +2942,7 @@ function closeRequestModal() {
   setHTML(requestServices, "");
   setHTML(requestRemoveRooms, "");
   setHTML(requestBookingRooms, "");
+  setText(requestCurrentPrice, "Current price: -");
   state.modalMode = "request";
 }
 
@@ -2848,6 +2973,12 @@ async function openRequestModal(bookingId, mode, scope = "single") {
   populateRequestRoomNumbers(selectedRoomType, booking.roomNumber);
   populateRequestGuestsOptions(selectedRoomType, booking.guests || 1);
   setValue(requestStatusInput, booking.status || "Campaign");
+  setText(
+    requestCurrentPrice,
+    `Current pricing: ${formatBookingPriceBreakdown(booking)}`
+  );
+  setValue(requestWeekendRateInput, Number(booking.weekendRate || 0));
+  setValue(requestWeekdayRateInput, Number(booking.weekdayRate || 0));
   setValue(requestNotesInput, booking.notes || "");
   setValue(requestMessageInput, "");
   setValue(requestReasonInput, scope === "group" ? "edit_booking_data" : "change_date");
@@ -2883,6 +3014,8 @@ function mapRequest(row) {
     requestedServices: Array.isArray(row.requested_services) ? row.requested_services : [],
     requestedRemoveRooms: Array.isArray(row.requested_remove_rooms) ? row.requested_remove_rooms : [],
     requestedBookingRooms: Array.isArray(row.requested_booking_rooms) ? row.requested_booking_rooms : [],
+    requestedWeekendRate: row.requested_weekend_rate == null ? null : Number(row.requested_weekend_rate),
+    requestedWeekdayRate: row.requested_weekday_rate == null ? null : Number(row.requested_weekday_rate),
     requestedNotes: row.requested_notes || "",
     requestedBookingStatus: row.requested_booking_status || "",
     status: row.status,
@@ -2904,6 +3037,8 @@ function formatRequestReason(reason) {
       return "Customer request to change date";
     case "edit_booking_data":
       return "Edit Customer booking data";
+    case "change_room_price":
+      return "Request room price change";
     case "additional_rooms":
       return "Requesting additional rooms";
     case "additional_services":
@@ -2966,6 +3101,8 @@ function getRequestRequesterName(request) {
 function getRequestChangeItems(request, booking) {
   const currentServices = parseBookingNotes(booking?.notes || "").services;
   const requestedServices = request.requestedServices?.length ? request.requestedServices : currentServices;
+  const currentPricing = getBookingPricingSnapshot(booking || {});
+  const requestedPricing = getRequestPriceSnapshot(request, booking);
   const items = [];
 
   if ((request.requestedCheckIn || booking?.checkIn || "") !== (booking?.checkIn || "")
@@ -2986,6 +3123,9 @@ function getRequestChangeItems(request, booking) {
   }
   if (requestedServices.join("|") !== currentServices.join("|")) {
     items.push("Services");
+  }
+  if (currentPricing.weekendRate !== requestedPricing.weekendRate || currentPricing.weekdayRate !== requestedPricing.weekdayRate) {
+    items.push("Price");
   }
   if (
     (request.requestedRoomType || booking?.roomType || "") !== (booking?.roomType || "")
@@ -3100,6 +3240,8 @@ async function updateBooking(bookingId, values) {
     notes: "notes" in values ? values.notes || "" : currentBooking.notes || "",
     status: "status" in values ? values.status : currentBooking.status,
     roomsNeeded: "roomsNeeded" in values ? Number(values.roomsNeeded) : Number(currentBooking.roomsNeeded || 1),
+    weekendRate: "weekendRate" in values ? Number(values.weekendRate) : Number(currentBooking.weekendRate || 0),
+    weekdayRate: "weekdayRate" in values ? Number(values.weekdayRate) : Number(currentBooking.weekdayRate || 0),
   };
 
   const row = {
@@ -3128,7 +3270,7 @@ async function updateBooking(bookingId, values) {
 
 async function insertChangeRequest(payload) {
   ensureSupabase();
-  const { error } = await state.supabase.from(CONFIG.SUPABASE_REQUESTS_TABLE).insert({
+  const row = {
     booking_id: payload.bookingId,
     requested_by: state.currentSession.user.id,
     reason: payload.reason,
@@ -3152,7 +3294,20 @@ async function insertChangeRequest(payload) {
     admin_note: payload.adminNote || "",
     reviewed_by: payload.reviewedBy || null,
     reviewed_at: payload.reviewedAt || null,
-  });
+  };
+  if (payload.reason === "change_room_price") {
+    row.requested_weekend_rate = payload.requestedWeekendRate ?? payload.weekendRate ?? null;
+    row.requested_weekday_rate = payload.requestedWeekdayRate ?? payload.weekdayRate ?? null;
+  }
+  let { error } = await state.supabase.from(CONFIG.SUPABASE_REQUESTS_TABLE).insert(row);
+  if (error && shouldRetryWithoutRequestPricingColumns(error.message)) {
+    if (payload.reason === "change_room_price") {
+      throw new Error("Run the latest Supabase schema update before using room price changes.");
+    }
+    delete row.requested_weekend_rate;
+    delete row.requested_weekday_rate;
+    ({ error } = await state.supabase.from(CONFIG.SUPABASE_REQUESTS_TABLE).insert(row));
+  }
   if (error) throw new Error(error.message);
 }
 
@@ -3257,6 +3412,26 @@ async function approveRequest(requestId) {
         status: "Cancelled",
       });
     }
+
+    await updateRequestStatus(requestId, { status: "approved" });
+    return;
+  }
+
+  if (request.reason === "change_room_price") {
+    await updateBooking(request.bookingId, {
+      guestName: request.booking?.guestName || "",
+      phone: request.booking?.phone || "",
+      checkIn: request.requestedCheckIn || request.booking?.checkIn || "",
+      checkOut: request.requestedCheckOut || request.booking?.checkOut || "",
+      guests: Number(request.requestedGuests || request.booking?.guests || 1),
+      roomType: request.requestedRoomType || request.booking?.roomType || "",
+      roomTypeLabel: request.requestedRoomTypeLabel || request.booking?.roomTypeLabel || "",
+      roomNumber: request.requestedRoomNumber || request.booking?.roomNumber || 0,
+      notes: request.requestedNotes ?? request.booking?.notes ?? "",
+      status: request.requestedBookingStatus || request.booking?.status || "Campaign",
+      weekendRate: request.requestedWeekendRate ?? request.booking?.weekendRate ?? 0,
+      weekdayRate: request.requestedWeekdayRate ?? request.booking?.weekdayRate ?? 0,
+    });
 
     await updateRequestStatus(requestId, { status: "approved" });
     return;
@@ -3451,6 +3626,8 @@ function renderRequests(requests) {
           : "";
     const currentServices = parseBookingNotes(booking?.notes || "").services;
     const requestedServices = request.requestedServices?.length ? request.requestedServices : currentServices;
+    const currentPricing = getBookingPricingSnapshot(booking || {});
+    const requestedPricing = getRequestPriceSnapshot(request, booking);
     const changeItems = getRequestChangeItems(request, booking);
     const currentRows = [
       {
@@ -3484,6 +3661,11 @@ function renderRequests(requests) {
         label: "Guest",
         value: booking?.guestName || "-",
         changed: (booking?.guestName || "-") !== (request.requestedGuestName || booking?.guestName || "-"),
+      },
+      {
+        label: "Rates",
+        value: formatBookingPriceBreakdown(currentPricing),
+        changed: currentPricing.weekendRate !== requestedPricing.weekendRate || currentPricing.weekdayRate !== requestedPricing.weekdayRate,
       },
       {
         label: "Services",
@@ -3530,14 +3712,19 @@ function renderRequests(requests) {
         changed: currentRows[4].changed,
       },
       {
+        label: "Rates",
+        value: formatBookingPriceBreakdown(requestedPricing),
+        changed: currentRows[5].changed,
+      },
+      {
         label: "Services",
         value: requestedServices.length ? requestedServices.join(", ") : "None",
-        changed: currentRows[5].changed,
+        changed: currentRows[6].changed,
       },
       {
         label: "Notes",
         value: request.requestedNotes || booking?.notes || "-",
-        changed: currentRows[6].changed,
+        changed: currentRows[7].changed,
       },
     ];
     card.innerHTML = `
@@ -3987,12 +4174,18 @@ function syncModalReasonDefaults() {
   const reason = requestReasonInput.value;
   const isDateChange = reason === "change_date";
   const isEditCustomerData = reason === "edit_booking_data";
+  const isPriceChange = reason === "change_room_price";
   const isAdditionalRooms = reason === "additional_rooms";
   const isAdditionalServices = reason === "additional_services";
   const isRemoveRooms = reason === "remove_rooms";
   const isGroupLike = state.requestScope === "group";
   const roomPickerField = requestRoomTypeInput ? requestRoomTypeInput.closest(".field.grid-2") : null;
-  const showSingleRoomFields = !(isGroupLike || isAdditionalRooms || isRemoveRooms || isAdditionalServices);
+  const guestField = requestGuestNameInput ? requestGuestNameInput.closest(".field") : null;
+  const phoneField = requestPhoneInput ? requestPhoneInput.closest(".field") : null;
+  const dateField = requestCheckInInput ? requestCheckInInput.closest(".field.grid-2") : null;
+  const statusField = requestStatusInput ? requestStatusInput.closest(".field") : null;
+  const notesField = requestNotesInput ? requestNotesInput.closest(".field") : null;
+  const showSingleRoomFields = !(isGroupLike || isAdditionalRooms || isRemoveRooms || isAdditionalServices || isPriceChange);
 
   setText(requestCheckInLabel, isDateChange ? "New Check-in" : "Check-in");
   setText(requestCheckOutLabel, isDateChange ? "New Check-out" : "Check-out");
@@ -4001,8 +4194,14 @@ function syncModalReasonDefaults() {
   toggleHidden(requestServicesSection, !isAdditionalServices);
   toggleHidden(requestRemoveRoomsSection, !isRemoveRooms);
   toggleHidden(requestBookingRoomsSection, !isEditCustomerData || state.requestScope !== "group");
+  toggleHidden(requestPriceSection, !isPriceChange);
   toggleHidden(roomPickerField, !showSingleRoomFields);
   toggleHidden(requestGuestsField, !showSingleRoomFields);
+  toggleHidden(guestField, isPriceChange);
+  toggleHidden(phoneField, isPriceChange);
+  toggleHidden(dateField, isPriceChange);
+  toggleHidden(statusField, isPriceChange);
+  toggleHidden(notesField, isPriceChange);
   setValue(requestStatusInput, getDefaultRequestStatus(requestReasonInput.value, state.activeBooking?.status || "Campaign"));
 }
 
@@ -4031,6 +4230,8 @@ async function handleRequestSubmit(event) {
     requestNote: requestMessageInput.value.trim(),
     requestedServices: selectedServices,
     requestedRemoveRooms: Array.from(state.modalRemoveRooms.values()),
+    weekendRate: Number(requestWeekendRateInput?.value || state.activeBooking.weekendRate || 0),
+    weekdayRate: Number(requestWeekdayRateInput?.value || state.activeBooking.weekdayRate || 0),
   };
 
   payload.roomTypeLabel = getRoomTypeLabelForGuests(payload.roomType, payload.guests);
@@ -4051,6 +4252,11 @@ async function handleRequestSubmit(event) {
 
   if (reason === "remove_rooms" && !payload.requestedRemoveRooms.length) {
     showToast("Select at least one room to remove.", true);
+    return;
+  }
+
+  if (reason === "change_room_price" && (payload.weekendRate < 0 || payload.weekdayRate < 0)) {
+    showToast("Price cannot be negative.", true);
     return;
   }
 
@@ -4132,6 +4338,21 @@ async function handleRequestSubmit(event) {
             status: "Cancelled",
           });
         }
+      } else if (reason === "change_room_price") {
+        await updateBooking(state.activeBooking.id, {
+          guestName: state.activeBooking.guestName,
+          phone: state.activeBooking.phone,
+          checkIn: state.activeBooking.checkIn,
+          checkOut: state.activeBooking.checkOut,
+          guests: state.activeBooking.guests,
+          roomType: state.activeBooking.roomType,
+          roomTypeLabel: state.activeBooking.roomTypeLabel,
+          roomNumber: state.activeBooking.roomNumber,
+          notes: state.activeBooking.notes,
+          status: state.activeBooking.status,
+          weekendRate: payload.weekendRate,
+          weekdayRate: payload.weekdayRate,
+        });
       } else if (reason === "edit_booking_data" && effectiveScope === "group") {
         const groupBookings = state.activeBookingGroup.length ? state.activeBookingGroup : [state.activeBooking];
         await applyGroupedBookingEdits(groupBookings, payload.requestedBookingRooms, payload);
@@ -4174,6 +4395,8 @@ async function handleRequestSubmit(event) {
             ? "Services updated."
             : reason === "remove_rooms"
               ? "Selected rooms removed."
+              : reason === "change_room_price"
+                ? "Room price updated."
               : "Booking updated."
       );
     } else {

@@ -402,6 +402,7 @@
               <option value="hold">Customer request to hold</option>
               <option value="change_date">Customer request to change date</option>
               <option value="edit_booking_data">Edit Customer booking data</option>
+              <option value="change_room_price" hidden>Change room price</option>
               <option value="additional_rooms" hidden>Requesting additional rooms</option>
               <option value="additional_services" hidden>Requesting additional services</option>
               <option value="remove_rooms" hidden>Requesting room removal</option>
@@ -475,6 +476,20 @@
             <label>Booking Rooms</label>
             <p class="inline-note">Update room, pax, and services for each room in this booking.</p>
             <div id="request-booking-rooms" class="extra-room-grid"></div>
+          </div>
+          <div id="request-price-section" class="field hidden">
+            <label>Room Price</label>
+            <p id="request-current-price" class="inline-note">Current price: -</p>
+            <div class="request-price-grid">
+              <div>
+                <label for="request-weekend-rate">Weekend Price</label>
+                <input id="request-weekend-rate" type="number" min="0" step="0.01" inputmode="decimal" />
+              </div>
+              <div>
+                <label for="request-weekday-rate">Weekday Price</label>
+                <input id="request-weekday-rate" type="number" min="0" step="0.01" inputmode="decimal" />
+              </div>
+            </div>
           </div>
           <div class="field">
             <label for="request-status">Booking Status</label>
