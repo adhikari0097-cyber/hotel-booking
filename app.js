@@ -207,6 +207,7 @@ const bookingOfferOptions = Array.from(document.querySelectorAll('input[name="bo
 const bookingOfferCustomField = qs("#booking-offer-custom-field");
 const bookingOfferCustomInput = qs("#booking-offer-custom");
 const bookingOfferPreview = qs("#booking-offer-preview");
+const bookingAdvancePaidInput = qs("#advancePaid");
 const accountsList = qs("#accounts-list");
 const accountsEmpty = qs("#accounts-empty");
 const refreshAccountsBtn = qs("#refresh-accounts");
@@ -980,6 +981,41 @@ async function toggleGroupServiceDirect(groupKey, serviceName) {
   }
 }
 
+function getAdvancePaymentInfo(bookings = []) {
+  const items = Array.isArray(bookings) ? bookings : [];
+  const total = items.length;
+  const paidCount = items.filter((booking) => Boolean(booking.advancePaid)).length;
+  if (!total || paidCount === 0) {
+    return { label: "Pending", allPaid: false, partiallyPaid: false };
+  }
+  if (paidCount === total) {
+    return { label: "Received", allPaid: true, partiallyPaid: false };
+  }
+  return { label: "Partial", allPaid: false, partiallyPaid: true };
+}
+
+async function updateGroupAdvancePayment(groupKey, advancePaid) {
+  const group = state.bookingGroups.get(groupKey);
+  if (!group?.bookings?.length) throw new Error("Booking group not found.");
+
+  for (const booking of group.bookings) {
+    await updateBooking(booking.id, {
+      guestName: booking.guestName,
+      phone: booking.phone,
+      checkIn: booking.checkIn,
+      checkOut: booking.checkOut,
+      roomType: booking.roomType,
+      roomTypeLabel: booking.roomTypeLabel,
+      roomNumber: booking.roomNumber,
+      notes: booking.notes,
+      status: booking.status,
+      guests: booking.guests,
+      roomsNeeded: booking.roomsNeeded,
+      advancePaid,
+    });
+  }
+}
+
 async function removeBookingRoomDirect(bookingId) {
   const booking = state.bookingMap.get(bookingId);
   if (!booking) throw new Error("Booking not found.");
@@ -1599,6 +1635,7 @@ function mapBooking(row) {
     weekdayNights: Number(row.weekday_nights || 0),
     baseRoomTotal: Number(row.base_room_total || row.room_total || 0),
     offerPercentage: Number(row.offer_percentage || 0),
+    advancePaid: Boolean(row.advance_paid),
     roomTotal: Number(row.room_total || 0),
     createdAt: row.created_at,
   };
@@ -1613,7 +1650,8 @@ function shouldRetryWithoutPricingColumns(message) {
     || text.includes("weekday_nights")
     || text.includes("room_total")
     || text.includes("base_room_total")
-    || text.includes("offer_percentage");
+    || text.includes("offer_percentage")
+    || text.includes("advance_paid");
 }
 
 function shouldRetryWithoutRequestPricingColumns(message) {
@@ -1640,6 +1678,7 @@ function applyPricingToBookingRow(row, values) {
   row.weekday_nights = pricing.weekdayNights;
   row.base_room_total = pricing.roomTotal;
   row.offer_percentage = Number(values.offerPercentage || 0);
+  row.advance_paid = Boolean(values.advancePaid);
   row.room_total = applyOfferPercentage(pricing.roomTotal, row.offer_percentage);
 }
 
@@ -1651,6 +1690,7 @@ function stripPricingColumns(row) {
   delete row.weekday_nights;
   delete row.base_room_total;
   delete row.offer_percentage;
+  delete row.advance_paid;
   delete row.room_total;
 }
 
@@ -2035,6 +2075,7 @@ async function insertBooking(payload) {
       rooms_needed: Number(payload.roomsNeeded || 1),
       notes: payload.notes || "",
       booking_status: payload.status,
+      advance_paid: Boolean(payload.advancePaid),
     };
     applyPricingToBookingRow(row, payload);
 
@@ -2554,6 +2595,7 @@ function getActiveStatusMarkup(label = "Active") {
 }
 
 function renderBookingGroupOverview(group, groupStatus) {
+  const advanceInfo = getAdvancePaymentInfo(group.bookings);
   return `
     <div class="booking-group-overview">
       <div class="booking-overview-item">
@@ -2596,6 +2638,10 @@ function renderBookingGroupOverview(group, groupStatus) {
         <span>Total Price</span>
         <strong>${formatMoney(group.totalPrice || 0)}</strong>
       </div>
+      <div class="booking-overview-item">
+        <span>Advance</span>
+        <strong>${advanceInfo.label}</strong>
+      </div>
     </div>
   `;
 }
@@ -2621,6 +2667,7 @@ function renderBookingRoomFacts(booking) {
 }
 
 function buildBookingPdfMarkup(group) {
+  const advanceInfo = getAdvancePaymentInfo(group.bookings);
   const allServices = Array.from(new Set(group.bookings.flatMap((booking) => parseBookingNotes(booking.notes).services)));
   const roomCards = group.bookings.map((booking) => {
     const noteMeta = parseBookingNotes(booking.notes);
@@ -2711,6 +2758,7 @@ function buildBookingPdfMarkup(group) {
               <div><strong>Total Pax</strong><span>${escapeHtml(String(group.totalGuests || 0))}</span></div>
               <div><strong>Rooms</strong><span>${escapeHtml(String(group.bookings.length || 0))}</span></div>
               <div><strong>Total Price</strong><span>${escapeHtml(formatMoney(group.totalPrice || 0))}</span></div>
+              <div><strong>Advance</strong><span>${escapeHtml(advanceInfo.label)}</span></div>
               <div><strong>Exported At</strong><span>${escapeHtml(new Date().toLocaleString("en-GB"))}</span></div>
             </div>
             ${allServices.length ? `
@@ -2789,6 +2837,7 @@ function normalizeWhatsappPhone(value) {
 }
 
 function buildReservationWhatsappMessage(group) {
+  const advanceInfo = getAdvancePaymentInfo(group.bookings);
   const roomLines = group.bookings.map((booking) => {
     const noteMeta = parseBookingNotes(booking.notes);
     const extraBits = [];
@@ -2814,6 +2863,7 @@ function buildReservationWhatsappMessage(group) {
     `Total Pax: ${group.totalGuests || 0}`,
     `Rooms: ${group.bookings.length || 0}`,
     `Total Price: ${formatMoney(group.totalPrice || 0)}`,
+    `Advance Payment: ${advanceInfo.label}`,
     ``,
     `Room Details:`,
     ...roomLines.map((line, index) => `${index + 1}. ${line}`),
@@ -2884,6 +2934,7 @@ function openBookingDetailsModal(groupKey) {
   const groupRequest = pendingCollections.byTrack.get(group.trackCode || group.key);
 
   bookingDetailsTitle.textContent = `${group.trackCode || "-"} · ${group.guestName || "Guest"}`;
+  const advanceInfo = getAdvancePaymentInfo(group.bookings);
   const groupServices = Array.from(new Set(group.bookings.flatMap((booking) => parseBookingNotes(booking.notes).services)));
   const roomRows = group.bookings
     .map((booking) => {
@@ -2948,12 +2999,14 @@ function openBookingDetailsModal(groupKey) {
       <div><strong>Guests:</strong> ${group.totalGuests}</div>
       <div><strong>Dates:</strong> ${group.checkIn} -> ${group.checkOut}</div>
       <div><strong>Status:</strong> ${group.statuses.size === 1 ? Array.from(group.statuses)[0] : "Mixed"}</div>
+      <div><strong>Advance:</strong> ${advanceInfo.label}</div>
       <div><strong>Total Price:</strong> ${formatMoney(group.totalPrice || 0)}</div>
     </div>
     ${groupRequest ? `<div class="booking-details-request-banner">${getRequestStatusMarkup(groupRequest, "Latest request")}<span class="booking-history-meta">${formatRequestReason(groupRequest.reason)} · ${getRequestRequestedDate(groupRequest) || "-"}</span></div>` : `<div class="booking-details-request-banner">${getActiveStatusMarkup("Active")}<span class="booking-history-meta">No pending request.</span></div>`}
     ${groupServices.length ? `<div class="booking-details-services-panel"><div class="booking-details-panel-title">Services</div>${renderServiceChips(groupServices)}</div>` : ""}
     ${requestHistoryMarkup}
     <div class="booking-details-actions">
+      <button class="action-btn action-btn-icon action-btn-icon-advance" type="button" data-booking-group-action="advance">${advanceInfo.allPaid ? "Mark Advance Pending" : "Mark Advance Paid"}</button>
       <button class="action-btn action-btn-icon action-btn-icon-whatsapp" type="button" data-booking-group-action="whatsapp">WhatsApp</button>
       <button class="action-btn action-btn-icon action-btn-icon-pdf" type="button" data-booking-group-action="pdf">Export PDF</button>
       <button class="primary-btn" type="button" data-booking-group-action="manage">Manage Full Booking</button>
@@ -2996,6 +3049,19 @@ function openBookingDetailsModal(groupKey) {
   if (whatsappBtn) {
     whatsappBtn.addEventListener("click", () => {
       openReservationWhatsapp(group.key);
+    });
+  }
+  const advanceBtn = bookingDetailsBody.querySelector('[data-booking-group-action="advance"]');
+  if (advanceBtn) {
+    advanceBtn.addEventListener("click", async () => {
+      try {
+        await updateGroupAdvancePayment(group.key, !advanceInfo.allPaid);
+        showToast(!advanceInfo.allPaid ? "Advance payment marked as received." : "Advance payment marked as pending.");
+        await refreshLiveViews();
+        openBookingDetailsModal(group.key);
+      } catch (error) {
+        showToast(error.message || "Unable to update advance payment.", true);
+      }
     });
   }
 
@@ -3077,6 +3143,7 @@ function renderBookings(bookings) {
     const card = document.createElement("div");
     card.className = "booking-card booking-group-card";
     const groupStatus = group.statuses.size === 1 ? Array.from(group.statuses)[0] : "Mixed";
+    const advanceInfo = getAdvancePaymentInfo(group.bookings);
     const groupRequest = pendingCollections.byTrack.get(group.trackCode || group.key);
     const roomRows = group.bookings
       .map((booking) => {
@@ -3141,6 +3208,7 @@ function renderBookings(bookings) {
         <div class="booking-group-statuses booking-group-controls booking-group-controls-stack">
           ${requestButton}
           ${requestActions}
+          <button class="secondary-btn action-btn-icon action-btn-icon-advance" type="button" data-booking-group-advance="${group.key}">${advanceInfo.allPaid ? "Advance Pending" : "Advance Paid"}</button>
           <button class="secondary-btn action-btn-icon action-btn-icon-whatsapp" type="button" data-booking-group-whatsapp="${group.key}">WhatsApp</button>
           <button class="secondary-btn action-btn-icon action-btn-icon-pdf" type="button" data-booking-group-pdf="${group.key}">Export PDF</button>
           <button class="secondary-btn booking-type-trigger action-btn-icon action-btn-icon-edit" type="button" data-booking-group-manage="${group.bookings[0].id}">Booking Type</button>
@@ -3256,6 +3324,18 @@ function renderBookings(bookings) {
     if (whatsappGroupBtn) {
       whatsappGroupBtn.addEventListener("click", () => {
         openReservationWhatsapp(whatsappGroupBtn.dataset.bookingGroupWhatsapp);
+      });
+    }
+    const advanceGroupBtn = card.querySelector("[data-booking-group-advance]");
+    if (advanceGroupBtn) {
+      advanceGroupBtn.addEventListener("click", async () => {
+        try {
+          await updateGroupAdvancePayment(advanceGroupBtn.dataset.bookingGroupAdvance, !advanceInfo.allPaid);
+          showToast(!advanceInfo.allPaid ? "Advance payment marked as received." : "Advance payment marked as pending.");
+          await refreshLiveViews();
+        } catch (error) {
+          showToast(error.message || "Unable to update advance payment.", true);
+        }
       });
     }
     const removeReservationBtn = card.querySelector("[data-booking-group-remove]");
@@ -3628,6 +3708,7 @@ async function updateBooking(bookingId, values) {
       ? Number(values.weekdayRate)
       : ("weekendRate" in values ? Number(values.weekendRate) : Number(currentBooking.weekdayRate || 0)),
     offerPercentage: "offerPercentage" in values ? Number(values.offerPercentage) : Number(currentBooking.offerPercentage || 0),
+    advancePaid: "advancePaid" in values ? Boolean(values.advancePaid) : Boolean(currentBooking.advancePaid),
   };
 
   const row = {
@@ -3642,6 +3723,7 @@ async function updateBooking(bookingId, values) {
     rooms_needed: merged.roomsNeeded,
     notes: merged.notes,
     booking_status: merged.status,
+    advance_paid: merged.advancePaid,
   };
   applyPricingToBookingRow(row, merged);
 
@@ -3747,6 +3829,7 @@ async function approveRequest(requestId) {
         notes: request.requestedNotes ?? request.booking?.notes ?? "",
         status: request.requestedBookingStatus || request.booking?.status || "Campaign",
         offerPercentage: request.requestedOfferPercentage ?? request.booking?.offerPercentage ?? 0,
+        advancePaid: Boolean(request.booking?.advancePaid),
       });
     }
 
@@ -4707,6 +4790,7 @@ async function handleRequestSubmit(event) {
             notes: payload.notes,
             status: payload.status,
             offerPercentage: payload.offerPercentage || state.activeBooking.offerPercentage || 0,
+            advancePaid: Boolean(state.activeBooking.advancePaid),
           });
         }
       } else if (reason === "additional_services") {
@@ -4835,6 +4919,7 @@ bookingForm.addEventListener("submit", async (event) => {
   const payload = Object.fromEntries(formData.entries());
   payload.phone = sanitizePhoneValue(payload.phone);
   payload.offerPercentage = getBookingOfferPercentage();
+  payload.advancePaid = Boolean(bookingAdvancePaidInput?.checked);
   bookingPhoneInput.value = payload.phone;
 
   if (!payload.guestName || !payload.phone) {
@@ -4936,6 +5021,7 @@ bookingForm.addEventListener("submit", async (event) => {
     const tomorrow = addDays(today, 1);
     setBookingDateRange(toDateInputValue(today), toDateInputValue(tomorrow));
     setOfferSelection(bookingOfferOptions, bookingOfferCustomField, bookingOfferCustomInput, 0);
+    if (bookingAdvancePaidInput) bookingAdvancePaidInput.checked = false;
     state.roomPlans.clear();
     state.bookingServices.clear();
     renderRoomServiceAssignments();
