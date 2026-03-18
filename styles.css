@@ -808,6 +808,44 @@ h4 {
   gap: 12px;
 }
 
+.pricing-summary-panel {
+  border: 1px solid #ebdfca;
+  background: #fffdf9;
+  border-radius: 16px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.pricing-summary-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.pricing-summary-total {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--primary);
+  white-space: nowrap;
+}
+
+.pricing-summary-list {
+  display: grid;
+  gap: 10px;
+}
+
+.pricing-summary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid var(--border);
+  font-size: 13px;
+}
+
 .services-panel {
   border: 1px solid #ebdfca;
   background: #fffdf9;
@@ -1503,6 +1541,64 @@ h4 {
   gap: 12px;
 }
 
+.pricing-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.pricing-list {
+  display: grid;
+  gap: 14px;
+}
+
+.pricing-card {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 14px;
+  background: #fdfcfa;
+}
+
+.pricing-card-head h4 {
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+
+.pricing-card-head p {
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.pricing-readonly {
+  min-height: 52px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: #fff;
+  padding: 12px 14px;
+  display: grid;
+  gap: 6px;
+}
+
+.pricing-readonly span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.pricing-readonly strong {
+  font-size: 16px;
+  color: var(--primary);
+}
+
 .account-card {
   border: 1px solid var(--border);
   border-radius: 18px;
@@ -1763,6 +1859,15 @@ h4 {
   .planner-grid-kitchen,
   .planner-grid-normal {
     grid-template-columns: 1fr;
+  }
+
+  .pricing-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pricing-summary-head,
+  .pricing-summary-row {
+    flex-direction: column;
   }
 
   .driver-room-count {

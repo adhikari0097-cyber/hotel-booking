@@ -197,6 +197,18 @@
                 <input id="extraGuestsTotal" type="number" min="0" max="40" placeholder="Auto total" readonly />
               </div>
             </div>
+            <div class="pricing-summary-panel">
+              <div class="pricing-summary-head">
+                <div>
+                  <p class="services-title">Room Pricing</p>
+                  <p class="inline-note">Weekend price is the base. Weekday price is calculated from the saved percentage.</p>
+                </div>
+                <div id="pricing-summary-total" class="pricing-summary-total">LKR 0.00</div>
+              </div>
+              <div id="pricing-summary-list" class="pricing-summary-list">
+                <p id="pricing-summary-empty" class="inline-note">Select rooms and nights to see the total price.</p>
+              </div>
+            </div>
             <div class="services-panel">
               <p class="services-title">Booking Services</p>
               <p class="inline-note">Select the services for this whole booking. The same service set applies to all selected rooms.</p>
@@ -343,6 +355,23 @@
             <p id="accounts-empty" class="empty-state">No accounts yet.</p>
           </div>
         </section>
+
+        <section class="screen" id="screen-pricing" aria-labelledby="tab-pricing">
+          <div class="card">
+            <div class="accounts-header">
+              <div>
+                <p class="eyebrow">Room Fix</p>
+                <h3>Room Pricing</h3>
+              </div>
+              <div class="pricing-toolbar">
+                <button id="refresh-pricing" class="secondary-btn small-btn" type="button">Refresh</button>
+                <button id="save-pricing" class="primary-btn small-btn" type="button">Save Prices</button>
+              </div>
+            </div>
+            <p class="inline-note">Only Owner and Admin can manage room prices. Weekend price is entered manually. Weekday price is calculated automatically from the percentage.</p>
+            <div id="pricing-list" class="pricing-list"></div>
+          </div>
+        </section>
       </main>
 
       <nav class="bottom-nav">
@@ -350,6 +379,7 @@
         <button id="tab-view" class="nav-btn" type="button">View By Date</button>
         <button id="tab-requests" class="nav-btn" type="button">Requests</button>
         <button id="tab-accounts" class="nav-btn hidden" type="button">Accounts</button>
+        <button id="tab-pricing" class="nav-btn hidden" type="button">Room Fix</button>
       </nav>
     </div>
 

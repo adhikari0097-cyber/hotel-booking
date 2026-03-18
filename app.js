@@ -4,6 +4,7 @@ const CONFIG = {
   SUPABASE_TABLE: "bookings",
   SUPABASE_PROFILES_TABLE: "profiles",
   SUPABASE_REQUESTS_TABLE: "booking_change_requests",
+  SUPABASE_PRICING_TABLE: "room_pricing",
   GOOGLE_SHEETS_BACKUP_URL: "/.netlify/functions/proxy",
 };
 
@@ -13,6 +14,15 @@ const ROOM_DEFS = [
   { type: "kitchen", label: "Kitchen Room", count: 2, maxPax: 6 },
   { type: "normal", label: "Normal Room", count: 4, maxPax: 4 },
   { type: "driver", label: "Driver Room", count: 1, maxPax: 4 },
+];
+
+const ROOM_PRICING_DEFS = [
+  { roomType: "kitchen", pax: 0, label: "Kitchen Room", note: "Kitchen room uses one fixed price. Pax does not change the rate." },
+  { roomType: "driver", pax: 0, label: "Driver Room", note: "Driver room uses one fixed price." },
+  { roomType: "normal", pax: 1, label: "Normal Room · 1 Pax", note: "Normal room weekend base for 1 guest." },
+  { roomType: "normal", pax: 2, label: "Normal Room · 2 Pax", note: "Normal room weekend base for 2 guests." },
+  { roomType: "normal", pax: 3, label: "Normal Room · 3 Pax", note: "Normal room weekend base for 3 guests." },
+  { roomType: "normal", pax: 4, label: "Normal Room · 4 Pax", note: "Normal room weekend base for 4 guests." },
 ];
 
 const TOTAL_ROOMS = ROOM_DEFS.reduce((sum, room) => sum + room.count, 0);
@@ -39,6 +49,9 @@ const state = {
   bookingListFilter: "active",
   requestsFilterMode: "recent",
   requestsFilterStatus: "pending",
+  roomPricing: new Map(),
+  pricingSchemaReady: null,
+  bookingRangePicker: null,
 };
 
 const qs = (selector) => document.querySelector(selector);
@@ -57,6 +70,69 @@ function setText(node, text) {
 
 function toggleHidden(node, hidden) {
   if (node) node.classList.toggle("hidden", hidden);
+}
+
+function refreshRequestModalNodeRefs() {
+  requestExtraRoomsSection = qs("#request-extra-rooms-section");
+  requestExtraRooms = qs("#request-extra-rooms");
+  requestServicesSection = qs("#request-services-section");
+  requestServices = qs("#request-services");
+  requestRemoveRoomsSection = qs("#request-remove-rooms-section");
+  requestRemoveRooms = qs("#request-remove-rooms");
+  requestBookingRoomsSection = qs("#request-booking-rooms-section");
+  requestBookingRooms = qs("#request-booking-rooms");
+}
+
+function ensureRequestModalSections() {
+  if (!requestForm) return;
+  const statusField = requestStatusInput?.closest(".field");
+  const insertBefore = statusField || requestForm.querySelector("#request-notes")?.closest(".field");
+  const sectionDefs = [
+    {
+      sectionId: "request-extra-rooms-section",
+      containerId: "request-extra-rooms",
+      label: "Additional Rooms",
+      note: "Select extra rooms only when the reason is requesting additional rooms.",
+      className: "extra-room-grid",
+    },
+    {
+      sectionId: "request-services-section",
+      containerId: "request-services",
+      label: "Additional Services",
+      note: "Select the extra services requested for this booking.",
+      className: "service-grid",
+    },
+    {
+      sectionId: "request-remove-rooms-section",
+      containerId: "request-remove-rooms",
+      label: "Remove Rooms",
+      note: "Select the rooms that should be removed from this booking.",
+      className: "extra-room-grid",
+    },
+    {
+      sectionId: "request-booking-rooms-section",
+      containerId: "request-booking-rooms",
+      label: "Booking Rooms",
+      note: "Update room, pax, and services for each room in this booking.",
+      className: "extra-room-grid",
+    },
+  ];
+
+  sectionDefs.forEach(({ sectionId, containerId, label, note, className }) => {
+    if (document.getElementById(sectionId) && document.getElementById(containerId)) return;
+    const section = document.createElement("div");
+    section.id = sectionId;
+    section.className = "field hidden";
+    section.innerHTML = `
+      <label>${label}</label>
+      <p class="inline-note">${note}</p>
+      <div id="${containerId}" class="${className}"></div>
+    `;
+    if (insertBefore?.parentNode) insertBefore.parentNode.insertBefore(section, insertBefore);
+    else requestForm.appendChild(section);
+  });
+
+  refreshRequestModalNodeRefs();
 }
 
 const authShell = qs("#auth-shell");
@@ -113,9 +189,15 @@ const driverPlanner = qs("#planner-driver");
 const driversTotalInput = qs("#driversTotal");
 const extraGuestsTotalInput = qs("#extraGuestsTotal");
 const roomServiceAssignments = qs("#room-service-assignments");
+const pricingSummaryList = qs("#pricing-summary-list");
+const pricingSummaryEmpty = qs("#pricing-summary-empty");
+const pricingSummaryTotal = qs("#pricing-summary-total");
 const accountsList = qs("#accounts-list");
 const accountsEmpty = qs("#accounts-empty");
 const refreshAccountsBtn = qs("#refresh-accounts");
+const pricingList = qs("#pricing-list");
+const refreshPricingBtn = qs("#refresh-pricing");
+const savePricingBtn = qs("#save-pricing");
 const requestsList = qs("#requests-list");
 const requestsEmpty = qs("#requests-empty");
 const refreshRequestsBtn = qs("#refresh-requests");
@@ -145,14 +227,14 @@ const requestRoomTypeInput = qs("#request-room-type");
 const requestRoomNumberInput = qs("#request-room-number");
 const requestGuestsField = qs("#request-guests-field");
 const requestGuestsInput = qs("#request-guests");
-const requestExtraRoomsSection = qs("#request-extra-rooms-section");
-const requestExtraRooms = qs("#request-extra-rooms");
-const requestServicesSection = qs("#request-services-section");
-const requestServices = qs("#request-services");
-const requestRemoveRoomsSection = qs("#request-remove-rooms-section");
-const requestRemoveRooms = qs("#request-remove-rooms");
-const requestBookingRoomsSection = qs("#request-booking-rooms-section");
-const requestBookingRooms = qs("#request-booking-rooms");
+let requestExtraRoomsSection = qs("#request-extra-rooms-section");
+let requestExtraRooms = qs("#request-extra-rooms");
+let requestServicesSection = qs("#request-services-section");
+let requestServices = qs("#request-services");
+let requestRemoveRoomsSection = qs("#request-remove-rooms-section");
+let requestRemoveRooms = qs("#request-remove-rooms");
+let requestBookingRoomsSection = qs("#request-booking-rooms-section");
+let requestBookingRooms = qs("#request-booking-rooms");
 const requestStatusInput = qs("#request-status");
 const requestNotesInput = qs("#request-notes");
 const requestMessageInput = qs("#request-message");
@@ -167,6 +249,7 @@ const navButtons = {
   view: qs("#tab-view"),
   requests: qs("#tab-requests"),
   accounts: qs("#tab-accounts"),
+  pricing: qs("#tab-pricing"),
 };
 
 const screens = {
@@ -174,6 +257,7 @@ const screens = {
   view: qs("#screen-view"),
   requests: qs("#screen-requests"),
   accounts: qs("#screen-accounts"),
+  pricing: qs("#screen-pricing"),
 };
 
 function isSupabaseConfigured() {
@@ -336,6 +420,267 @@ function initBookingDateRangePicker(today, tomorrow) {
   }
 
   setBookingDateRange(toDateInputValue(today), toDateInputValue(tomorrow));
+}
+
+function formatMoney(value) {
+  return new Intl.NumberFormat("en-LK", {
+    style: "currency",
+    currency: "LKR",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(value || 0));
+}
+
+function roundCurrency(value) {
+  return Math.round(Number(value || 0) * 100) / 100;
+}
+
+function getRoomPricingKey(roomType, pax = 0) {
+  return `${roomType}-${Number(pax || 0)}`;
+}
+
+function getDefaultRoomPricingEntries() {
+  return ROOM_PRICING_DEFS.map((item) => ({
+    roomType: item.roomType,
+    pax: item.pax,
+    weekendPrice: 0,
+    weekdayPercentage: 100,
+  }));
+}
+
+function getRoomPricingLabel(roomType, pax = 0) {
+  return ROOM_PRICING_DEFS.find((item) => item.roomType === roomType && Number(item.pax) === Number(pax))?.label || roomType;
+}
+
+function setDefaultRoomPricingState() {
+  state.roomPricing = new Map(
+    getDefaultRoomPricingEntries().map((item) => [getRoomPricingKey(item.roomType, item.pax), item])
+  );
+}
+
+function hydrateRoomPricing(rows = []) {
+  const merged = new Map(
+    getDefaultRoomPricingEntries().map((item) => [getRoomPricingKey(item.roomType, item.pax), item])
+  );
+  rows.forEach((row) => {
+    merged.set(getRoomPricingKey(row.room_type, row.pax), {
+      roomType: row.room_type,
+      pax: Number(row.pax || 0),
+      weekendPrice: Number(row.weekend_price || 0),
+      weekdayPercentage: Number(row.weekday_percentage || 100),
+    });
+  });
+  return merged;
+}
+
+function getPricingConfig(roomType, pax = 0) {
+  return state.roomPricing.get(getRoomPricingKey(roomType, pax)) || {
+    roomType,
+    pax: Number(pax || 0),
+    weekendPrice: 0,
+    weekdayPercentage: 100,
+  };
+}
+
+function getPricingPaxTier(roomType, guests) {
+  if (roomType !== "normal") return 0;
+  return Math.max(1, Math.min(4, Number(guests || 1)));
+}
+
+function countStayNightsByType(checkIn, checkOut) {
+  const start = parseDate(checkIn);
+  const end = parseDate(checkOut);
+  let weekendNights = 0;
+  let weekdayNights = 0;
+
+  if (!start || !end || end <= start) {
+    return { weekendNights, weekdayNights };
+  }
+
+  for (let cursor = new Date(start); cursor < end; cursor = addDays(cursor, 1)) {
+    const day = cursor.getDay();
+    if (day === 0 || day === 6) weekendNights += 1;
+    else weekdayNights += 1;
+  }
+
+  return { weekendNights, weekdayNights };
+}
+
+function computeBookingPrice({ checkIn, checkOut, roomType, guests }) {
+  const pricingPax = getPricingPaxTier(roomType, guests);
+  const pricingRule = getPricingConfig(roomType, pricingPax);
+  const weekendRate = roundCurrency(pricingRule.weekendPrice);
+  const weekdayPercentage = Number(pricingRule.weekdayPercentage || 100);
+  const weekdayRate = roundCurrency((weekendRate * weekdayPercentage) / 100);
+  const { weekendNights, weekdayNights } = countStayNightsByType(checkIn, checkOut);
+  const roomTotal = roundCurrency((weekendNights * weekendRate) + (weekdayNights * weekdayRate));
+
+  return {
+    pricingPax,
+    weekendRate,
+    weekdayRate,
+    weekendNights,
+    weekdayNights,
+    weekdayPercentage,
+    roomTotal,
+  };
+}
+
+async function loadRoomPricing() {
+  ensureSupabase();
+  try {
+    const { data, error } = await state.supabase
+      .from(CONFIG.SUPABASE_PRICING_TABLE)
+      .select("*")
+      .order("room_type", { ascending: true })
+      .order("pax", { ascending: true });
+
+    if (error) throw error;
+    state.roomPricing = hydrateRoomPricing(data || []);
+    state.pricingSchemaReady = true;
+  } catch (error) {
+    setDefaultRoomPricingState();
+    state.pricingSchemaReady = false;
+    if (canManagePricing()) {
+      showToast("Room pricing table is not ready. Run the updated Supabase schema.sql.", true);
+    }
+  }
+
+  renderPricingScreen();
+  renderPricingSummary();
+}
+
+function canManagePricing() {
+  return canManageAccounts();
+}
+
+function renderPricingScreen() {
+  if (!pricingList) return;
+  if (!canManagePricing()) {
+    setHTML(pricingList, `<p class="inline-note">Only Owner and Admin can manage room prices.</p>`);
+    return;
+  }
+
+  pricingList.innerHTML = "";
+  ROOM_PRICING_DEFS.forEach((config) => {
+    const pricing = getPricingConfig(config.roomType, config.pax);
+    const weekdayPrice = roundCurrency((Number(pricing.weekendPrice || 0) * Number(pricing.weekdayPercentage || 100)) / 100);
+    const card = document.createElement("article");
+    card.className = "pricing-card";
+    card.innerHTML = `
+      <div class="pricing-card-head">
+        <div>
+          <h4>${config.label}</h4>
+          <p>${config.note}</p>
+        </div>
+      </div>
+      <div class="pricing-grid">
+        <label class="field compact-field">
+          <span>Weekend Price</span>
+          <input type="number" min="0" step="0.01" value="${Number(pricing.weekendPrice || 0)}" data-pricing-weekend />
+        </label>
+        <label class="field compact-field">
+          <span>Weekday %</span>
+          <input type="number" min="0" step="0.01" value="${Number(pricing.weekdayPercentage || 100)}" data-pricing-percentage />
+        </label>
+        <div class="pricing-readonly">
+          <span>Weekday Price</span>
+          <strong data-pricing-weekday>${formatMoney(weekdayPrice)}</strong>
+        </div>
+      </div>
+    `;
+
+    const weekendInput = card.querySelector("[data-pricing-weekend]");
+    const percentageInput = card.querySelector("[data-pricing-percentage]");
+    const weekdayOutput = card.querySelector("[data-pricing-weekday]");
+
+    function syncCardValues() {
+      const weekendPrice = roundCurrency(weekendInput.value);
+      const weekdayPercentage = Number(percentageInput.value || 0);
+      state.roomPricing.set(getRoomPricingKey(config.roomType, config.pax), {
+        roomType: config.roomType,
+        pax: config.pax,
+        weekendPrice,
+        weekdayPercentage,
+      });
+      weekdayOutput.textContent = formatMoney(roundCurrency((weekendPrice * weekdayPercentage) / 100));
+      renderPricingSummary();
+    }
+
+    weekendInput.addEventListener("input", syncCardValues);
+    percentageInput.addEventListener("input", syncCardValues);
+    pricingList.appendChild(card);
+  });
+}
+
+async function saveRoomPricing() {
+  if (!canManagePricing()) return;
+  const rows = ROOM_PRICING_DEFS.map((config) => {
+    const pricing = getPricingConfig(config.roomType, config.pax);
+    return {
+      room_type: config.roomType,
+      pax: config.pax,
+      weekend_price: roundCurrency(pricing.weekendPrice),
+      weekday_percentage: Number(pricing.weekdayPercentage || 100),
+    };
+  });
+
+  const { error } = await state.supabase.from(CONFIG.SUPABASE_PRICING_TABLE).upsert(rows, {
+    onConflict: "room_type,pax",
+  });
+
+  if (error) {
+    throw new Error(error.message || "Could not save room pricing.");
+  }
+
+  state.pricingSchemaReady = true;
+  showToast("Room pricing updated.");
+  await loadRoomPricing();
+}
+
+function renderPricingSummary() {
+  if (!pricingSummaryList || !pricingSummaryTotal) return;
+  const bookingCheckIn = bookingCheckInInput?.value;
+  const selectedPlans = buildRoomList()
+    .map((room) => {
+      const plan = state.roomPlans.get(getRoomKey(room.type, room.number));
+      if (!plan) return null;
+      const totalGuests = Number(plan.pax || 0) + Number(plan.extraPax || 0);
+      if (totalGuests <= 0) return null;
+      return { room, plan, totalGuests };
+    })
+    .filter(Boolean);
+
+  if (!bookingCheckIn || !selectedPlans.length) {
+    setHTML(pricingSummaryList, `<p id="pricing-summary-empty" class="inline-note">Select rooms and nights to see the total price.</p>`);
+    pricingSummaryTotal.textContent = formatMoney(0);
+    return;
+  }
+
+  let grandTotal = 0;
+  const lines = selectedPlans.map(({ room, plan, totalGuests }) => {
+    const roomCheckOut = formatCheckoutFromNights(bookingCheckIn, Number(plan.nights || 1));
+    const pricing = computeBookingPrice({
+      checkIn: bookingCheckIn,
+      checkOut: roomCheckOut,
+      roomType: room.type,
+      guests: totalGuests,
+    });
+    grandTotal += pricing.roomTotal;
+    const pricingLabel = room.type === "normal" ? `${getRoomPricingLabel(room.type, pricing.pricingPax)}` : getRoomPricingLabel(room.type, 0);
+    return `
+      <div class="pricing-summary-row">
+        <div>
+          <strong>${getRoomLabel(room.type, room.number)}</strong>
+          <div class="muted">${pricingLabel} · Weekend ${pricing.weekendNights} x ${formatMoney(pricing.weekendRate)} · Weekday ${pricing.weekdayNights} x ${formatMoney(pricing.weekdayRate)}</div>
+        </div>
+        <strong>${formatMoney(pricing.roomTotal)}</strong>
+      </div>
+    `;
+  }).join("");
+
+  pricingSummaryList.innerHTML = lines;
+  pricingSummaryTotal.textContent = formatMoney(grandTotal);
 }
 
 function datesOverlap(startA, endA, startB, endB) {
@@ -1120,8 +1465,44 @@ function mapBooking(row) {
     roomsNeeded: Number(row.rooms_needed || 1),
     notes: row.notes || "",
     status: row.booking_status || "",
+    pricingPax: Number(row.pricing_pax || 0),
+    weekendRate: Number(row.weekend_rate || 0),
+    weekdayRate: Number(row.weekday_rate || 0),
+    weekendNights: Number(row.weekend_nights || 0),
+    weekdayNights: Number(row.weekday_nights || 0),
+    roomTotal: Number(row.room_total || 0),
     createdAt: row.created_at,
   };
+}
+
+function shouldRetryWithoutPricingColumns(message) {
+  const text = String(message || "").toLowerCase();
+  return text.includes("pricing_pax") || text.includes("weekend_rate") || text.includes("weekday_rate") || text.includes("weekend_nights") || text.includes("weekday_nights") || text.includes("room_total");
+}
+
+function applyPricingToBookingRow(row, values) {
+  const pricing = computeBookingPrice({
+    checkIn: values.checkIn,
+    checkOut: values.checkOut,
+    roomType: normalizeRoomGroup(values.roomType),
+    guests: Number(values.guests || 0),
+  });
+
+  row.pricing_pax = pricing.pricingPax;
+  row.weekend_rate = pricing.weekendRate;
+  row.weekday_rate = pricing.weekdayRate;
+  row.weekend_nights = pricing.weekendNights;
+  row.weekday_nights = pricing.weekdayNights;
+  row.room_total = pricing.roomTotal;
+}
+
+function stripPricingColumns(row) {
+  delete row.pricing_pax;
+  delete row.weekend_rate;
+  delete row.weekday_rate;
+  delete row.weekend_nights;
+  delete row.weekday_nights;
+  delete row.room_total;
 }
 
 function ensureSupabase() {
@@ -1179,14 +1560,20 @@ function updateHeaderProfile() {
 function updateNavVisibility() {
   const showAccounts = canManageAccounts();
   const showRequests = Boolean(state.currentProfile?.approved);
+  const showPricing = canManagePricing();
   navButtons.requests.classList.toggle("hidden", !showRequests);
   navButtons.accounts.classList.toggle("hidden", !showAccounts);
-  const columns = showAccounts ? "repeat(4, 1fr)" : "repeat(3, 1fr)";
+  navButtons.pricing.classList.toggle("hidden", !showPricing);
+  const visibleTabs = 2 + Number(showRequests) + Number(showAccounts) + Number(showPricing);
+  const columns = `repeat(${visibleTabs}, 1fr)`;
   qs(".bottom-nav").style.gridTemplateColumns = columns;
   if (!showRequests && screens.requests.classList.contains("screen-active")) {
     setScreen("booking");
   }
   if (!showAccounts && screens.accounts.classList.contains("screen-active")) {
+    setScreen("booking");
+  }
+  if (!showPricing && screens.pricing.classList.contains("screen-active")) {
     setScreen("booking");
   }
 }
@@ -1272,6 +1659,7 @@ async function applySession(session) {
 
   renderShell("app");
   updateOnlineStatus();
+  await loadRoomPricing();
   await setupRealtime();
   await refreshLiveViews();
   await loadRequests();
@@ -1473,8 +1861,14 @@ async function insertBooking(payload) {
       notes: payload.notes || "",
       booking_status: payload.status,
     };
+    applyPricingToBookingRow(row, payload);
 
-    const { error } = await state.supabase.from(CONFIG.SUPABASE_TABLE).insert(row);
+    let { error } = await state.supabase.from(CONFIG.SUPABASE_TABLE).insert(row);
+    if (error && shouldRetryWithoutPricingColumns(error.message)) {
+      state.pricingSchemaReady = false;
+      stripPricingColumns(row);
+      ({ error } = await state.supabase.from(CONFIG.SUPABASE_TABLE).insert(row));
+    }
     if (!error) {
       payload.trackCode = row.track_code;
       return row.track_code;
@@ -1618,6 +2012,7 @@ function updateTotalGuests() {
   driversTotalInput.value = totalDrivers ? String(totalDrivers) : "";
   extraGuestsTotalInput.value = totalExtraGuests ? String(totalExtraGuests) : "";
   renderRoomServiceAssignments();
+  renderPricingSummary();
 }
 
 function renderPlannerCard(room, isAvailable, booking, plan, defaultNights) {
@@ -1666,6 +2061,7 @@ function renderPlannerCard(room, isAvailable, booking, plan, defaultNights) {
 
     nightsSelect.addEventListener("change", () => {
       plan.nights = Number(nightsSelect.value);
+      renderPricingSummary();
     });
 
     paxSelect.addEventListener("change", () => {
@@ -1751,6 +2147,7 @@ function updateAvailabilityUI(availability) {
     state.roomPlans.clear();
     state.bookingServices.clear();
     renderRoomServiceAssignments();
+    renderPricingSummary();
     guestsInput.value = "";
     driversTotalInput.value = "";
     extraGuestsTotalInput.value = "";
@@ -1785,6 +2182,7 @@ function updateAvailabilityUI(availability) {
   });
 
   updateTotalGuests();
+  renderPricingSummary();
 }
 
 async function refreshAvailability() {
@@ -1871,6 +2269,7 @@ function groupBookingsForDisplay(bookings) {
     if (current) {
       current.bookings.push(booking);
       current.totalGuests += Number(booking.guests || 0);
+      current.totalPrice += Number(booking.roomTotal || 0);
       current.checkIn = current.checkIn < booking.checkIn ? current.checkIn : booking.checkIn;
       current.checkOut = current.checkOut > booking.checkOut ? current.checkOut : booking.checkOut;
       current.statuses.add(booking.status || "Booking");
@@ -1884,6 +2283,7 @@ function groupBookingsForDisplay(bookings) {
       phone: booking.phone || "",
       bookings: [booking],
       totalGuests: Number(booking.guests || 0),
+      totalPrice: Number(booking.roomTotal || 0),
       checkIn: booking.checkIn,
       checkOut: booking.checkOut,
       statuses: new Set([booking.status || "Booking"]),
@@ -2039,6 +2439,7 @@ function openBookingDetailsModal(groupKey) {
         booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType),
         `${booking.guests} guests`,
         `${booking.checkIn} -> ${booking.checkOut}`,
+        formatMoney(booking.roomTotal || 0),
       ];
       if (noteMeta.extraGuests) metaBits.push(`Extra pax / kids: ${noteMeta.extraGuests}`);
       if (noteMeta.drivers) metaBits.push(`Drivers: ${noteMeta.drivers}`);
@@ -2092,6 +2493,7 @@ function openBookingDetailsModal(groupKey) {
       <div><strong>Guests:</strong> ${group.totalGuests}</div>
       <div><strong>Dates:</strong> ${group.checkIn} -> ${group.checkOut}</div>
       <div><strong>Status:</strong> ${group.statuses.size === 1 ? Array.from(group.statuses)[0] : "Mixed"}</div>
+      <div><strong>Total Price:</strong> ${formatMoney(group.totalPrice || 0)}</div>
     </div>
     ${groupRequest ? `<div class="booking-details-request-banner">${getRequestStatusMarkup(groupRequest, "Latest request")}<span class="booking-history-meta">${formatRequestReason(groupRequest.reason)} · ${getRequestRequestedDate(groupRequest) || "-"}</span></div>` : `<div class="booking-details-request-banner">${getActiveStatusMarkup("Active")}<span class="booking-history-meta">No pending request.</span></div>`}
     ${groupServices.length ? `<div class="booking-details-services-panel"><div class="booking-details-panel-title">Services</div>${renderServiceChips(groupServices)}</div>` : ""}
@@ -2213,11 +2615,12 @@ function renderBookings(bookings) {
         const bookingRequest = pendingCollections.byBooking.get(booking.id);
         const roomGroup = normalizeRoomGroup(booking.roomType);
         const noteMeta = parseBookingNotes(booking.notes);
-        const metaBits = [
-          booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType),
-          `${booking.guests} guests`,
-          `${booking.checkIn} -> ${booking.checkOut}`,
-        ];
+      const metaBits = [
+        booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType),
+        `${booking.guests} guests`,
+        `${booking.checkIn} -> ${booking.checkOut}`,
+        formatMoney(booking.roomTotal || 0),
+      ];
         if (noteMeta.extraGuests) metaBits.push(`Extra pax / kids: ${noteMeta.extraGuests}`);
         if (noteMeta.drivers) metaBits.push(`Drivers: ${noteMeta.drivers}`);
         const removeControl = isPendingRoomRemovalRequest(bookingRequest, booking.id)
@@ -2253,7 +2656,7 @@ function renderBookings(bookings) {
       <div class="booking-group-head booking-group-head-dense">
         <div>
           <h4>${group.trackCode || "-"} · ${group.guestName || "Guest"}</h4>
-          <div class="booking-group-summary">${group.bookings.length} room(s) · ${group.totalGuests} guest(s)</div>
+          <div class="booking-group-summary">${group.bookings.length} room(s) · ${group.totalGuests} guest(s) · ${formatMoney(group.totalPrice || 0)}</div>
         </div>
         <div class="booking-group-statuses booking-group-controls booking-group-controls-stack">
           ${requestButton}
@@ -2390,6 +2793,7 @@ function closeRequestModal() {
 }
 
 async function openRequestModal(bookingId, mode, scope = "single") {
+  ensureRequestModalSections();
   const booking = state.bookingMap.get(bookingId);
   if (!booking) {
     showToast("Booking not found.", true);
@@ -2504,19 +2908,42 @@ async function fetchRequests() {
 
 async function updateBooking(bookingId, values) {
   ensureSupabase();
-  const row = {};
-  if ("guestName" in values) row.guest_name = values.guestName;
-  if ("phone" in values) row.phone = values.phone;
-  if ("checkIn" in values) row.check_in = values.checkIn;
-  if ("checkOut" in values) row.check_out = values.checkOut;
-  if ("guests" in values) row.guests = Number(values.guests);
-  if ("roomType" in values) row.room_type = values.roomType;
-  if ("roomTypeLabel" in values) row.room_type_label = values.roomTypeLabel;
-  if ("roomNumber" in values) row.room_number = Number(values.roomNumber);
-  if ("notes" in values) row.notes = values.notes || "";
-  if ("status" in values) row.booking_status = values.status;
+  const currentBooking = state.bookingMap.get(bookingId) || {};
+  const merged = {
+    guestName: "guestName" in values ? values.guestName : currentBooking.guestName,
+    phone: "phone" in values ? values.phone : currentBooking.phone,
+    checkIn: "checkIn" in values ? values.checkIn : currentBooking.checkIn,
+    checkOut: "checkOut" in values ? values.checkOut : currentBooking.checkOut,
+    guests: "guests" in values ? Number(values.guests) : Number(currentBooking.guests || 0),
+    roomType: "roomType" in values ? values.roomType : currentBooking.roomType,
+    roomTypeLabel: "roomTypeLabel" in values ? values.roomTypeLabel : currentBooking.roomTypeLabel,
+    roomNumber: "roomNumber" in values ? Number(values.roomNumber) : Number(currentBooking.roomNumber || 0),
+    notes: "notes" in values ? values.notes || "" : currentBooking.notes || "",
+    status: "status" in values ? values.status : currentBooking.status,
+    roomsNeeded: "roomsNeeded" in values ? Number(values.roomsNeeded) : Number(currentBooking.roomsNeeded || 1),
+  };
 
-  const { error } = await state.supabase.from(CONFIG.SUPABASE_TABLE).update(row).eq("id", bookingId);
+  const row = {
+    guest_name: merged.guestName,
+    phone: merged.phone,
+    check_in: merged.checkIn,
+    check_out: merged.checkOut,
+    guests: merged.guests,
+    room_type: merged.roomType,
+    room_type_label: merged.roomTypeLabel,
+    room_number: merged.roomNumber,
+    rooms_needed: merged.roomsNeeded,
+    notes: merged.notes,
+    booking_status: merged.status,
+  };
+  applyPricingToBookingRow(row, merged);
+
+  let { error } = await state.supabase.from(CONFIG.SUPABASE_TABLE).update(row).eq("id", bookingId);
+  if (error && shouldRetryWithoutPricingColumns(error.message)) {
+    state.pricingSchemaReady = false;
+    stripPricingColumns(row);
+    ({ error } = await state.supabase.from(CONFIG.SUPABASE_TABLE).update(row).eq("id", bookingId));
+  }
   if (error) throw new Error(error.message);
 }
 
@@ -3272,6 +3699,7 @@ async function bootstrapSession() {
 }
 
 function syncModalReasonDefaults() {
+  refreshRequestModalNodeRefs();
   if (!requestReasonInput) return;
   const reason = requestReasonInput.value;
   const isDateChange = reason === "change_date";
@@ -3614,6 +4042,8 @@ bookingForm.addEventListener("submit", async (event) => {
   }
 });
 
+ensureRequestModalSections();
+
 loginForm.addEventListener("submit", handleLogin);
 signupForm.addEventListener("submit", handleSignup);
 requestForm.addEventListener("submit", handleRequestSubmit);
@@ -3624,6 +4054,19 @@ logoutBtn.addEventListener("click", handleLogout);
 loadBookingsBtn.addEventListener("click", () => loadBookingsForDate(viewDateInput.value));
 refreshAccountsBtn.addEventListener("click", () => loadAccounts());
 refreshRequestsBtn.addEventListener("click", () => loadRequests());
+refreshPricingBtn?.addEventListener("click", () => loadRoomPricing());
+savePricingBtn?.addEventListener("click", async () => {
+  try {
+    savePricingBtn.disabled = true;
+    savePricingBtn.textContent = "Saving...";
+    await saveRoomPricing();
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    savePricingBtn.disabled = false;
+    savePricingBtn.textContent = "Save Prices";
+  }
+});
 closeModalBtn.addEventListener("click", closeRequestModal);
 closeBookingDetailsBtn.addEventListener("click", closeBookingDetailsModal);
 requestReasonInput.addEventListener("change", syncModalReasonDefaults);
@@ -3693,6 +4136,7 @@ navButtons.booking.addEventListener("click", () => setScreen("booking"));
 navButtons.view.addEventListener("click", () => setScreen("view"));
 navButtons.requests.addEventListener("click", () => setScreen("requests"));
 navButtons.accounts.addEventListener("click", () => setScreen("accounts"));
+navButtons.pricing.addEventListener("click", () => setScreen("pricing"));
 
 window.addEventListener("online", updateOnlineStatus);
 window.addEventListener("offline", updateOnlineStatus);
@@ -3701,6 +4145,8 @@ window.addEventListener("offline", updateOnlineStatus);
   updateOnlineStatus();
   initSupabase();
   setAuthTab("login");
+  setDefaultRoomPricingState();
+  renderPricingScreen();
   applyPhoneSanitizer(signupPhoneInput);
   applyPhoneSanitizer(bookingPhoneInput);
   applyPhoneSanitizer(requestPhoneInput);
