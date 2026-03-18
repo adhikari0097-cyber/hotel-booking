@@ -2505,16 +2505,8 @@ function renderBookingRoomFacts(booking) {
         <strong>${booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType)}</strong>
       </div>
       <div class="booking-room-fact">
-        <span>Guests</span>
+        <span>Pax Count</span>
         <strong>${booking.guests} guest(s)</strong>
-      </div>
-      <div class="booking-room-fact">
-        <span>Check In</span>
-        <strong>${booking.checkIn}</strong>
-      </div>
-      <div class="booking-room-fact">
-        <span>Check Out</span>
-        <strong>${booking.checkOut}</strong>
       </div>
       <div class="booking-room-fact booking-room-fact-total">
         <span>Room Price</span>
@@ -2602,7 +2594,7 @@ function openBookingDetailsModal(groupKey) {
           </div>
           <div class="booking-room-row-actions">
             ${removeControl}
-            <button class="action-btn" type="button" data-booking-detail-action="${canManageRequests() ? "edit" : "request"}" data-booking-id="${booking.id}">
+            <button class="action-btn" type="button" data-booking-detail-action="edit" data-booking-id="${booking.id}">
               Update
             </button>
           </div>
@@ -2658,7 +2650,7 @@ function openBookingDetailsModal(groupKey) {
     manageBtn.addEventListener('click', async () => {
       try {
         closeBookingDetailsModal();
-        await openRequestModal(group.bookings[0].id, canManageRequests() ? "edit" : "request", "group");
+        await openRequestModal(group.bookings[0].id, "edit", "group");
       } catch (error) {
         showToast(error.message || "Unable to open full booking editor.", true);
       }
@@ -2680,7 +2672,7 @@ function openBookingDetailsModal(groupKey) {
     button.addEventListener("click", async () => {
       try {
         closeBookingDetailsModal();
-        await openRequestModal(button.dataset.bookingId, canManageRequests() ? "edit" : "request");
+        await openRequestModal(button.dataset.bookingId, "edit");
       } catch (error) {
         showToast(error.message || "Unable to open booking update.", true);
       }
@@ -2772,7 +2764,6 @@ function renderBookings(bookings) {
             <div class="booking-room-row-main">
               <div class="booking-room-row-head">
                 <div class="booking-room-row-title">${getRoomLabel(roomGroup, booking.roomNumber)} (#${booking.roomNumber})</div>
-                <span class="booking-room-track">${booking.trackCode || "-"}</span>
               </div>
               ${renderBookingRoomFacts(booking)}
               ${bookingRequest ? `<div class="booking-room-row-request">${getRequestStatusMarkup(bookingRequest, "Request")}</div>` : `<div class="booking-room-row-request">${getActiveStatusMarkup("Active")}</div>`}
@@ -2780,10 +2771,13 @@ function renderBookings(bookings) {
             </div>
             <div class="booking-room-row-actions">
               ${removeControl}
+              <button class="action-btn" type="button" data-booking-updates="${group.key}">
+                View Updates
+              </button>
               <button class="action-btn" type="button" data-booking-price-action="${booking.id}">
                 Change Price
               </button>
-              <button class="action-btn" type="button" data-booking-action="${canManageRequests() ? "edit" : "request"}" data-booking-id="${booking.id}">
+              <button class="action-btn" type="button" data-booking-action="edit" data-booking-id="${booking.id}">
                 Update
               </button>
             </div>
@@ -2837,7 +2831,7 @@ function renderBookings(bookings) {
     card.querySelectorAll("[data-booking-action]").forEach((button) => {
       button.addEventListener("click", async () => {
         try {
-          await openRequestModal(button.dataset.bookingId, canManageRequests() ? "edit" : "request");
+          await openRequestModal(button.dataset.bookingId, "edit");
         } catch (error) {
           showToast(error.message || "Unable to open booking update.", true);
         }
@@ -2867,10 +2861,16 @@ function renderBookings(bookings) {
           await launchBookingAction(button.dataset.bookingPriceAction, {
             scope: "single",
             reason: "change_room_price",
+            mode: "edit",
           });
         } catch (error) {
           showToast(error.message || "Unable to open room price change.", true);
         }
+      });
+    });
+    card.querySelectorAll("[data-booking-updates]").forEach((button) => {
+      button.addEventListener("click", () => {
+        openBookingDetailsModal(button.dataset.bookingUpdates);
       });
     });
     card.querySelectorAll("[data-group-service-toggle]").forEach((button) => {
@@ -2907,7 +2907,7 @@ function renderBookings(bookings) {
     if (bookingTypeBtn) {
       bookingTypeBtn.addEventListener("click", async () => {
         try {
-          await openRequestModal(bookingTypeBtn.dataset.bookingGroupManage, canManageRequests() ? "edit" : "request", "group");
+          await openRequestModal(bookingTypeBtn.dataset.bookingGroupManage, "edit", "group");
         } catch (error) {
           showToast(error.message || "Unable to open booking type editor.", true);
         }
