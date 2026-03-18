@@ -2386,6 +2386,38 @@ h4 {
   margin-bottom: 12px;
 }
 
+.account-permissions {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.account-section-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.permission-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.permission-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 7px 10px;
+  border: 1px solid #ead9a3;
+  background: #fff8e9;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .account-actions {
   display: grid;
   gap: 10px;
@@ -2407,6 +2439,44 @@ h4 {
   padding: 0 12px;
   font-size: 15px;
   font-family: inherit;
+}
+
+.account-permission-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.permission-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: #fff;
+}
+
+.permission-option input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+}
+
+.permission-option span {
+  display: grid;
+  gap: 4px;
+}
+
+.permission-option strong {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.permission-option small {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
 }
 
 .small-btn {

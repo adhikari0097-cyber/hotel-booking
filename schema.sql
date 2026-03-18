@@ -59,11 +59,14 @@ create table if not exists public.profiles (
   phone text not null default '',
   role text not null default 'user' check (role in ('owner', 'admin', 'user')),
   approved boolean not null default false,
+  extra_permissions jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now()
 );
 
 create unique index if not exists profiles_username_idx
   on public.profiles (lower(username));
+
+alter table public.profiles add column if not exists extra_permissions jsonb not null default '[]'::jsonb;
 
 create table if not exists public.room_pricing (
   id uuid primary key default gen_random_uuid(),
@@ -222,6 +225,25 @@ as $$
   );
 $$;
 
+create or replace function public.has_profile_permission(permission_key text)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists(
+    select 1
+    from public.profiles
+    where user_id = auth.uid()
+      and approved = true
+      and (
+        role in ('owner', 'admin')
+        or coalesce(extra_permissions, '[]'::jsonb) @> jsonb_build_array(permission_key)
+      )
+  );
+$$;
+
 alter table public.bookings enable row level security;
 alter table public.profiles enable row level security;
 alter table public.booking_change_requests enable row level security;
@@ -248,8 +270,8 @@ create policy "owner admin can update bookings"
 on public.bookings
 for update
 to authenticated
-using (public.is_owner_or_admin())
-with check (public.is_owner_or_admin());
+using (public.has_profile_permission('manage_bookings'))
+with check (public.has_profile_permission('manage_bookings'));
 
 drop policy if exists "users can read own profile" on public.profiles;
 create policy "users can read own profile"
@@ -285,15 +307,15 @@ create policy "owner admin can insert room pricing"
 on public.room_pricing
 for insert
 to authenticated
-with check (public.is_owner_or_admin());
+with check (public.has_profile_permission('manage_pricing'));
 
 drop policy if exists "owner admin can update room pricing" on public.room_pricing;
 create policy "owner admin can update room pricing"
 on public.room_pricing
 for update
 to authenticated
-using (public.is_owner_or_admin())
-with check (public.is_owner_or_admin());
+using (public.has_profile_permission('manage_pricing'))
+with check (public.has_profile_permission('manage_pricing'));
 
 drop policy if exists "users can read own change requests" on public.booking_change_requests;
 create policy "users can read own change requests"
@@ -307,7 +329,7 @@ create policy "owner admin can read all change requests"
 on public.booking_change_requests
 for select
 to authenticated
-using (public.is_owner_or_admin());
+using (public.has_profile_permission('manage_requests'));
 
 drop policy if exists "approved users can insert own change requests" on public.booking_change_requests;
 create policy "approved users can insert own change requests"
@@ -321,8 +343,8 @@ create policy "owner admin can update change requests"
 on public.booking_change_requests
 for update
 to authenticated
-using (public.is_owner_or_admin())
-with check (public.is_owner_or_admin());
+using (public.has_profile_permission('manage_requests'))
+with check (public.has_profile_permission('manage_requests'));
 
 create or replace function public.add_bookings_to_realtime()
 returns void

@@ -27,6 +27,24 @@ const ROOM_PRICING_DEFS = [
   { roomType: "normal", pax: 4, label: "Normal Room · 4 Pax", note: "Fixed room price for 4 guests." },
 ];
 
+const EXTRA_PERMISSION_DEFS = [
+  {
+    key: "manage_bookings",
+    label: "Booking Control",
+    note: "Directly update bookings, room prices, advance, and reservation changes.",
+  },
+  {
+    key: "manage_requests",
+    label: "Request Approval",
+    note: "View all requests and approve or reject them.",
+  },
+  {
+    key: "manage_pricing",
+    label: "Room Pricing",
+    note: "Open Room Fix and save room prices.",
+  },
+];
+
 const TOTAL_ROOMS = ROOM_DEFS.reduce((sum, room) => sum + room.count, 0);
 const state = {
   supabase: null,
@@ -82,6 +100,35 @@ function escapeHtml(value) {
 
 function toggleHidden(node, hidden) {
   if (node) node.classList.toggle("hidden", hidden);
+}
+
+function normalizePermissionList(value) {
+  if (Array.isArray(value)) {
+    return Array.from(new Set(value.map((item) => String(item || "").trim()).filter(Boolean)));
+  }
+  if (!value) return [];
+  if (typeof value === "string") {
+    try {
+      return normalizePermissionList(JSON.parse(value));
+    } catch (error) {
+      return value.split(",").map((item) => item.trim()).filter(Boolean);
+    }
+  }
+  return [];
+}
+
+function normalizeProfileRow(profile) {
+  if (!profile) return null;
+  return {
+    ...profile,
+    extra_permissions: normalizePermissionList(profile.extra_permissions),
+  };
+}
+
+function profileHasPermission(profile, permissionKey) {
+  if (!profile?.approved) return false;
+  if (["owner", "admin"].includes(profile.role)) return true;
+  return normalizePermissionList(profile.extra_permissions).includes(permissionKey);
 }
 
 function getStoredBookingViewMode() {
@@ -703,7 +750,11 @@ async function loadRoomPricing() {
 }
 
 function canManagePricing() {
-  return canManageAccounts();
+  return profileHasPermission(state.currentProfile, "manage_pricing");
+}
+
+function canManageBookings() {
+  return profileHasPermission(state.currentProfile, "manage_bookings");
 }
 
 function getBookingOfferPercentage() {
@@ -732,7 +783,7 @@ function renderRequestOfferPreview() {
 function renderPricingScreen() {
   if (!pricingList) return;
   if (!canManagePricing()) {
-    setHTML(pricingList, `<p class="inline-note">Only Owner and Admin can manage room prices.</p>`);
+    setHTML(pricingList, `<p class="inline-note">You do not have room pricing access yet.</p>`);
     return;
   }
 
@@ -1794,11 +1845,11 @@ function renderShell(mode) {
 }
 
 function canManageAccounts() {
-  return state.currentProfile && ["owner", "admin"].includes(state.currentProfile.role);
+  return Boolean(state.currentProfile?.approved && ["owner", "admin"].includes(state.currentProfile.role));
 }
 
 function canManageRequests() {
-  return canManageAccounts();
+  return profileHasPermission(state.currentProfile, "manage_requests");
 }
 
 function updateHeaderProfile() {
@@ -1868,8 +1919,9 @@ async function fetchProfile(userId, attempts = 5) {
       .maybeSingle();
 
     if (!error && data) {
-      state.profileMap.set(data.user_id, data);
-      return data;
+      const normalized = normalizeProfileRow(data);
+      state.profileMap.set(normalized.user_id, normalized);
+      return normalized;
     }
     await new Promise((resolve) => setTimeout(resolve, 300));
   }
@@ -3027,7 +3079,7 @@ function preselectRemoveRoomIds(bookingIds) {
 }
 
 async function launchBookingAction(bookingId, { scope = "single", reason = "change_date", removeBookingIds = [], mode } = {}) {
-  await openRequestModal(bookingId, mode || (canManageRequests() ? "edit" : "request"), scope);
+  await openRequestModal(bookingId, mode || (canManageBookings() ? "edit" : "request"), scope);
   requestReasonInput.value = reason;
   syncModalReasonDefaults();
   if (reason === "remove_rooms") {
@@ -3122,7 +3174,7 @@ function openBookingDetailsModal(groupKey) {
     ${groupServices.length ? `<div class="booking-details-services-panel"><div class="booking-details-panel-title">Services</div>${renderServiceChips(groupServices)}</div>` : ""}
     ${requestHistoryMarkup}
     <div class="booking-details-actions">
-      <button class="action-btn action-btn-icon action-btn-icon-advance" type="button" data-booking-group-action="advance">Update Advance</button>
+      ${canManageBookings() ? `<button class="action-btn action-btn-icon action-btn-icon-advance" type="button" data-booking-group-action="advance">Update Advance</button>` : ""}
       <button class="action-btn action-btn-icon action-btn-icon-whatsapp" type="button" data-booking-group-action="whatsapp">WhatsApp</button>
       <button class="action-btn action-btn-icon action-btn-icon-pdf" type="button" data-booking-group-action="pdf">Export PDF</button>
       <button class="primary-btn" type="button" data-booking-group-action="manage">Manage Full Booking</button>
@@ -3138,7 +3190,7 @@ function openBookingDetailsModal(groupKey) {
     manageBtn.addEventListener('click', async () => {
       try {
         closeBookingDetailsModal();
-        await openRequestModal(group.bookings[0].id, "edit", "group");
+        await openRequestModal(group.bookings[0].id, canManageBookings() ? "edit" : "request", "group");
       } catch (error) {
         showToast(error.message || "Unable to open full booking editor.", true);
       }
@@ -3151,7 +3203,7 @@ function openBookingDetailsModal(groupKey) {
       await launchBookingAction(group.bookings[0].id, {
         scope: "group",
         reason: "delete_booking",
-        mode: "request",
+        mode: canManageBookings() ? "edit" : "request",
       });
     });
   }
@@ -3192,7 +3244,7 @@ function openBookingDetailsModal(groupKey) {
     button.addEventListener("click", async () => {
       try {
         closeBookingDetailsModal();
-        await openRequestModal(button.dataset.bookingId, "edit");
+        await openRequestModal(button.dataset.bookingId, canManageBookings() ? "edit" : "request");
       } catch (error) {
         showToast(error.message || "Unable to open booking update.", true);
       }
@@ -3336,9 +3388,11 @@ function renderBookings(bookings) {
           ${requestButton}
           ${requestActions}
           <div class="booking-quick-actions">
-            <button class="secondary-btn action-btn-icon action-btn-icon-advance compact-control" type="button" data-booking-group-advance="${group.key}" aria-label="Update Advance" title="Update Advance">
-              <span class="compact-label">Update Advance</span>
-            </button>
+            ${canManageBookings() ? `
+              <button class="secondary-btn action-btn-icon action-btn-icon-advance compact-control" type="button" data-booking-group-advance="${group.key}" aria-label="Update Advance" title="Update Advance">
+                <span class="compact-label">Update Advance</span>
+              </button>
+            ` : ""}
             <button class="secondary-btn action-btn-icon action-btn-icon-whatsapp compact-control" type="button" data-booking-group-whatsapp="${group.key}" aria-label="WhatsApp" title="WhatsApp">
               <span class="compact-label">WhatsApp</span>
             </button>
@@ -3371,7 +3425,7 @@ function renderBookings(bookings) {
     card.querySelectorAll("[data-booking-action]").forEach((button) => {
       button.addEventListener("click", async () => {
         try {
-          await openRequestModal(button.dataset.bookingId, "edit");
+          await openRequestModal(button.dataset.bookingId, canManageBookings() ? "edit" : "request");
         } catch (error) {
           showToast(error.message || "Unable to open booking update.", true);
         }
@@ -3379,15 +3433,15 @@ function renderBookings(bookings) {
     });
     card.querySelectorAll("[data-booking-remove]").forEach((button) => {
       button.addEventListener("click", async () => {
-        if (!window.confirm("Remove this room from the booking?")) return;
+        if (!window.confirm(canManageBookings() ? "Remove this room from the booking?" : "Send a request to remove this room?")) return;
         try {
           await launchBookingAction(button.dataset.bookingRemove, {
             scope: "single",
             reason: "remove_rooms",
             removeBookingIds: [button.dataset.bookingRemove],
-            mode: "request",
+            mode: canManageBookings() ? "edit" : "request",
           });
-          showToast("Removal request submitted.");
+          showToast(canManageBookings() ? "Room removal updated." : "Removal request submitted.");
           await refreshLiveViews();
           await loadRequests();
         } catch (error) {
@@ -3401,7 +3455,7 @@ function renderBookings(bookings) {
           await launchBookingAction(button.dataset.bookingPriceAction, {
             scope: "single",
             reason: "change_room_price",
-            mode: "edit",
+            mode: canManageBookings() ? "edit" : "request",
           });
         } catch (error) {
           showToast(error.message || "Unable to open room price change.", true);
@@ -3447,7 +3501,7 @@ function renderBookings(bookings) {
     if (bookingTypeBtn) {
       bookingTypeBtn.addEventListener("click", async () => {
         try {
-          await openRequestModal(bookingTypeBtn.dataset.bookingGroupManage, "edit", "group");
+          await openRequestModal(bookingTypeBtn.dataset.bookingGroupManage, canManageBookings() ? "edit" : "request", "group");
         } catch (error) {
           showToast(error.message || "Unable to open booking type editor.", true);
         }
@@ -3487,14 +3541,14 @@ function renderBookings(bookings) {
     const removeReservationBtn = card.querySelector("[data-booking-group-remove]");
     if (removeReservationBtn) {
       removeReservationBtn.addEventListener("click", async () => {
-        if (!window.confirm("Send a request to remove this full reservation?")) return;
+        if (!window.confirm(canManageBookings() ? "Remove this full reservation?" : "Send a request to remove this full reservation?")) return;
         try {
           await launchBookingAction(group.bookings[0].id, {
             scope: "group",
             reason: "delete_booking",
-            mode: "request",
+            mode: canManageBookings() ? "edit" : "request",
           });
-          showToast("Removal request submitted.");
+          showToast(canManageBookings() ? "Reservation updated." : "Removal request submitted.");
           await loadRequests();
           await refreshLiveViews();
         } catch (error) {
@@ -3505,7 +3559,7 @@ function renderBookings(bookings) {
     const addRoomBtn = card.querySelector("[data-booking-group-add]");
     if (addRoomBtn) {
       addRoomBtn.addEventListener("click", async () => {
-        await openRequestModal(addRoomBtn.dataset.bookingGroupAdd, "edit", "group");
+        await openRequestModal(addRoomBtn.dataset.bookingGroupAdd, canManageBookings() ? "edit" : "request", "group");
         requestReasonInput.value = "additional_rooms";
         syncModalReasonDefaults();
       });
@@ -4664,7 +4718,7 @@ async function fetchAccounts() {
     .order("created_at", { ascending: true });
 
   if (error) throw new Error(error.message);
-  return data || [];
+  return (data || []).map(normalizeProfileRow);
 }
 
 async function updateAccount(userId, values) {
@@ -4682,6 +4736,13 @@ function renderAccounts(profiles) {
 
   profiles.forEach((profile) => {
     const isSelf = profile.user_id === state.currentSession?.user?.id;
+    const extraPermissions = normalizePermissionList(profile.extra_permissions);
+    const permissionChips = extraPermissions.length
+      ? extraPermissions
+        .map((permissionKey) => EXTRA_PERMISSION_DEFS.find((item) => item.key === permissionKey)?.label || permissionKey)
+        .map((label) => `<span class="permission-chip">${label}</span>`)
+        .join("")
+      : `<span class="inline-note">No extra access granted.</span>`;
     const card = document.createElement("div");
     card.className = "account-card";
 
@@ -4704,6 +4765,10 @@ function renderAccounts(profiles) {
         <div><strong>Phone:</strong> ${profile.phone || "-"}</div>
         <div><strong>Role:</strong> ${profile.role}</div>
       </div>
+      <div class="account-permissions">
+        <span class="account-section-label">Extra Access</span>
+        <div class="permission-chip-list">${permissionChips}</div>
+      </div>
       <div class="account-actions">
         <label>
           Role
@@ -4716,6 +4781,22 @@ function renderAccounts(profiles) {
             <option value="false"${!profile.approved ? " selected" : ""}>Blocked</option>
           </select>
         </label>
+        <div class="account-permission-grid">
+          ${EXTRA_PERMISSION_DEFS.map((permission) => `
+            <label class="permission-option">
+              <input
+                type="checkbox"
+                data-permission-key="${permission.key}"
+                ${extraPermissions.includes(permission.key) ? "checked" : ""}
+                ${state.currentProfile.role !== "owner" || isSelf ? "disabled" : ""}
+              />
+              <span>
+                <strong>${permission.label}</strong>
+                <small>${permission.note}</small>
+              </span>
+            </label>
+          `).join("")}
+        </div>
         <button type="button" class="secondary-btn small-btn" data-save-account ${isSelf ? "disabled" : ""}>Save</button>
       </div>
     `;
@@ -4723,6 +4804,7 @@ function renderAccounts(profiles) {
     const saveBtn = card.querySelector("[data-save-account]");
     const roleSelect = card.querySelector("[data-role-select]");
     const approvedSelect = card.querySelector("[data-approved-select]");
+    const permissionInputs = Array.from(card.querySelectorAll("[data-permission-key]"));
 
     saveBtn.addEventListener("click", async () => {
       try {
@@ -4730,7 +4812,12 @@ function renderAccounts(profiles) {
         saveBtn.textContent = "Saving...";
         const nextRole = roleSelect.value;
         const nextApproved = approvedSelect.value === "true";
-        const values = state.currentProfile.role === "owner" ? { role: nextRole, approved: nextApproved } : { approved: nextApproved };
+        const nextPermissions = permissionInputs
+          .filter((input) => input.checked)
+          .map((input) => input.dataset.permissionKey);
+        const values = state.currentProfile.role === "owner"
+          ? { role: nextRole, approved: nextApproved, extra_permissions: nextPermissions }
+          : { approved: nextApproved };
         await updateAccount(profile.user_id, values);
         showToast("Account updated.");
         await loadAccounts();
