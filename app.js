@@ -273,6 +273,8 @@ const navButtons = {
   pricing: qs("#tab-pricing"),
 };
 
+let pdfPrintFrame = null;
+
 const screens = {
   booking: qs("#screen-booking"),
   view: qs("#screen-view"),
@@ -2730,19 +2732,54 @@ function exportBookingGroupPdf(groupKey) {
     return;
   }
 
-  const printWindow = window.open("", "_blank", "noopener,noreferrer,width=960,height=900");
-  if (!printWindow) {
-    showToast("Popup blocked. Allow popups and try again.", true);
+  if (pdfPrintFrame) {
+    pdfPrintFrame.remove();
+    pdfPrintFrame = null;
+  }
+
+  pdfPrintFrame = document.createElement("iframe");
+  pdfPrintFrame.style.position = "fixed";
+  pdfPrintFrame.style.width = "0";
+  pdfPrintFrame.style.height = "0";
+  pdfPrintFrame.style.opacity = "0";
+  pdfPrintFrame.style.pointerEvents = "none";
+  pdfPrintFrame.style.border = "0";
+  pdfPrintFrame.setAttribute("aria-hidden", "true");
+  document.body.appendChild(pdfPrintFrame);
+
+  const markup = buildBookingPdfMarkup(group);
+  const frameWindow = pdfPrintFrame.contentWindow;
+  if (!frameWindow) {
+    showToast("Could not prepare PDF export.", true);
+    pdfPrintFrame.remove();
+    pdfPrintFrame = null;
     return;
   }
 
-  printWindow.document.open();
-  printWindow.document.write(buildBookingPdfMarkup(group));
-  printWindow.document.close();
-  printWindow.focus();
+  let hasPrinted = false;
+  const runPrint = () => {
+    if (hasPrinted) return;
+    hasPrinted = true;
+    frameWindow.focus();
+    frameWindow.print();
+  };
+
+  frameWindow.document.open();
+  frameWindow.document.write(markup);
+  frameWindow.document.close();
+  frameWindow.addEventListener("load", () => {
+    window.setTimeout(() => {
+      runPrint();
+    }, 300);
+  }, { once: true });
+
   window.setTimeout(() => {
-    printWindow.print();
-  }, 300);
+    try {
+      runPrint();
+    } catch (error) {
+      showToast("PDF export failed. Try again.", true);
+    }
+  }, 700);
 }
 
 function isPendingRoomRemovalRequest(request, bookingId) {
