@@ -1749,6 +1749,24 @@ async function refreshAvailability() {
   }
 }
 
+function getTrackCodeTint(trackCode) {
+  const palette = [
+    { bg: "#fde9b8", border: "#efcf79" },
+    { bg: "#dff6b3", border: "#a9d45f" },
+    { bg: "#f7cec6", border: "#e69a8c" },
+    { bg: "#dff0ff", border: "#93c0ec" },
+    { bg: "#eadcfb", border: "#bca1eb" },
+    { bg: "#ffe2bf", border: "#efb76f" }
+  ];
+  let hash = 0;
+  String(trackCode || "")
+    .split("")
+    .forEach((char) => {
+      hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+    });
+  return palette[hash % palette.length];
+}
+
 function renderRoomStatus(bookingsForDate) {
   const bookedMap = new Map();
 
@@ -1763,6 +1781,12 @@ function renderRoomStatus(bookingsForDate) {
     const booking = bookedMap.get(`${room.type}-${room.number}`);
     const item = document.createElement("div");
     item.className = "room-item";
+    if (booking?.trackCode) {
+      const tint = getTrackCodeTint(booking.trackCode);
+      item.classList.add("room-item-booked-tinted");
+      item.style.setProperty("--room-track-bg", tint.bg);
+      item.style.setProperty("--room-track-border", tint.border);
+    }
     const bookingSummary = booking
       ? [
           booking.trackCode || "-",
