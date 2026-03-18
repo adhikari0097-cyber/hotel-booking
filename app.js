@@ -51,6 +51,7 @@ const state = {
   bookingListFilter: "active",
   requestsFilterMode: "recent",
   requestsFilterStatus: "pending",
+  bookingViewMode: "mobile",
   roomPricing: new Map(),
   pricingSchemaReady: null,
   bookingRangePicker: null,
@@ -81,6 +82,39 @@ function escapeHtml(value) {
 
 function toggleHidden(node, hidden) {
   if (node) node.classList.toggle("hidden", hidden);
+}
+
+function getStoredBookingViewMode() {
+  try {
+    return window.localStorage.getItem("booking-view-mode");
+  } catch (error) {
+    return null;
+  }
+}
+
+function getDefaultBookingViewMode() {
+  const stored = getStoredBookingViewMode();
+  if (stored === "mobile" || stored === "desktop") return stored;
+  return window.innerWidth >= 1200 ? "desktop" : "mobile";
+}
+
+function applyBookingViewMode() {
+  if (!bookingListCard) return;
+  const effectiveMode = state.bookingViewMode === "desktop" && window.innerWidth >= 900 ? "desktop" : "mobile";
+  bookingListCard.classList.toggle("booking-view-desktop", effectiveMode === "desktop");
+  bookingListCard.classList.toggle("booking-view-mobile", effectiveMode !== "desktop");
+  bookingViewMobileBtn?.classList.toggle("view-mode-btn-active", state.bookingViewMode === "mobile");
+  bookingViewDesktopBtn?.classList.toggle("view-mode-btn-active", state.bookingViewMode === "desktop");
+}
+
+function setBookingViewMode(mode) {
+  state.bookingViewMode = mode === "desktop" ? "desktop" : "mobile";
+  try {
+    window.localStorage.setItem("booking-view-mode", state.bookingViewMode);
+  } catch (error) {
+    // Ignore storage failures.
+  }
+  applyBookingViewMode();
 }
 
 function refreshRequestModalNodeRefs() {
@@ -170,6 +204,9 @@ const syncStatus = qs("#sync-status");
 const guestsInput = qs("#guests");
 const bookingCards = qs("#booking-cards");
 const bookingEmpty = qs("#booking-empty");
+const bookingListCard = qs("#booking-list");
+const bookingViewMobileBtn = qs("#booking-view-mobile");
+const bookingViewDesktopBtn = qs("#booking-view-desktop");
 const bookingFilterButtons = {
   active: qs("#booking-filter-active"),
   cancelled: qs("#booking-filter-cancelled"),
@@ -2624,58 +2661,69 @@ function renderBookingGroupOverview(group, groupStatus) {
   const balanceAmount = getBookingBalanceAmount(group);
   return `
     <div class="booking-group-overview">
-      <div class="booking-overview-item">
-        <span>Track Code</span>
-        <strong>${group.trackCode || "-"}</strong>
-      </div>
-      <div class="booking-overview-item">
-        <span>Customer</span>
-        <strong>${group.guestName || "Guest"}</strong>
-      </div>
-      <div class="booking-overview-item">
-        <span>Booked By</span>
-        <strong>${group.bookings[0]?.createdByName || "-"}</strong>
-      </div>
-      <div class="booking-overview-item">
-        <span>Phone</span>
-        <strong>${group.phone || "-"}</strong>
-      </div>
-      <div class="booking-overview-item">
-        <span>Check In</span>
-        <strong>${group.checkIn || "-"}</strong>
-      </div>
-      <div class="booking-overview-item">
-        <span>Check Out</span>
-        <strong>${group.checkOut || "-"}</strong>
-      </div>
-      <div class="booking-overview-item">
-        <span>Status</span>
-        <strong>${groupStatus}</strong>
-      </div>
-      <div class="booking-overview-item">
-        <span>Total Pax</span>
-        <strong>${group.totalGuests}</strong>
-      </div>
-      <div class="booking-overview-item">
-        <span>Rooms</span>
-        <strong>${group.bookings.length}</strong>
-      </div>
-      <div class="booking-overview-item">
-        <span>Total Price</span>
-        <strong>${formatMoney(group.totalPrice || 0)}</strong>
-      </div>
-      <div class="booking-overview-item">
-        <span>Advance</span>
-        <strong>${advanceInfo.label}</strong>
-      </div>
-      <div class="booking-overview-item">
-        <span>Advance Amount</span>
-        <strong>${formatMoney(advanceInfo.amount || 0)}</strong>
-      </div>
-      <div class="booking-overview-item">
-        <span>Balance</span>
-        <strong>${formatMoney(balanceAmount)}</strong>
-      </div>
+      <section class="booking-overview-panel">
+        <div class="booking-overview-panel-title">Reservation</div>
+        <div class="booking-overview-list">
+          <div class="booking-overview-item">
+            <span>Track Code</span>
+            <strong>${group.trackCode || "-"}</strong>
+          </div>
+          <div class="booking-overview-item">
+            <span>Customer</span>
+            <strong>${group.guestName || "Guest"}</strong>
+          </div>
+          <div class="booking-overview-item">
+            <span>Booked By</span>
+            <strong>${group.bookings[0]?.createdByName || "-"}</strong>
+          </div>
+          <div class="booking-overview-item">
+            <span>Phone</span>
+            <strong>${group.phone || "-"}</strong>
+          </div>
+        </div>
+      </section>
+      <section class="booking-overview-panel">
+        <div class="booking-overview-panel-title">Stay</div>
+        <div class="booking-overview-list">
+          <div class="booking-overview-item">
+            <span>Check In</span>
+            <strong>${group.checkIn || "-"}</strong>
+          </div>
+          <div class="booking-overview-item">
+            <span>Check Out</span>
+            <strong>${group.checkOut || "-"}</strong>
+          </div>
+          <div class="booking-overview-item">
+            <span>Status</span>
+            <strong>${groupStatus}</strong>
+          </div>
+          <div class="booking-overview-item">
+            <span>Rooms / Pax</span>
+            <strong>${group.bookings.length} room(s) · ${group.totalGuests} pax</strong>
+          </div>
+        </div>
+      </section>
+      <section class="booking-overview-panel booking-overview-panel-billing">
+        <div class="booking-overview-panel-title">Billing</div>
+        <div class="booking-overview-list">
+          <div class="booking-overview-item booking-overview-item-strong">
+            <span>Total Price</span>
+            <strong>${formatMoney(group.totalPrice || 0)}</strong>
+          </div>
+          <div class="booking-overview-item">
+            <span>Advance</span>
+            <strong>${advanceInfo.label}</strong>
+          </div>
+          <div class="booking-overview-item">
+            <span>Advance Amount</span>
+            <strong>${formatMoney(advanceInfo.amount || 0)}</strong>
+          </div>
+          <div class="booking-overview-item booking-overview-item-strong">
+            <span>Balance</span>
+            <strong>${formatMoney(balanceAmount)}</strong>
+          </div>
+        </div>
+      </section>
     </div>
   `;
 }
@@ -3199,6 +3247,7 @@ function renderBookings(bookings) {
       .map((booking) => {
         const bookingRequest = pendingCollections.byBooking.get(booking.id);
         const roomGroup = normalizeRoomGroup(booking.roomType);
+        const pricing = getBookingPricingSnapshot(booking);
         const noteMeta = parseBookingNotes(booking.notes);
         const roomNotes = [];
         if (noteMeta.extraGuests) roomNotes.push(`Extra pax / kids: ${noteMeta.extraGuests}`);
@@ -3211,7 +3260,10 @@ function renderBookings(bookings) {
           <div class="booking-room-row">
             <div class="booking-room-row-main">
               <div class="booking-room-row-head">
-                <div class="booking-room-row-title">${getRoomLabel(roomGroup, booking.roomNumber)} (#${booking.roomNumber})</div>
+                <div>
+                  <div class="booking-room-row-title">${getRoomLabel(roomGroup, booking.roomNumber)} (#${booking.roomNumber})</div>
+                  <div class="booking-room-row-subtitle">${booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType)} · ${booking.guests} guest(s) · ${formatMoney(pricing.roomTotal)}</div>
+                </div>
               </div>
               ${renderBookingRoomFacts(booking)}
               ${bookingRequest ? `<div class="booking-room-row-request">${getRequestStatusMarkup(bookingRequest, "Request")}</div>` : `<div class="booking-room-row-request">${getActiveStatusMarkup("Active")}</div>`}
@@ -3253,7 +3305,7 @@ function renderBookings(bookings) {
       <div class="booking-group-head booking-group-head-dense">
         <div>
           <h4>${group.trackCode || "-"} · ${group.guestName || "Guest"}</h4>
-          <div class="booking-group-summary">${group.bookings.length} room(s) · Total Pax ${group.totalGuests} · Total ${formatMoney(group.totalPrice || 0)}</div>
+          <div class="booking-group-summary">Stay ${group.checkIn || "-"} -> ${group.checkOut || "-"} · ${group.bookings.length} room(s) · ${group.totalGuests} pax · Balance ${formatMoney(getBookingBalanceAmount(group))}</div>
         </div>
         <div class="booking-group-statuses booking-group-controls booking-group-controls-stack">
           ${requestButton}
@@ -5124,10 +5176,15 @@ bookingForm.addEventListener("submit", async (event) => {
 });
 
 ensureRequestModalSections();
+state.bookingViewMode = getDefaultBookingViewMode();
+applyBookingViewMode();
 
 loginForm.addEventListener("submit", handleLogin);
 signupForm.addEventListener("submit", handleSignup);
 requestForm.addEventListener("submit", handleRequestSubmit);
+bookingViewMobileBtn?.addEventListener("click", () => setBookingViewMode("mobile"));
+bookingViewDesktopBtn?.addEventListener("click", () => setBookingViewMode("desktop"));
+window.addEventListener("resize", applyBookingViewMode);
 authTabLogin.addEventListener("click", () => setAuthTab("login"));
 authTabSignup.addEventListener("click", () => setAuthTab("signup"));
 pendingLogoutBtn.addEventListener("click", handleLogout);

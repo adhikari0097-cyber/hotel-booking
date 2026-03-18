@@ -313,7 +313,13 @@
           </div>
 
           <div class="card" id="booking-list">
-            <h3>Bookings</h3>
+            <div class="booking-list-head">
+              <h3>Bookings</h3>
+              <div class="view-mode-toggle" id="booking-view-toggle" aria-label="Booking view mode">
+                <button id="booking-view-mobile" class="view-mode-btn view-mode-btn-active" type="button">Mobile View</button>
+                <button id="booking-view-desktop" class="view-mode-btn" type="button">Desktop View</button>
+              </div>
+            </div>
             <div class="booking-list-filters">
               <button id="booking-filter-active" class="filter-chip filter-chip-active" type="button">Active</button>
               <button id="booking-filter-cancelled" class="filter-chip" type="button">Cancelled</button>
