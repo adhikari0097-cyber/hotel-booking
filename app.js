@@ -2728,6 +2728,29 @@ function renderBookingGroupOverview(group, groupStatus) {
   `;
 }
 
+function renderBookingHeaderSummary(group) {
+  return `
+    <div class="booking-group-summary-grid">
+      <div class="booking-summary-chip">
+        <span>Stay</span>
+        <strong>${group.checkIn || "-"} -> ${group.checkOut || "-"}</strong>
+      </div>
+      <div class="booking-summary-chip">
+        <span>Rooms</span>
+        <strong>${group.bookings.length}</strong>
+      </div>
+      <div class="booking-summary-chip">
+        <span>Total Pax</span>
+        <strong>${group.totalGuests}</strong>
+      </div>
+      <div class="booking-summary-chip booking-summary-chip-strong">
+        <span>Balance</span>
+        <strong>${formatMoney(getBookingBalanceAmount(group))}</strong>
+      </div>
+    </div>
+  `;
+}
+
 function renderBookingRoomFacts(booking) {
   const pricing = getBookingPricingSnapshot(booking);
   return `
@@ -3305,7 +3328,7 @@ function renderBookings(bookings) {
       <div class="booking-group-head booking-group-head-dense">
         <div>
           <h4>${group.trackCode || "-"} · ${group.guestName || "Guest"}</h4>
-          <div class="booking-group-summary">Stay ${group.checkIn || "-"} -> ${group.checkOut || "-"} · ${group.bookings.length} room(s) · ${group.totalGuests} pax · Balance ${formatMoney(getBookingBalanceAmount(group))}</div>
+          <div class="booking-group-summary">${renderBookingHeaderSummary(group)}</div>
         </div>
         <div class="booking-group-statuses booking-group-controls booking-group-controls-stack">
           ${requestButton}
