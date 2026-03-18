@@ -422,6 +422,10 @@
               <select id="request-room-number"></select>
             </div>
           </div>
+          <div id="request-guests-field" class="field">
+            <label for="request-guests">Pax Count</label>
+            <select id="request-guests"></select>
+          </div>
           <div id="request-extra-rooms-section" class="field hidden">
             <label>Additional Rooms</label>
             <p class="inline-note">Select extra rooms only when the reason is requesting additional rooms.</p>
@@ -436,6 +440,11 @@
             <label>Remove Rooms</label>
             <p class="inline-note">Select the rooms that should be removed from this booking.</p>
             <div id="request-remove-rooms" class="extra-room-grid"></div>
+          </div>
+          <div id="request-booking-rooms-section" class="field hidden">
+            <label>Booking Rooms</label>
+            <p class="inline-note">Update room, pax, and services for each room in this booking.</p>
+            <div id="request-booking-rooms" class="extra-room-grid"></div>
           </div>
           <div class="field">
             <label for="request-status">Booking Status</label>
