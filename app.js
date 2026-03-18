@@ -2919,6 +2919,156 @@ function formatRequestReason(reason) {
   }
 }
 
+function formatRequestScope(scope) {
+  return scope === "group" ? "Full Booking" : "Single Room";
+}
+
+function formatRequestCreatedAt(createdAt) {
+  if (!createdAt) return "-";
+  const parsed = new Date(createdAt);
+  if (Number.isNaN(parsed.getTime())) return String(createdAt);
+  return parsed.toLocaleString("en-GB", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatRequestStay(checkIn, checkOut) {
+  if (checkIn && checkOut) return `${checkIn} -> ${checkOut}`;
+  return checkIn || checkOut || "-";
+}
+
+function formatRequestRoomSummary(roomType, roomTypeLabel, roomNumber, guests) {
+  const normalizedType = normalizeRoomGroup(roomType || "");
+  const label = roomTypeLabel || getRoomTypeDisplay(normalizedType || roomType || "");
+  const room = roomNumber ? getRoomLabel(normalizedType, Number(roomNumber)) : "";
+  const pax = Number(guests || 0);
+  return [label, room, pax ? `${pax} guest(s)` : ""].filter(Boolean).join(" · ") || "-";
+}
+
+function formatRequestList(items, emptyText = "None") {
+  return items?.length
+    ? items.map((item) => `<span class="request-list-pill">${item}</span>`).join("")
+    : `<span class="muted">${emptyText}</span>`;
+}
+
+function getRequestRequesterName(request) {
+  return state.profileMap.get(request.requestedBy)?.full_name
+    || state.profileMap.get(request.requestedBy)?.username
+    || (request.requestedBy === state.currentSession?.user?.id
+      ? state.currentProfile?.full_name || state.currentProfile?.username || "-"
+      : "Staff");
+}
+
+function getRequestChangeItems(request, booking) {
+  const currentServices = parseBookingNotes(booking?.notes || "").services;
+  const requestedServices = request.requestedServices?.length ? request.requestedServices : currentServices;
+  const items = [];
+
+  if ((request.requestedCheckIn || booking?.checkIn || "") !== (booking?.checkIn || "")
+    || (request.requestedCheckOut || booking?.checkOut || "") !== (booking?.checkOut || "")) {
+    items.push("Dates");
+  }
+  if ((request.requestedBookingStatus || booking?.status || "") !== (booking?.status || "")) {
+    items.push("Status");
+  }
+  if ((request.requestedPhone || booking?.phone || "") !== (booking?.phone || "")) {
+    items.push("Phone");
+  }
+  if ((request.requestedGuestName || booking?.guestName || "") !== (booking?.guestName || "")) {
+    items.push("Guest");
+  }
+  if ((request.requestedNotes || booking?.notes || "") !== (booking?.notes || "")) {
+    items.push("Notes");
+  }
+  if (requestedServices.join("|") !== currentServices.join("|")) {
+    items.push("Services");
+  }
+  if (
+    (request.requestedRoomType || booking?.roomType || "") !== (booking?.roomType || "")
+    || Number(request.requestedRoomNumber || booking?.roomNumber || 0) !== Number(booking?.roomNumber || 0)
+    || Number(request.requestedGuests || booking?.guests || 0) !== Number(booking?.guests || 0)
+  ) {
+    items.push("Room");
+  }
+  if (request.requestedExtraRooms?.length) items.push("Additional rooms");
+  if (request.requestedRemoveRooms?.length) items.push("Remove rooms");
+  if (request.requestedBookingRooms?.length) items.push("Room plan");
+  if (request.reason === "delete_booking") items.push("Delete booking");
+  if (request.reason === "hold") items.push("Hold");
+  if (request.reason === "cancel") items.push("Cancel");
+  return Array.from(new Set(items));
+}
+
+function renderRequestStateRows(rows, variant) {
+  return rows
+    .map(
+      (row) => `
+        <div class="request-state-row ${row.changed ? `request-state-row-${variant}` : ""}">
+          <span class="request-state-label">${row.label}</span>
+          <span class="request-state-value">${row.value || "-"}</span>
+        </div>
+      `,
+    )
+    .join("");
+}
+
+function renderRequestedRoomPlan(request) {
+  if (!request.requestedBookingRooms?.length) return "";
+  return `
+    <div class="request-extra-card">
+      <div class="request-extra-title">Requested room plan</div>
+      <div class="request-list-grid">
+        ${request.requestedBookingRooms
+          .map((room) => `
+            <div class="request-list-item">
+              <strong>${getRoomLabel(normalizeRoomGroup(room.roomType), Number(room.roomNumber))}</strong>
+              <span>${getRoomTypeDisplay(room.roomType)} · ${Number(room.guests || 0) || 1} guest(s)</span>
+              ${Array.isArray(room.services) && room.services.length ? renderServiceChips(room.services) : `<span class="muted">No service changes</span>`}
+            </div>
+          `)
+          .join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderExtraRoomList(request) {
+  if (!request.requestedExtraRooms?.length) return "";
+  return `
+    <div class="request-extra-card">
+      <div class="request-extra-title">Additional rooms</div>
+      <div class="request-list-grid">
+        ${request.requestedExtraRooms
+          .map((room) => `
+            <div class="request-list-item">
+              <strong>${getRoomLabel(normalizeRoomGroup(room.roomType), Number(room.roomNumber))}</strong>
+              <span>${getRoomTypeDisplay(room.roomType)}${Number(room.pax || 0) ? ` · ${Number(room.pax)} guest(s)` : ""}</span>
+            </div>
+          `)
+          .join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderRemovedRoomList(request) {
+  if (!request.requestedRemoveRooms?.length) return "";
+  return `
+    <div class="request-extra-card">
+      <div class="request-extra-title">Rooms to remove</div>
+      <div class="request-list-inline">
+        ${formatRequestList(
+          request.requestedRemoveRooms.map((room) => getRoomLabel(normalizeRoomGroup(room.roomType), Number(room.roomNumber))),
+        )}
+      </div>
+    </div>
+  `;
+}
+
 async function fetchRequests() {
   ensureSupabase();
   let query = state.supabase
@@ -3297,65 +3447,169 @@ function renderRequests(requests) {
       request.status === "approved"
         ? "tag-success"
         : request.status === "pending"
-          ? "tag-pending"
+        ? "tag-pending"
           : "";
+    const currentServices = parseBookingNotes(booking?.notes || "").services;
+    const requestedServices = request.requestedServices?.length ? request.requestedServices : currentServices;
+    const changeItems = getRequestChangeItems(request, booking);
+    const currentRows = [
+      {
+        label: "Stay",
+        value: formatRequestStay(booking?.checkIn, booking?.checkOut),
+        changed: formatRequestStay(booking?.checkIn, booking?.checkOut) !== formatRequestStay(request.requestedCheckIn || booking?.checkIn, request.requestedCheckOut || booking?.checkOut),
+      },
+      {
+        label: "Status",
+        value: booking?.status || "-",
+        changed: (booking?.status || "-") !== (request.requestedBookingStatus || booking?.status || "-"),
+      },
+      {
+        label: "Room",
+        value: formatRequestRoomSummary(booking?.roomType, booking?.roomTypeLabel, booking?.roomNumber, booking?.guests),
+        changed:
+          formatRequestRoomSummary(booking?.roomType, booking?.roomTypeLabel, booking?.roomNumber, booking?.guests)
+          !== formatRequestRoomSummary(
+            request.requestedRoomType || booking?.roomType,
+            request.requestedRoomTypeLabel || booking?.roomTypeLabel,
+            request.requestedRoomNumber || booking?.roomNumber,
+            request.requestedGuests || booking?.guests,
+          ) || Boolean(request.requestedBookingRooms?.length),
+      },
+      {
+        label: "Phone",
+        value: booking?.phone || "-",
+        changed: (booking?.phone || "-") !== (request.requestedPhone || booking?.phone || "-"),
+      },
+      {
+        label: "Guest",
+        value: booking?.guestName || "-",
+        changed: (booking?.guestName || "-") !== (request.requestedGuestName || booking?.guestName || "-"),
+      },
+      {
+        label: "Services",
+        value: currentServices.length ? currentServices.join(", ") : "None",
+        changed: currentServices.join("|") !== requestedServices.join("|"),
+      },
+      {
+        label: "Notes",
+        value: booking?.notes || "-",
+        changed: (booking?.notes || "-") !== (request.requestedNotes || booking?.notes || "-"),
+      },
+    ];
+    const requestedRows = [
+      {
+        label: "Stay",
+        value: formatRequestStay(request.requestedCheckIn || booking?.checkIn, request.requestedCheckOut || booking?.checkOut),
+        changed: currentRows[0].changed,
+      },
+      {
+        label: "Status",
+        value: request.requestedBookingStatus || booking?.status || "-",
+        changed: currentRows[1].changed,
+      },
+      {
+        label: "Room",
+        value: request.requestedBookingRooms?.length
+          ? `${request.requestedBookingRooms.length} room update(s)`
+          : formatRequestRoomSummary(
+              request.requestedRoomType || booking?.roomType,
+              request.requestedRoomTypeLabel || booking?.roomTypeLabel,
+              request.requestedRoomNumber || booking?.roomNumber,
+              request.requestedGuests || booking?.guests,
+            ),
+        changed: currentRows[2].changed,
+      },
+      {
+        label: "Phone",
+        value: request.requestedPhone || booking?.phone || "-",
+        changed: currentRows[3].changed,
+      },
+      {
+        label: "Guest",
+        value: request.requestedGuestName || booking?.guestName || "-",
+        changed: currentRows[4].changed,
+      },
+      {
+        label: "Services",
+        value: requestedServices.length ? requestedServices.join(", ") : "None",
+        changed: currentRows[5].changed,
+      },
+      {
+        label: "Notes",
+        value: request.requestedNotes || booking?.notes || "-",
+        changed: currentRows[6].changed,
+      },
+    ];
     card.innerHTML = `
-      <div class="account-head">
-        <div>
+      <div class="request-card-head">
+        <div class="request-card-head-main">
+          <div class="request-card-kicker">Booking Request</div>
           <h4>${booking?.trackCode || "-"} · ${booking?.guestName || request.requestedGuestName || "Booking"}</h4>
           <p>${formatRequestReason(request.reason)}</p>
         </div>
         <span class="booking-tag ${statusClass}">${request.status}</span>
       </div>
-      <div class="request-summary">
-        <div class="request-summary-line">
-          <span><strong>By:</strong> ${
-          state.profileMap.get(request.requestedBy)?.full_name ||
-          state.profileMap.get(request.requestedBy)?.username ||
-          (request.requestedBy === state.currentSession?.user?.id ? state.currentProfile?.full_name || state.currentProfile?.username || "-" : "Staff")
-        }</span>
-          <span><strong>Date:</strong> ${getRequestRequestedDate(request) || "-"}</span>
+      <div class="request-summary-grid">
+        <div class="request-summary-box">
+          <span class="request-summary-label">Requested by</span>
+          <strong>${getRequestRequesterName(request)}</strong>
         </div>
-        <div class="request-summary-line">
-          <span><strong>Current:</strong> ${booking?.status || "-"}</span>
-          <span><strong>Requested:</strong> ${request.requestedBookingStatus || booking?.status || "-"}</span>
+        <div class="request-summary-box">
+          <span class="request-summary-label">Submitted</span>
+          <strong>${formatRequestCreatedAt(request.createdAt)}</strong>
+        </div>
+        <div class="request-summary-box">
+          <span class="request-summary-label">Stay date</span>
+          <strong>${getRequestRequestedDate(request) || "-"}</strong>
+        </div>
+        <div class="request-summary-box">
+          <span class="request-summary-label">Scope</span>
+          <strong>${formatRequestScope(request.requestedScope)}</strong>
         </div>
       </div>
-      <div class="request-meta request-detail">
-        <div><strong>Scope:</strong> ${request.requestedScope === "group" ? "Full Booking" : "Single Room"}</div>
-        <div><strong>Current:</strong> ${booking?.checkIn || "-"} -> ${booking?.checkOut || "-"} · ${booking?.status || "-"}</div>
-        <div><strong>Requested:</strong> ${request.requestedCheckIn || booking?.checkIn || "-"} -> ${request.requestedCheckOut || booking?.checkOut || "-"} · ${request.requestedBookingStatus || booking?.status || "-"}</div>
-        <div><strong>Current Room:</strong> ${booking?.roomTypeLabel || "-"} · ${getRoomLabel(normalizeRoomGroup(booking?.roomType || ""), booking?.roomNumber || 0)}</div>
-        <div><strong>Requested Room:</strong> ${request.requestedRoomTypeLabel || booking?.roomTypeLabel || "-"} · ${getRoomLabel(normalizeRoomGroup(request.requestedRoomType || booking?.roomType || ""), request.requestedRoomNumber || booking?.roomNumber || 0)}</div>
-        ${
-          request.requestedExtraRooms?.length
-            ? `<div><strong>Additional Rooms:</strong> ${request.requestedExtraRooms
-                .map((room) => {
-                  const pax = Number(room.pax || 0);
-                  return `${getRoomLabel(room.roomType, Number(room.roomNumber))}${pax ? ` (${pax} Pax)` : ""}`;
-                })
-                .join(", ")}</div>`
-            : ""
-        }
-        ${
-          request.requestedRemoveRooms?.length
-            ? `<div><strong>Remove Rooms:</strong> ${request.requestedRemoveRooms
-                .map((room) => getRoomLabel(room.roomType, Number(room.roomNumber)))
-                .join(", ")}</div>`
-            : ""
-        }
-        ${request.requestedServices?.length ? `<div><strong>Services:</strong> ${request.requestedServices.join(", ")}</div>` : ""}
-        <div><strong>Phone:</strong> ${request.requestedPhone || booking?.phone || "-"}</div>
-        <div><strong>Notes:</strong> ${request.requestedNotes || booking?.notes || "-"}</div>
-        <div><strong>Reason Details:</strong> ${request.requestNote || "-"}</div>
-        ${
-          request.adminNote
-            ? `<div><strong>Admin Note:</strong> ${request.adminNote}</div>`
-            : ""
-        }
+      <div class="request-change-strip">
+        <span class="request-change-title">Changed</span>
+        <div class="request-change-pills">
+          ${changeItems.length ? formatRequestList(changeItems, "No changes") : `<span class="muted">No changes</span>`}
+        </div>
+      </div>
+      <div class="request-compare-grid">
+        <section class="request-state-panel">
+          <div class="request-panel-title request-panel-title-current">Current booking</div>
+          ${renderRequestStateRows(currentRows, "current")}
+        </section>
+        <section class="request-state-panel request-state-panel-requested">
+          <div class="request-panel-title request-panel-title-requested">Requested change</div>
+          ${renderRequestStateRows(requestedRows, "requested")}
+        </section>
+      </div>
+      <div class="request-detail">
+        <div class="request-extra-grid">
+          ${renderExtraRoomList(request)}
+          ${renderRemovedRoomList(request)}
+          ${renderRequestedRoomPlan(request)}
+          <div class="request-extra-card">
+            <div class="request-extra-title">Requested services</div>
+            ${request.requestedServices?.length ? renderServiceChips(request.requestedServices) : `<span class="muted">No service changes</span>`}
+          </div>
+          <div class="request-extra-card">
+            <div class="request-extra-title">Reason details</div>
+            <div class="request-note-box">${request.requestNote || "-"}</div>
+          </div>
+          ${
+            request.adminNote
+              ? `
+                <div class="request-extra-card">
+                  <div class="request-extra-title">Admin note</div>
+                  <div class="request-note-box">${request.adminNote}</div>
+                </div>
+              `
+              : ""
+          }
+        </div>
       </div>
       <div class="request-actions">
-        <button class="action-btn" type="button" data-request-toggle>More</button>
+        <button class="action-btn" type="button" data-request-toggle>More details</button>
         ${
           canManageRequests() && request.status === "pending"
             ? `<button class="action-btn" type="button" data-request-action="approve" data-request-id="${request.id}">Approve</button>
@@ -3369,7 +3623,7 @@ function renderRequests(requests) {
     const detail = card.querySelector(".request-detail");
     toggleBtn.addEventListener("click", () => {
       const open = detail.classList.toggle("request-detail-open");
-      toggleBtn.textContent = open ? "Less" : "More";
+      toggleBtn.textContent = open ? "Hide details" : "More details";
     });
 
     card.querySelectorAll("[data-request-action]").forEach((button) => {
