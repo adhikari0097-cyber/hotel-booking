@@ -19,10 +19,10 @@ const ROOM_DEFS = [
 const ROOM_PRICING_DEFS = [
   { roomType: "kitchen", pax: 0, label: "Kitchen Room", note: "Kitchen room uses one fixed price. Pax does not change the rate." },
   { roomType: "driver", pax: 0, label: "Driver Room", note: "Driver room uses one fixed price." },
-  { roomType: "normal", pax: 1, label: "Normal Room · 1 Pax", note: "Normal room weekend base for 1 guest." },
-  { roomType: "normal", pax: 2, label: "Normal Room · 2 Pax", note: "Normal room weekend base for 2 guests." },
-  { roomType: "normal", pax: 3, label: "Normal Room · 3 Pax", note: "Normal room weekend base for 3 guests." },
-  { roomType: "normal", pax: 4, label: "Normal Room · 4 Pax", note: "Normal room weekend base for 4 guests." },
+  { roomType: "normal", pax: 1, label: "Normal Room · 1 Pax", note: "Fixed room price for 1 guest." },
+  { roomType: "normal", pax: 2, label: "Normal Room · 2 Pax", note: "Fixed room price for 2 guests." },
+  { roomType: "normal", pax: 3, label: "Normal Room · 3 Pax", note: "Fixed room price for 3 guests." },
+  { roomType: "normal", pax: 4, label: "Normal Room · 4 Pax", note: "Fixed room price for 4 guests." },
 ];
 
 const TOTAL_ROOMS = ROOM_DEFS.reduce((sum, room) => sum + room.count, 0);
@@ -192,6 +192,10 @@ const roomServiceAssignments = qs("#room-service-assignments");
 const pricingSummaryList = qs("#pricing-summary-list");
 const pricingSummaryEmpty = qs("#pricing-summary-empty");
 const pricingSummaryTotal = qs("#pricing-summary-total");
+const bookingOfferOptions = Array.from(document.querySelectorAll('input[name="booking-offer"]'));
+const bookingOfferCustomField = qs("#booking-offer-custom-field");
+const bookingOfferCustomInput = qs("#booking-offer-custom");
+const bookingOfferPreview = qs("#booking-offer-preview");
 const accountsList = qs("#accounts-list");
 const accountsEmpty = qs("#accounts-empty");
 const refreshAccountsBtn = qs("#refresh-accounts");
@@ -239,6 +243,10 @@ const requestPriceSection = qs("#request-price-section");
 const requestCurrentPrice = qs("#request-current-price");
 const requestWeekendRateInput = qs("#request-weekend-rate");
 const requestWeekdayRateInput = qs("#request-weekday-rate");
+const requestOfferOptions = Array.from(document.querySelectorAll('input[name="request-offer"]'));
+const requestOfferCustomField = qs("#request-offer-custom-field");
+const requestOfferCustomInput = qs("#request-offer-custom");
+const requestOfferPreview = qs("#request-offer-preview");
 const requestStatusInput = qs("#request-status");
 const requestNotesInput = qs("#request-notes");
 const requestMessageInput = qs("#request-message");
@@ -510,6 +518,47 @@ function countStayNightsByType(checkIn, checkOut) {
   return { weekendNights, weekdayNights };
 }
 
+function applyOfferPercentage(amount, offerPercentage = 0) {
+  const safeAmount = roundCurrency(Number(amount || 0));
+  const safeOffer = Math.max(0, Number(offerPercentage || 0));
+  return roundCurrency(safeAmount - ((safeAmount * safeOffer) / 100));
+}
+
+function getSelectedOfferPercentage(options, customInput) {
+  const selected = options.find((input) => input.checked)?.value || "0";
+  if (selected === "custom") {
+    return Math.max(0, Number(customInput?.value || 0));
+  }
+  return Math.max(0, Number(selected || 0));
+}
+
+function syncOfferInputState(options, customField, customInput) {
+  const isCustom = options.find((input) => input.checked)?.value === "custom";
+  options.forEach((input) => {
+    input.closest(".offer-option")?.classList.toggle("offer-option-active", Boolean(input.checked));
+  });
+  toggleHidden(customField, !isCustom);
+  if (!isCustom && customInput) customInput.value = "";
+}
+
+function setOfferSelection(options, customField, customInput, percentage = 0) {
+  const normalized = Number(percentage || 0);
+  let matched = false;
+  options.forEach((input) => {
+    const isMatch = Number(input.value) === normalized;
+    input.checked = isMatch;
+    if (isMatch) matched = true;
+  });
+  const customOption = options.find((input) => input.value === "custom");
+  if (!matched && customOption) {
+    customOption.checked = true;
+    if (customInput) customInput.value = String(normalized);
+  } else if (customInput) {
+    customInput.value = "";
+  }
+  syncOfferInputState(options, customField, customInput);
+}
+
 function computeBookingPrice({ checkIn, checkOut, roomType, guests, weekendRateOverride = null, weekdayRateOverride = null }) {
   const pricingPax = getPricingPaxTier(roomType, guests);
   const pricingRule = getPricingConfig(roomType, pricingPax);
@@ -537,22 +586,31 @@ function getBookingPricingSnapshot(values = {}) {
   const weekdayRate = Number(values.weekdayRate || 0);
   const weekendNights = "weekendNights" in values ? Number(values.weekendNights || 0) : countStayNightsByType(values.checkIn, values.checkOut).weekendNights;
   const weekdayNights = "weekdayNights" in values ? Number(values.weekdayNights || 0) : countStayNightsByType(values.checkIn, values.checkOut).weekdayNights;
+  const baseRoomTotal = "baseRoomTotal" in values
+    ? Number(values.baseRoomTotal || 0)
+    : roundCurrency((weekendNights * weekendRate) + (weekdayNights * weekdayRate));
+  const offerPercentage = Number(values.offerPercentage || 0);
   const roomTotal = "roomTotal" in values
     ? Number(values.roomTotal || 0)
-    : roundCurrency((weekendNights * weekendRate) + (weekdayNights * weekdayRate));
+    : applyOfferPercentage(baseRoomTotal, offerPercentage);
 
   return {
     weekendRate,
     weekdayRate,
     weekendNights,
     weekdayNights,
+    baseRoomTotal,
+    offerPercentage,
     roomTotal,
   };
 }
 
 function formatBookingPriceBreakdown(values = {}) {
   const snapshot = getBookingPricingSnapshot(values);
-  return `Weekend ${snapshot.weekendNights} x ${formatMoney(snapshot.weekendRate)} · Weekday ${snapshot.weekdayNights} x ${formatMoney(snapshot.weekdayRate)} · Total ${formatMoney(snapshot.roomTotal)}`;
+  if (snapshot.offerPercentage > 0) {
+    return `Room Price ${formatMoney(snapshot.baseRoomTotal)} · Offer ${snapshot.offerPercentage}% · Final ${formatMoney(snapshot.roomTotal)}`;
+  }
+  return `Room Price ${formatMoney(snapshot.roomTotal)}`;
 }
 
 function getRequestPriceSnapshot(request, booking) {
@@ -560,7 +618,8 @@ function getRequestPriceSnapshot(request, booking) {
     checkIn: request?.requestedCheckIn || booking?.checkIn || "",
     checkOut: request?.requestedCheckOut || booking?.checkOut || "",
     weekendRate: request?.requestedWeekendRate ?? booking?.weekendRate ?? 0,
-    weekdayRate: request?.requestedWeekdayRate ?? booking?.weekdayRate ?? 0,
+    weekdayRate: request?.requestedWeekdayRate ?? request?.requestedWeekendRate ?? booking?.weekdayRate ?? booking?.weekendRate ?? 0,
+    offerPercentage: request?.requestedOfferPercentage ?? booking?.offerPercentage ?? 0,
   });
 }
 
@@ -592,6 +651,29 @@ function canManagePricing() {
   return canManageAccounts();
 }
 
+function getBookingOfferPercentage() {
+  return getSelectedOfferPercentage(bookingOfferOptions, bookingOfferCustomInput);
+}
+
+function getRequestOfferPercentage() {
+  return getSelectedOfferPercentage(requestOfferOptions, requestOfferCustomInput);
+}
+
+function renderRequestOfferPreview() {
+  if (!requestOfferPreview) return;
+  const roomPrice = Number(requestWeekendRateInput?.value || state.activeBooking?.weekendRate || state.activeBooking?.weekdayRate || 0);
+  const snapshot = getBookingPricingSnapshot({
+    checkIn: requestCheckInInput?.value || state.activeBooking?.checkIn || "",
+    checkOut: requestCheckOutInput?.value || state.activeBooking?.checkOut || "",
+    weekendRate: roomPrice,
+    weekdayRate: roomPrice,
+    offerPercentage: getRequestOfferPercentage(),
+  });
+  requestOfferPreview.textContent = snapshot.offerPercentage > 0
+    ? `Final price after ${snapshot.offerPercentage}% offer: ${formatMoney(snapshot.roomTotal)}`
+    : `Final price: ${formatMoney(snapshot.roomTotal)}`;
+}
+
 function renderPricingScreen() {
   if (!pricingList) return;
   if (!canManagePricing()) {
@@ -602,7 +684,6 @@ function renderPricingScreen() {
   pricingList.innerHTML = "";
   ROOM_PRICING_DEFS.forEach((config) => {
     const pricing = getPricingConfig(config.roomType, config.pax);
-    const weekdayPrice = roundCurrency((Number(pricing.weekendPrice || 0) * Number(pricing.weekdayPercentage || 100)) / 100);
     const card = document.createElement("article");
     card.className = "pricing-card";
     card.innerHTML = `
@@ -614,39 +695,26 @@ function renderPricingScreen() {
       </div>
       <div class="pricing-grid">
         <label class="field compact-field">
-          <span>Weekend Price</span>
+          <span>Room Price</span>
           <input type="number" min="0" step="0.01" value="${Number(pricing.weekendPrice || 0)}" data-pricing-weekend />
         </label>
-        <label class="field compact-field">
-          <span>Weekday %</span>
-          <input type="number" min="0" step="0.01" value="${Number(pricing.weekdayPercentage || 100)}" data-pricing-percentage />
-        </label>
-        <div class="pricing-readonly">
-          <span>Weekday Price</span>
-          <strong data-pricing-weekday>${formatMoney(weekdayPrice)}</strong>
-        </div>
       </div>
     `;
 
     const weekendInput = card.querySelector("[data-pricing-weekend]");
-    const percentageInput = card.querySelector("[data-pricing-percentage]");
-    const weekdayOutput = card.querySelector("[data-pricing-weekday]");
 
     function syncCardValues() {
       const weekendPrice = roundCurrency(weekendInput.value);
-      const weekdayPercentage = Number(percentageInput.value || 0);
       state.roomPricing.set(getRoomPricingKey(config.roomType, config.pax), {
         roomType: config.roomType,
         pax: config.pax,
         weekendPrice,
-        weekdayPercentage,
+        weekdayPercentage: 100,
       });
-      weekdayOutput.textContent = formatMoney(roundCurrency((weekendPrice * weekdayPercentage) / 100));
       renderPricingSummary();
     }
 
     weekendInput.addEventListener("input", syncCardValues);
-    percentageInput.addEventListener("input", syncCardValues);
     pricingList.appendChild(card);
   });
 }
@@ -659,7 +727,7 @@ async function saveRoomPricing() {
       room_type: config.roomType,
       pax: config.pax,
       weekend_price: roundCurrency(pricing.weekendPrice),
-      weekday_percentage: Number(pricing.weekdayPercentage || 100),
+      weekday_percentage: 100,
     };
   });
 
@@ -692,9 +760,11 @@ function renderPricingSummary() {
   if (!bookingCheckIn || !selectedPlans.length) {
     setHTML(pricingSummaryList, `<p id="pricing-summary-empty" class="inline-note">Select rooms and nights to see the total price.</p>`);
     pricingSummaryTotal.textContent = formatMoney(0);
+    if (bookingOfferPreview) bookingOfferPreview.textContent = `Final price: ${formatMoney(0)}`;
     return;
   }
 
+  const offerPercentage = getBookingOfferPercentage();
   let grandTotal = 0;
   const lines = selectedPlans.map(({ room, plan, totalGuests }) => {
     const roomCheckOut = formatCheckoutFromNights(bookingCheckIn, Number(plan.nights || 1));
@@ -704,21 +774,27 @@ function renderPricingSummary() {
       roomType: room.type,
       guests: totalGuests,
     });
-    grandTotal += pricing.roomTotal;
+    const finalPrice = applyOfferPercentage(pricing.roomTotal, offerPercentage);
+    grandTotal += finalPrice;
     const pricingLabel = room.type === "normal" ? `${getRoomPricingLabel(room.type, pricing.pricingPax)}` : getRoomPricingLabel(room.type, 0);
     return `
       <div class="pricing-summary-row">
         <div>
           <strong>${getRoomLabel(room.type, room.number)}</strong>
-          <div class="muted">${pricingLabel} · Weekend ${pricing.weekendNights} x ${formatMoney(pricing.weekendRate)} · Weekday ${pricing.weekdayNights} x ${formatMoney(pricing.weekdayRate)}</div>
+          <div class="muted">${pricingLabel}${offerPercentage > 0 ? ` · Base ${formatMoney(pricing.roomTotal)} · Offer ${offerPercentage}%` : ` · Room Price ${formatMoney(pricing.roomTotal)}`}</div>
         </div>
-        <strong>${formatMoney(pricing.roomTotal)}</strong>
+        <strong>${formatMoney(finalPrice)}</strong>
       </div>
     `;
   }).join("");
 
   pricingSummaryList.innerHTML = lines;
   pricingSummaryTotal.textContent = formatMoney(grandTotal);
+  if (bookingOfferPreview) {
+    bookingOfferPreview.textContent = offerPercentage > 0
+      ? `Final price after ${offerPercentage}% offer: ${formatMoney(grandTotal)}`
+      : `Final price: ${formatMoney(grandTotal)}`;
+  }
 }
 
 function datesOverlap(startA, endA, startB, endB) {
@@ -1508,6 +1584,8 @@ function mapBooking(row) {
     weekdayRate: Number(row.weekday_rate || 0),
     weekendNights: Number(row.weekend_nights || 0),
     weekdayNights: Number(row.weekday_nights || 0),
+    baseRoomTotal: Number(row.base_room_total || row.room_total || 0),
+    offerPercentage: Number(row.offer_percentage || 0),
     roomTotal: Number(row.room_total || 0),
     createdAt: row.created_at,
   };
@@ -1515,12 +1593,21 @@ function mapBooking(row) {
 
 function shouldRetryWithoutPricingColumns(message) {
   const text = String(message || "").toLowerCase();
-  return text.includes("pricing_pax") || text.includes("weekend_rate") || text.includes("weekday_rate") || text.includes("weekend_nights") || text.includes("weekday_nights") || text.includes("room_total");
+  return text.includes("pricing_pax")
+    || text.includes("weekend_rate")
+    || text.includes("weekday_rate")
+    || text.includes("weekend_nights")
+    || text.includes("weekday_nights")
+    || text.includes("room_total")
+    || text.includes("base_room_total")
+    || text.includes("offer_percentage");
 }
 
 function shouldRetryWithoutRequestPricingColumns(message) {
   const text = String(message || "").toLowerCase();
-  return text.includes("requested_weekend_rate") || text.includes("requested_weekday_rate");
+  return text.includes("requested_weekend_rate")
+    || text.includes("requested_weekday_rate")
+    || text.includes("requested_offer_percentage");
 }
 
 function applyPricingToBookingRow(row, values) {
@@ -1538,7 +1625,9 @@ function applyPricingToBookingRow(row, values) {
   row.weekday_rate = pricing.weekdayRate;
   row.weekend_nights = pricing.weekendNights;
   row.weekday_nights = pricing.weekdayNights;
-  row.room_total = pricing.roomTotal;
+  row.base_room_total = pricing.roomTotal;
+  row.offer_percentage = Number(values.offerPercentage || 0);
+  row.room_total = applyOfferPercentage(pricing.roomTotal, row.offer_percentage);
 }
 
 function stripPricingColumns(row) {
@@ -1547,6 +1636,8 @@ function stripPricingColumns(row) {
   delete row.weekday_rate;
   delete row.weekend_nights;
   delete row.weekday_nights;
+  delete row.base_room_total;
+  delete row.offer_percentage;
   delete row.room_total;
 }
 
@@ -2973,6 +3064,8 @@ function closeRequestModal() {
   setHTML(requestRemoveRooms, "");
   setHTML(requestBookingRooms, "");
   setText(requestCurrentPrice, "Current price: -");
+  setText(requestOfferPreview, `Final price: ${formatMoney(0)}`);
+  setOfferSelection(requestOfferOptions, requestOfferCustomField, requestOfferCustomInput, 0);
   state.modalMode = "request";
 }
 
@@ -3007,8 +3100,9 @@ async function openRequestModal(bookingId, mode, scope = "single") {
     requestCurrentPrice,
     `Current pricing: ${formatBookingPriceBreakdown(booking)}`
   );
-  setValue(requestWeekendRateInput, Number(booking.weekendRate || 0));
-  setValue(requestWeekdayRateInput, Number(booking.weekdayRate || 0));
+  setValue(requestWeekendRateInput, Number(booking.weekendRate || booking.weekdayRate || 0));
+  setOfferSelection(requestOfferOptions, requestOfferCustomField, requestOfferCustomInput, Number(booking.offerPercentage || 0));
+  renderRequestOfferPreview();
   setValue(requestNotesInput, booking.notes || "");
   setValue(requestMessageInput, "");
   setValue(requestReasonInput, scope === "group" ? "edit_booking_data" : "change_date");
@@ -3046,6 +3140,7 @@ function mapRequest(row) {
     requestedBookingRooms: Array.isArray(row.requested_booking_rooms) ? row.requested_booking_rooms : [],
     requestedWeekendRate: row.requested_weekend_rate == null ? null : Number(row.requested_weekend_rate),
     requestedWeekdayRate: row.requested_weekday_rate == null ? null : Number(row.requested_weekday_rate),
+    requestedOfferPercentage: row.requested_offer_percentage == null ? null : Number(row.requested_offer_percentage),
     requestedNotes: row.requested_notes || "",
     requestedBookingStatus: row.requested_booking_status || "",
     status: row.status,
@@ -3154,7 +3249,11 @@ function getRequestChangeItems(request, booking) {
   if (requestedServices.join("|") !== currentServices.join("|")) {
     items.push("Services");
   }
-  if (currentPricing.weekendRate !== requestedPricing.weekendRate || currentPricing.weekdayRate !== requestedPricing.weekdayRate) {
+  if (
+    currentPricing.baseRoomTotal !== requestedPricing.baseRoomTotal
+    || currentPricing.offerPercentage !== requestedPricing.offerPercentage
+    || currentPricing.roomTotal !== requestedPricing.roomTotal
+  ) {
     items.push("Price");
   }
   if (
@@ -3271,7 +3370,10 @@ async function updateBooking(bookingId, values) {
     status: "status" in values ? values.status : currentBooking.status,
     roomsNeeded: "roomsNeeded" in values ? Number(values.roomsNeeded) : Number(currentBooking.roomsNeeded || 1),
     weekendRate: "weekendRate" in values ? Number(values.weekendRate) : Number(currentBooking.weekendRate || 0),
-    weekdayRate: "weekdayRate" in values ? Number(values.weekdayRate) : Number(currentBooking.weekdayRate || 0),
+    weekdayRate: "weekdayRate" in values
+      ? Number(values.weekdayRate)
+      : ("weekendRate" in values ? Number(values.weekendRate) : Number(currentBooking.weekdayRate || 0)),
+    offerPercentage: "offerPercentage" in values ? Number(values.offerPercentage) : Number(currentBooking.offerPercentage || 0),
   };
 
   const row = {
@@ -3327,7 +3429,8 @@ async function insertChangeRequest(payload) {
   };
   if (payload.reason === "change_room_price") {
     row.requested_weekend_rate = payload.requestedWeekendRate ?? payload.weekendRate ?? null;
-    row.requested_weekday_rate = payload.requestedWeekdayRate ?? payload.weekdayRate ?? null;
+    row.requested_weekday_rate = payload.requestedWeekdayRate ?? payload.weekdayRate ?? payload.requestedWeekendRate ?? payload.weekendRate ?? null;
+    row.requested_offer_percentage = payload.requestedOfferPercentage ?? payload.offerPercentage ?? null;
   }
   let { error } = await state.supabase.from(CONFIG.SUPABASE_REQUESTS_TABLE).insert(row);
   if (error && shouldRetryWithoutRequestPricingColumns(error.message)) {
@@ -3336,6 +3439,7 @@ async function insertChangeRequest(payload) {
     }
     delete row.requested_weekend_rate;
     delete row.requested_weekday_rate;
+    delete row.requested_offer_percentage;
     ({ error } = await state.supabase.from(CONFIG.SUPABASE_REQUESTS_TABLE).insert(row));
   }
   if (error) throw new Error(error.message);
@@ -3388,6 +3492,7 @@ async function approveRequest(requestId) {
         roomsNeeded: 1,
         notes: request.requestedNotes ?? request.booking?.notes ?? "",
         status: request.requestedBookingStatus || request.booking?.status || "Campaign",
+        offerPercentage: request.requestedOfferPercentage ?? request.booking?.offerPercentage ?? 0,
       });
     }
 
@@ -3467,7 +3572,8 @@ async function approveRequest(requestId) {
       notes: request.requestedNotes ?? request.booking?.notes ?? "",
       status: request.requestedBookingStatus || request.booking?.status || "Campaign",
       weekendRate: request.requestedWeekendRate ?? request.booking?.weekendRate ?? 0,
-      weekdayRate: request.requestedWeekdayRate ?? request.booking?.weekdayRate ?? 0,
+      weekdayRate: request.requestedWeekdayRate ?? request.requestedWeekendRate ?? request.booking?.weekdayRate ?? request.booking?.weekendRate ?? 0,
+      offerPercentage: request.requestedOfferPercentage ?? request.booking?.offerPercentage ?? 0,
     });
 
     await updateRequestStatus(requestId, { status: "approved" });
@@ -3702,9 +3808,12 @@ function renderRequests(requests) {
         changed: (booking?.guestName || "-") !== (request.requestedGuestName || booking?.guestName || "-"),
       },
       {
-        label: "Rates",
+        label: "Price",
         value: formatBookingPriceBreakdown(currentPricing),
-        changed: currentPricing.weekendRate !== requestedPricing.weekendRate || currentPricing.weekdayRate !== requestedPricing.weekdayRate,
+        changed:
+          currentPricing.baseRoomTotal !== requestedPricing.baseRoomTotal
+          || currentPricing.offerPercentage !== requestedPricing.offerPercentage
+          || currentPricing.roomTotal !== requestedPricing.roomTotal,
       },
       {
         label: "Services",
@@ -3751,7 +3860,7 @@ function renderRequests(requests) {
         changed: currentRows[4].changed,
       },
       {
-        label: "Rates",
+        label: "Price",
         value: formatBookingPriceBreakdown(requestedPricing),
         changed: currentRows[5].changed,
       },
@@ -4269,8 +4378,9 @@ async function handleRequestSubmit(event) {
     requestNote: requestMessageInput.value.trim(),
     requestedServices: selectedServices,
     requestedRemoveRooms: Array.from(state.modalRemoveRooms.values()),
-    weekendRate: Number(requestWeekendRateInput?.value || state.activeBooking.weekendRate || 0),
-    weekdayRate: Number(requestWeekdayRateInput?.value || state.activeBooking.weekdayRate || 0),
+    weekendRate: Number(requestWeekendRateInput?.value || state.activeBooking.weekendRate || state.activeBooking.weekdayRate || 0),
+    weekdayRate: Number(requestWeekendRateInput?.value || state.activeBooking.weekendRate || state.activeBooking.weekdayRate || 0),
+    offerPercentage: getRequestOfferPercentage(),
   };
 
   payload.roomTypeLabel = getRoomTypeLabelForGuests(payload.roomType, payload.guests);
@@ -4294,7 +4404,7 @@ async function handleRequestSubmit(event) {
     return;
   }
 
-  if (reason === "change_room_price" && (payload.weekendRate < 0 || payload.weekdayRate < 0)) {
+  if (reason === "change_room_price" && payload.weekendRate < 0) {
     showToast("Price cannot be negative.", true);
     return;
   }
@@ -4342,6 +4452,7 @@ async function handleRequestSubmit(event) {
             roomsNeeded: payload.requestedExtraRooms.length,
             notes: payload.notes,
             status: payload.status,
+            offerPercentage: payload.offerPercentage || state.activeBooking.offerPercentage || 0,
           });
         }
       } else if (reason === "additional_services") {
@@ -4391,6 +4502,7 @@ async function handleRequestSubmit(event) {
           status: state.activeBooking.status,
           weekendRate: payload.weekendRate,
           weekdayRate: payload.weekdayRate,
+          offerPercentage: payload.offerPercentage,
         });
       } else if (reason === "edit_booking_data" && effectiveScope === "group") {
         const groupBookings = state.activeBookingGroup.length ? state.activeBookingGroup : [state.activeBooking];
@@ -4468,6 +4580,7 @@ bookingForm.addEventListener("submit", async (event) => {
   const formData = new FormData(bookingForm);
   const payload = Object.fromEntries(formData.entries());
   payload.phone = sanitizePhoneValue(payload.phone);
+  payload.offerPercentage = getBookingOfferPercentage();
   bookingPhoneInput.value = payload.phone;
 
   if (!payload.guestName || !payload.phone) {
@@ -4568,10 +4681,12 @@ bookingForm.addEventListener("submit", async (event) => {
     const today = new Date();
     const tomorrow = addDays(today, 1);
     setBookingDateRange(toDateInputValue(today), toDateInputValue(tomorrow));
+    setOfferSelection(bookingOfferOptions, bookingOfferCustomField, bookingOfferCustomInput, 0);
     state.roomPlans.clear();
     state.bookingServices.clear();
     renderRoomServiceAssignments();
     guestsInput.value = "";
+    renderPricingSummary();
     if (backupFailures.length) {
       showToast(`Saved live. Backup failed for ${backupFailures.length} room(s). First code: ${savedTrackCodes[0] || "-"}`, true);
     } else {
@@ -4631,10 +4746,29 @@ function handleRequestDateRangeChange() {
   loadRequests();
 }
 
+function handleBookingOfferChange() {
+  syncOfferInputState(bookingOfferOptions, bookingOfferCustomField, bookingOfferCustomInput);
+  renderPricingSummary();
+}
+
+function handleRequestOfferChange() {
+  syncOfferInputState(requestOfferOptions, requestOfferCustomField, requestOfferCustomInput);
+  renderRequestOfferPreview();
+}
+
 requestsDateFromFilter.addEventListener("change", handleRequestDateRangeChange);
 requestsDateToFilter.addEventListener("change", handleRequestDateRangeChange);
 requestsTrackFilter.addEventListener("input", () => loadRequests());
 requestsRequestedByFilter.addEventListener("input", () => loadRequests());
+bookingOfferOptions.forEach((input) => input.addEventListener("change", handleBookingOfferChange));
+bookingOfferCustomInput?.addEventListener("input", handleBookingOfferChange);
+requestOfferOptions.forEach((input) => input.addEventListener("change", handleRequestOfferChange));
+requestOfferCustomInput?.addEventListener("input", handleRequestOfferChange);
+requestWeekendRateInput?.addEventListener("input", renderRequestOfferPreview);
+requestCheckInInput?.addEventListener("change", renderRequestOfferPreview);
+requestCheckOutInput?.addEventListener("change", renderRequestOfferPreview);
+handleBookingOfferChange();
+handleRequestOfferChange();
 requestRoomTypeInput.addEventListener("change", () => {
   populateRequestRoomNumbers(requestRoomTypeInput.value, 1);
   populateRequestGuestsOptions(requestRoomTypeInput.value, requestGuestsInput?.value || 1);

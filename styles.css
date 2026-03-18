@@ -846,6 +846,69 @@ h4 {
   font-size: 13px;
 }
 
+.offer-panel {
+  border: 1px solid #ebdfca;
+  background: #fffdf9;
+  border-radius: 16px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.offer-choice-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.offer-option {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.offer-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.offer-option span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.offer-option span::before {
+  content: "";
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 1.5px solid #c9bda9;
+  background: #fff;
+  flex: 0 0 auto;
+}
+
+.offer-option-active span {
+  background: #f2e8d5;
+  border-color: #d8c49d;
+}
+
+.offer-option-active span::before {
+  background: var(--primary);
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 3px #fff;
+}
+
 .services-panel {
   border: 1px solid #ebdfca;
   background: #fffdf9;
@@ -2116,7 +2179,7 @@ h4 {
 
 .request-price-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
 }
 
@@ -2162,7 +2225,8 @@ h4 {
 
   .pricing-summary-head,
   .pricing-summary-row,
-  .request-card-head {
+  .request-card-head,
+  .offer-choice-list {
     flex-direction: column;
   }
 

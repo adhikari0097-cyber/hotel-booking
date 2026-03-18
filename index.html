@@ -201,13 +201,30 @@
               <div class="pricing-summary-head">
                 <div>
                   <p class="services-title">Room Pricing</p>
-                  <p class="inline-note">Weekend price is the base. Weekday price is calculated from the saved percentage.</p>
+                  <p class="inline-note">Room price is calculated from the saved room price and optional offer.</p>
                 </div>
                 <div id="pricing-summary-total" class="pricing-summary-total">LKR 0.00</div>
               </div>
               <div id="pricing-summary-list" class="pricing-summary-list">
                 <p id="pricing-summary-empty" class="inline-note">Select rooms and nights to see the total price.</p>
               </div>
+            </div>
+            <div class="offer-panel">
+              <p class="services-title">Offer</p>
+              <p class="inline-note">Select the offer after room pricing. This offer applies to all rooms in this booking.</p>
+              <div class="offer-choice-list" id="booking-offer-options">
+                <label class="offer-option"><input type="radio" name="booking-offer" value="0" checked /><span>No Offer</span></label>
+                <label class="offer-option"><input type="radio" name="booking-offer" value="10" /><span>10%</span></label>
+                <label class="offer-option"><input type="radio" name="booking-offer" value="15" /><span>15%</span></label>
+                <label class="offer-option"><input type="radio" name="booking-offer" value="20" /><span>20%</span></label>
+                <label class="offer-option"><input type="radio" name="booking-offer" value="25" /><span>25%</span></label>
+                <label class="offer-option"><input type="radio" name="booking-offer" value="custom" /><span>Custom</span></label>
+              </div>
+              <div id="booking-offer-custom-field" class="field hidden">
+                <label for="booking-offer-custom">Custom Offer %</label>
+                <input id="booking-offer-custom" type="number" min="0" max="100" step="0.01" inputmode="decimal" />
+              </div>
+              <p id="booking-offer-preview" class="inline-note">Final price: LKR 0.00</p>
             </div>
             <div class="services-panel">
               <p class="services-title">Booking Services</p>
@@ -368,7 +385,7 @@
                 <button id="save-pricing" class="primary-btn small-btn" type="button">Save Prices</button>
               </div>
             </div>
-            <p class="inline-note">Only Owner and Admin can manage room prices. Weekend price is entered manually. Weekday price is calculated automatically from the percentage.</p>
+            <p class="inline-note">Only Owner and Admin can manage room prices. Set one room price for each room type and pax setup.</p>
             <div id="pricing-list" class="pricing-list"></div>
           </div>
         </section>
@@ -482,14 +499,23 @@
             <p id="request-current-price" class="inline-note">Current price: -</p>
             <div class="request-price-grid">
               <div>
-                <label for="request-weekend-rate">Weekend Price</label>
+                <label for="request-weekend-rate">Room Price</label>
                 <input id="request-weekend-rate" type="number" min="0" step="0.01" inputmode="decimal" />
               </div>
-              <div>
-                <label for="request-weekday-rate">Weekday Price</label>
-                <input id="request-weekday-rate" type="number" min="0" step="0.01" inputmode="decimal" />
-              </div>
             </div>
+            <div class="offer-choice-list" id="request-offer-options">
+              <label class="offer-option"><input type="radio" name="request-offer" value="0" checked /><span>No Offer</span></label>
+              <label class="offer-option"><input type="radio" name="request-offer" value="10" /><span>10%</span></label>
+              <label class="offer-option"><input type="radio" name="request-offer" value="15" /><span>15%</span></label>
+              <label class="offer-option"><input type="radio" name="request-offer" value="20" /><span>20%</span></label>
+              <label class="offer-option"><input type="radio" name="request-offer" value="25" /><span>25%</span></label>
+              <label class="offer-option"><input type="radio" name="request-offer" value="custom" /><span>Custom</span></label>
+            </div>
+            <div id="request-offer-custom-field" class="field hidden">
+              <label for="request-offer-custom">Custom Offer %</label>
+              <input id="request-offer-custom" type="number" min="0" max="100" step="0.01" inputmode="decimal" />
+            </div>
+            <p id="request-offer-preview" class="inline-note">Final price: LKR 0.00</p>
           </div>
           <div class="field">
             <label for="request-status">Booking Status</label>

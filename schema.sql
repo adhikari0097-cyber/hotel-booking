@@ -18,6 +18,8 @@ create table if not exists public.bookings (
   weekday_rate numeric(12,2) not null default 0,
   weekend_nights integer not null default 0,
   weekday_nights integer not null default 0,
+  base_room_total numeric(12,2) not null default 0,
+  offer_percentage numeric(8,2) not null default 0,
   room_total numeric(12,2) not null default 0,
   notes text not null default '',
   booking_status text not null,
@@ -31,6 +33,8 @@ alter table public.bookings add column if not exists weekend_rate numeric(12,2) 
 alter table public.bookings add column if not exists weekday_rate numeric(12,2) not null default 0;
 alter table public.bookings add column if not exists weekend_nights integer not null default 0;
 alter table public.bookings add column if not exists weekday_nights integer not null default 0;
+alter table public.bookings add column if not exists base_room_total numeric(12,2) not null default 0;
+alter table public.bookings add column if not exists offer_percentage numeric(8,2) not null default 0;
 alter table public.bookings add column if not exists room_total numeric(12,2) not null default 0;
 
 drop index if exists bookings_track_code_idx;
@@ -99,6 +103,7 @@ create table if not exists public.booking_change_requests (
   requested_guests integer,
   requested_weekend_rate numeric(12,2),
   requested_weekday_rate numeric(12,2),
+  requested_offer_percentage numeric(8,2),
   requested_extra_rooms jsonb not null default '[]'::jsonb,
   requested_services jsonb not null default '[]'::jsonb,
   requested_remove_rooms jsonb not null default '[]'::jsonb,
@@ -121,6 +126,7 @@ alter table public.booking_change_requests add column if not exists requested_ro
 alter table public.booking_change_requests add column if not exists requested_guests integer;
 alter table public.booking_change_requests add column if not exists requested_weekend_rate numeric(12,2);
 alter table public.booking_change_requests add column if not exists requested_weekday_rate numeric(12,2);
+alter table public.booking_change_requests add column if not exists requested_offer_percentage numeric(8,2);
 alter table public.booking_change_requests add column if not exists requested_extra_rooms jsonb not null default '[]'::jsonb;
 alter table public.booking_change_requests add column if not exists requested_scope text not null default 'single';
 alter table public.booking_change_requests add column if not exists requested_services jsonb not null default '[]'::jsonb;
