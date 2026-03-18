@@ -3219,16 +3219,17 @@ function syncModalReasonDefaults() {
   const isAdditionalServices = reason === "additional_services";
   const isRemoveRooms = reason === "remove_rooms";
   const isGroupLike = state.requestScope === "group" || isEditCustomerData;
+  const roomPickerField = requestRoomTypeInput ? requestRoomTypeInput.closest(".field.grid-2") : null;
 
-  requestCheckInLabel.textContent = isDateChange ? "New Check-in" : "Check-in";
-  requestCheckOutLabel.textContent = isDateChange ? "New Check-out" : "Check-out";
-  requestDateHelp.classList.toggle("hidden", !isDateChange);
-  requestExtraRoomsSection.classList.toggle("hidden", !isAdditionalRooms);
-  requestServicesSection.classList.toggle("hidden", !isAdditionalServices);
-  requestRemoveRoomsSection.classList.toggle("hidden", !isRemoveRooms);
-  requestBookingRoomsSection.classList.toggle("hidden", !isEditCustomerData || state.requestScope !== "group");
-  requestRoomTypeInput.closest(".field.grid-2").classList.toggle("hidden", isGroupLike || isAdditionalRooms || isRemoveRooms || isAdditionalServices);
-  requestStatusInput.value = getDefaultRequestStatus(requestReasonInput.value, state.activeBooking?.status || "Campaign");
+  if (requestCheckInLabel) requestCheckInLabel.textContent = isDateChange ? "New Check-in" : "Check-in";
+  if (requestCheckOutLabel) requestCheckOutLabel.textContent = isDateChange ? "New Check-out" : "Check-out";
+  if (requestDateHelp) requestDateHelp.classList.toggle("hidden", !isDateChange);
+  if (requestExtraRoomsSection) requestExtraRoomsSection.classList.toggle("hidden", !isAdditionalRooms);
+  if (requestServicesSection) requestServicesSection.classList.toggle("hidden", !isAdditionalServices);
+  if (requestRemoveRoomsSection) requestRemoveRoomsSection.classList.toggle("hidden", !isRemoveRooms);
+  if (requestBookingRoomsSection) requestBookingRoomsSection.classList.toggle("hidden", !isEditCustomerData || state.requestScope !== "group");
+  if (roomPickerField) roomPickerField.classList.toggle("hidden", isGroupLike || isAdditionalRooms || isRemoveRooms || isAdditionalServices);
+  if (requestStatusInput) requestStatusInput.value = getDefaultRequestStatus(requestReasonInput.value, state.activeBooking?.status || "Campaign");
 }
 
 async function handleRequestSubmit(event) {
