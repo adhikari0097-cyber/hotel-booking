@@ -3206,7 +3206,7 @@ function renderBookings(bookings) {
         if (noteMeta.otherNotes.length) roomNotes.push(...noteMeta.otherNotes);
         const removeControl = isPendingRoomRemovalRequest(bookingRequest, booking.id)
           ? `<span class="booking-tag tag-pending">Pending Remove</span>`
-          : `<button class="action-btn subtle-btn action-btn-icon action-btn-icon-remove" type="button" data-booking-remove="${booking.id}">Remove Room</button>`;
+          : `<button class="action-btn subtle-btn action-btn-icon action-btn-icon-remove compact-control" type="button" data-booking-remove="${booking.id}" aria-label="Remove Room" title="Remove Room"><span class="compact-label">Remove Room</span></button>`;
         return `
           <div class="booking-room-row">
             <div class="booking-room-row-main">
@@ -3217,16 +3217,16 @@ function renderBookings(bookings) {
               ${bookingRequest ? `<div class="booking-room-row-request">${getRequestStatusMarkup(bookingRequest, "Request")}</div>` : `<div class="booking-room-row-request">${getActiveStatusMarkup("Active")}</div>`}
               ${roomNotes.length ? `<div class="booking-room-row-notes"><span class="booking-room-row-label">Notes</span><div>${roomNotes.join(" | ")}</div></div>` : ""}
             </div>
-            <div class="booking-room-row-actions">
+            <div class="booking-room-row-actions booking-room-quick-actions">
               ${removeControl}
-              <button class="action-btn action-btn-icon action-btn-icon-view" type="button" data-booking-updates="${group.key}">
-                View Updates
+              <button class="action-btn action-btn-icon action-btn-icon-view compact-control" type="button" data-booking-updates="${group.key}" aria-label="View Updates" title="View Updates">
+                <span class="compact-label">View Updates</span>
               </button>
-              <button class="action-btn action-btn-icon action-btn-icon-price" type="button" data-booking-price-action="${booking.id}">
-                Change Price
+              <button class="action-btn action-btn-icon action-btn-icon-price compact-control" type="button" data-booking-price-action="${booking.id}" aria-label="Change Price" title="Change Price">
+                <span class="compact-label">Change Price</span>
               </button>
-              <button class="action-btn action-btn-icon action-btn-icon-edit" type="button" data-booking-action="edit" data-booking-id="${booking.id}">
-                Update
+              <button class="action-btn action-btn-icon action-btn-icon-edit compact-control" type="button" data-booking-action="edit" data-booking-id="${booking.id}" aria-label="Update" title="Update">
+                <span class="compact-label">Update</span>
               </button>
             </div>
           </div>
