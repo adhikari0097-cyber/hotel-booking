@@ -2648,6 +2648,14 @@ function renderBookings(bookings) {
     const requestButton = groupRequest
       ? getRequestStatusMarkup(groupRequest)
       : getActiveStatusMarkup("Active");
+    const requestActions = canManageRequests() && groupRequest?.status === "pending"
+      ? `
+        <div class="booking-inline-request-actions">
+          <button class="action-btn" type="button" data-booking-request-action="approve" data-request-id="${groupRequest.id}">Approve</button>
+          <button class="action-btn danger" type="button" data-booking-request-action="reject" data-request-id="${groupRequest.id}">Reject</button>
+        </div>
+      `
+      : "";
     const requestBrief = groupRequest
       ? `<button class="booking-request-brief" type="button" data-request-focus="${groupRequest.id}">${formatRequestReason(groupRequest.reason)} · ${getRequestRequestedDate(groupRequest) || "-"}</button>`
       : `<span class="booking-request-brief muted">No pending request.</span>`;
@@ -2660,6 +2668,7 @@ function renderBookings(bookings) {
         </div>
         <div class="booking-group-statuses booking-group-controls booking-group-controls-stack">
           ${requestButton}
+          ${requestActions}
           <button class="secondary-btn booking-type-trigger" type="button" data-booking-group-manage="${group.bookings[0].id}">Booking Type</button>
           <button class="secondary-btn remove-reservation-trigger" type="button" data-booking-group-remove="${group.bookings[0].id}">Remove reservation</button>
         </div>
@@ -2717,6 +2726,26 @@ function renderBookings(bookings) {
           await refreshLiveViews();
         } catch (error) {
           showToast(error.message, true);
+        }
+      });
+    });
+    card.querySelectorAll("[data-booking-request-action]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        try {
+          button.disabled = true;
+          if (button.dataset.bookingRequestAction === "approve") {
+            await approveRequest(button.dataset.requestId);
+            showToast("Request approved.");
+          } else {
+            await rejectRequest(button.dataset.requestId);
+            showToast("Request rejected.");
+          }
+          await loadRequests();
+          await refreshLiveViews();
+        } catch (error) {
+          showToast(error.message, true);
+        } finally {
+          button.disabled = false;
         }
       });
     });

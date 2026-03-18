@@ -1010,6 +1010,19 @@ h4 {
   border: 0;
 }
 
+.booking-inline-request-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+}
+
+.booking-inline-request-actions .action-btn {
+  width: 100%;
+  justify-content: center;
+  text-align: center;
+}
+
 .booking-date-strip-wide {
   grid-template-columns: repeat(2, minmax(0, 220px));
 }
