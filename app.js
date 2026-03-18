@@ -32,6 +32,7 @@ const state = {
   activeBookingGroup: [],
   modalExtraRooms: new Map(),
   modalRemoveRooms: new Map(),
+  modalBookingRoomEdits: new Map(),
   modalRequestedServices: new Set(),
   modalMode: "request",
   requestScope: "single",
@@ -132,6 +133,8 @@ const requestServicesSection = qs("#request-services-section");
 const requestServices = qs("#request-services");
 const requestRemoveRoomsSection = qs("#request-remove-rooms-section");
 const requestRemoveRooms = qs("#request-remove-rooms");
+const requestBookingRoomsSection = qs("#request-booking-rooms-section");
+const requestBookingRooms = qs("#request-booking-rooms");
 const requestStatusInput = qs("#request-status");
 const requestNotesInput = qs("#request-notes");
 const requestMessageInput = qs("#request-message");
@@ -745,17 +748,227 @@ function renderRemoveRoomOptions(booking) {
   });
 }
 
-async function ensureBookingAvailabilityForUpdate(bookingId, values) {
+function buildBookingRoomEditOptions(booking) {
+  const parsed = parseBookingNotes(booking.notes);
+  return {
+    bookingId: booking.id,
+    roomType: normalizeRoomGroup(booking.roomType),
+    roomNumber: Number(booking.roomNumber),
+    guests: Number(booking.guests || 1),
+    services: [...parsed.services],
+  };
+}
+
+function serializeBookingRoomEdits() {
+  return Array.from(state.modalBookingRoomEdits.values()).map((item) => ({
+    bookingId: item.bookingId,
+    roomType: normalizeRoomGroup(item.roomType),
+    roomNumber: Number(item.roomNumber),
+    guests: Number(item.guests || 1),
+    services: Array.isArray(item.services) ? [...item.services] : [],
+  }));
+}
+
+function renderBookingRoomEditors(booking) {
+  state.modalBookingRoomEdits = new Map();
+  requestBookingRooms.innerHTML = "";
+  const group = state.activeBookingGroup.length ? state.activeBookingGroup : [booking];
+
+  if (!group.length) {
+    requestBookingRooms.innerHTML = `<p class="inline-note">No rooms found for this booking.</p>`;
+    return;
+  }
+
+  group.forEach((item) => {
+    const roomEdit = buildBookingRoomEditOptions(item);
+    state.modalBookingRoomEdits.set(String(item.id), roomEdit);
+    const roomDef = getRoomDef(roomEdit.roomType) || getRoomDef(normalizeRoomGroup(item.roomType));
+    const paxOptions = Array.from({ length: roomDef?.maxPax || 6 }, (_, index) => {
+      const pax = index + 1;
+      return `<option value="${pax}" ${pax === roomEdit.guests ? "selected" : ""}>${pax} Pax</option>`;
+    }).join("");
+
+    const option = document.createElement("div");
+    option.className = "extra-room-option booking-room-edit-option";
+    option.innerHTML = `
+      <div class="extra-room-option-head">
+        <div>
+          <strong>${getRoomLabel(roomEdit.roomType, roomEdit.roomNumber)}</strong>
+          <span>${item.roomTypeLabel || getRoomTypeDisplay(item.roomType)} · Current: ${item.guests} guests</span>
+        </div>
+      </div>
+      <div class="field grid-2 compact-grid">
+        <div>
+          <label>Room Group</label>
+          <select data-booking-room-type="${item.id}">
+            ${ROOM_DEFS.map((def) => `<option value="${def.type}" ${def.type === roomEdit.roomType ? "selected" : ""}>${def.label}</option>`).join("")}
+          </select>
+        </div>
+        <div>
+          <label>Room Number</label>
+          <select data-booking-room-number="${item.id}"></select>
+        </div>
+      </div>
+      <div class="field compact-field">
+        <label>Pax Count</label>
+        <select data-booking-room-guests="${item.id}">${paxOptions}</select>
+      </div>
+      <div class="booking-room-service-editor">
+        <span class="booking-room-row-label">Services</span>
+        <div class="service-chip-list service-chip-list-editable">
+          ${ROOM_SERVICE_OPTIONS.map((service) => `
+            <button
+              class="service-chip service-chip-toggle ${roomEdit.services.includes(service) ? "service-chip-active" : "service-chip-inactive"}"
+              type="button"
+              data-booking-room-service="${item.id}"
+              data-service-name="${service}"
+              aria-pressed="${roomEdit.services.includes(service) ? "true" : "false"}"
+            >
+              <span class="service-chip-icon">${serviceIconLabel(service)}</span>
+              <span>${service}</span>
+            </button>
+          `).join("")}
+        </div>
+      </div>
+    `;
+
+    const roomTypeSelect = option.querySelector(`[data-booking-room-type="${item.id}"]`);
+    const roomNumberSelect = option.querySelector(`[data-booking-room-number="${item.id}"]`);
+    const paxSelect = option.querySelector(`[data-booking-room-guests="${item.id}"]`);
+
+    const syncRoomNumbers = () => {
+      const selectedType = roomTypeSelect.value;
+      const def = getRoomDef(selectedType);
+      roomNumberSelect.innerHTML = Array.from({ length: def?.count || 0 }, (_, index) => {
+        const number = index + 1;
+        const selected = number === Number(state.modalBookingRoomEdits.get(String(item.id))?.roomNumber || 1) ? "selected" : "";
+        return `<option value="${number}" ${selected}>Room ${number}</option>`;
+      }).join("");
+      paxSelect.innerHTML = Array.from({ length: def?.maxPax || 6 }, (_, index) => {
+        const pax = index + 1;
+        const selected = pax === Number(state.modalBookingRoomEdits.get(String(item.id))?.guests || 1) ? "selected" : "";
+        return `<option value="${pax}" ${selected}>${pax} Pax</option>`;
+      }).join("");
+    };
+
+    syncRoomNumbers();
+
+    roomTypeSelect.addEventListener("change", () => {
+      const current = state.modalBookingRoomEdits.get(String(item.id));
+      const def = getRoomDef(roomTypeSelect.value);
+      state.modalBookingRoomEdits.set(String(item.id), {
+        ...current,
+        roomType: roomTypeSelect.value,
+        roomNumber: 1,
+        guests: Math.min(Number(current?.guests || 1), def?.maxPax || 1),
+      });
+      syncRoomNumbers();
+    });
+
+    roomNumberSelect.addEventListener("change", () => {
+      const current = state.modalBookingRoomEdits.get(String(item.id));
+      state.modalBookingRoomEdits.set(String(item.id), {
+        ...current,
+        roomNumber: Number(roomNumberSelect.value),
+      });
+    });
+
+    paxSelect.addEventListener("change", () => {
+      const current = state.modalBookingRoomEdits.get(String(item.id));
+      state.modalBookingRoomEdits.set(String(item.id), {
+        ...current,
+        guests: Number(paxSelect.value),
+      });
+    });
+
+    option.querySelectorAll(`[data-booking-room-service="${item.id}"]`).forEach((button) => {
+      button.addEventListener("click", () => {
+        const current = state.modalBookingRoomEdits.get(String(item.id));
+        const nextServices = new Set(current?.services || []);
+        const serviceName = button.dataset.serviceName;
+        if (nextServices.has(serviceName)) nextServices.delete(serviceName);
+        else nextServices.add(serviceName);
+        state.modalBookingRoomEdits.set(String(item.id), {
+          ...current,
+          services: Array.from(nextServices),
+        });
+        button.classList.toggle("service-chip-active", nextServices.has(serviceName));
+        button.classList.toggle("service-chip-inactive", !nextServices.has(serviceName));
+        button.setAttribute("aria-pressed", nextServices.has(serviceName) ? "true" : "false");
+      });
+    });
+
+    requestBookingRooms.appendChild(option);
+  });
+}
+
+async function ensureBookingAvailabilityForUpdate(bookingId, values, excludedBookingIds = []) {
   if (String(values.status || "").toLowerCase() === "cancelled") return;
   const roomGroup = normalizeRoomGroup(values.roomType);
   const roomBookings = await fetchRangeBookings(roomGroup, values.checkIn, values.checkOut);
+  const excluded = new Set([bookingId, ...excludedBookingIds].filter(Boolean).map(String));
   const hasConflict = roomBookings.some((booking) => {
     if (!isBlockingBooking(booking)) return false;
-    if (booking.id === bookingId) return false;
+    if (excluded.has(String(booking.id))) return false;
     return Number(booking.roomNumber) === Number(values.roomNumber);
   });
   if (hasConflict) {
     throw new Error(`${getRoomLabel(roomGroup, Number(values.roomNumber))} is already booked for the selected dates.`);
+  }
+}
+
+async function ensureRequestedBookingRoomsAvailability(roomEdits, excludedBookingIds, checkIn, checkOut, status) {
+  if (String(status || "").toLowerCase() === "cancelled") return;
+  const seen = new Set();
+
+  for (const roomEdit of roomEdits) {
+    const roomType = normalizeRoomGroup(roomEdit.roomType);
+    const roomNumber = Number(roomEdit.roomNumber);
+    const roomKey = `${roomType}-${roomNumber}`;
+    if (seen.has(roomKey)) {
+      throw new Error(`${getRoomLabel(roomType, roomNumber)} is selected more than once.`);
+    }
+    seen.add(roomKey);
+    await ensureBookingAvailabilityForUpdate(
+      roomEdit.bookingId || "",
+      {
+        checkIn,
+        checkOut,
+        roomType,
+        roomNumber,
+        status,
+      },
+      excludedBookingIds,
+    );
+  }
+}
+
+async function applyGroupedBookingEdits(targetBookings, roomEdits, commonValues) {
+  const editsByBookingId = new Map(roomEdits.map((item) => [String(item.bookingId), item]));
+  const excludedBookingIds = targetBookings.map((booking) => booking.id);
+
+  await ensureRequestedBookingRoomsAvailability(
+    roomEdits,
+    excludedBookingIds,
+    commonValues.checkIn,
+    commonValues.checkOut,
+    commonValues.status,
+  );
+
+  for (const bookingRow of targetBookings) {
+    const roomEdit = editsByBookingId.get(String(bookingRow.id)) || buildBookingRoomEditOptions(bookingRow);
+    await updateBooking(bookingRow.id, {
+      guestName: commonValues.guestName,
+      phone: commonValues.phone,
+      checkIn: commonValues.checkIn,
+      checkOut: commonValues.checkOut,
+      roomType: roomEdit.roomType,
+      roomTypeLabel: getRoomTypeLabelForGuests(roomEdit.roomType, roomEdit.guests),
+      roomNumber: roomEdit.roomNumber,
+      guests: roomEdit.guests,
+      notes: mergeNotesAndServices(commonValues.notes, roomEdit.services || []),
+      status: commonValues.status,
+    });
   }
 }
 
@@ -2074,10 +2287,12 @@ function closeRequestModal() {
   state.activeBookingGroup = [];
   state.modalExtraRooms = new Map();
   state.modalRemoveRooms = new Map();
+  state.modalBookingRoomEdits = new Map();
   state.modalRequestedServices = new Set();
   requestExtraRooms.innerHTML = "";
   requestServices.innerHTML = "";
   requestRemoveRooms.innerHTML = "";
+  requestBookingRooms.innerHTML = "";
   state.modalMode = "request";
 }
 
@@ -2113,6 +2328,7 @@ async function openRequestModal(bookingId, mode, scope = "single") {
   await renderAdditionalRoomOptions(booking);
   renderServiceRequestOptions(booking);
   renderRemoveRoomOptions(booking);
+  renderBookingRoomEditors(booking);
   requestModal.classList.remove("hidden");
 }
 
@@ -2134,6 +2350,7 @@ function mapRequest(row) {
     requestedExtraRooms: Array.isArray(row.requested_extra_rooms) ? row.requested_extra_rooms : [],
     requestedServices: Array.isArray(row.requested_services) ? row.requested_services : [],
     requestedRemoveRooms: Array.isArray(row.requested_remove_rooms) ? row.requested_remove_rooms : [],
+    requestedBookingRooms: Array.isArray(row.requested_booking_rooms) ? row.requested_booking_rooms : [],
     requestedNotes: row.requested_notes || "",
     requestedBookingStatus: row.requested_booking_status || "",
     status: row.status,
@@ -2193,6 +2410,7 @@ async function updateBooking(bookingId, values) {
   if ("phone" in values) row.phone = values.phone;
   if ("checkIn" in values) row.check_in = values.checkIn;
   if ("checkOut" in values) row.check_out = values.checkOut;
+  if ("guests" in values) row.guests = Number(values.guests);
   if ("roomType" in values) row.room_type = values.roomType;
   if ("roomTypeLabel" in values) row.room_type_label = values.roomTypeLabel;
   if ("roomNumber" in values) row.room_number = Number(values.roomNumber);
@@ -2221,6 +2439,7 @@ async function insertChangeRequest(payload) {
     requested_extra_rooms: payload.requestedExtraRooms || [],
     requested_services: payload.requestedServices || [],
     requested_remove_rooms: payload.requestedRemoveRooms || [],
+    requested_booking_rooms: payload.requestedBookingRooms || [],
     requested_notes: payload.notes || null,
     requested_booking_status: payload.status || null,
     status: payload.requestStatusOverride || "pending",
@@ -2350,6 +2569,31 @@ async function approveRequest(requestId) {
   const targetBookings = request.requestedScope === "group"
     ? (grouped.length ? grouped : (request.booking ? [request.booking] : []))
     : (request.booking ? [request.booking] : []);
+
+  if (request.reason === "edit_booking_data" && request.requestedScope === "group") {
+    const requestedRoomEdits = Array.isArray(request.requestedBookingRooms) ? request.requestedBookingRooms : [];
+    const normalizedRoomEdits = requestedRoomEdits.length
+      ? requestedRoomEdits.map((item) => ({
+          bookingId: item.bookingId,
+          roomType: normalizeRoomGroup(item.roomType),
+          roomNumber: Number(item.roomNumber),
+          guests: Number(item.guests || 1),
+          services: Array.isArray(item.services) ? item.services : [],
+        }))
+      : targetBookings.map((bookingRow) => buildBookingRoomEditOptions(bookingRow));
+
+    await applyGroupedBookingEdits(targetBookings, normalizedRoomEdits, {
+      guestName: request.requestedGuestName || request.booking?.guestName || "",
+      phone: request.requestedPhone || request.booking?.phone || "",
+      checkIn: request.requestedCheckIn || request.booking?.checkIn || "",
+      checkOut: request.requestedCheckOut || request.booking?.checkOut || "",
+      notes: request.requestedNotes ?? "",
+      status: targetStatus,
+    });
+
+    await updateRequestStatus(requestId, { status: "approved" });
+    return;
+  }
 
   if (request.requestedScope === "group") {
     await ensureGroupAvailabilityForUpdate(
@@ -2938,6 +3182,7 @@ function syncModalReasonDefaults() {
   requestExtraRoomsSection.classList.toggle("hidden", !isAdditionalRooms);
   requestServicesSection.classList.toggle("hidden", !isAdditionalServices);
   requestRemoveRoomsSection.classList.toggle("hidden", !isRemoveRooms);
+  requestBookingRoomsSection.classList.toggle("hidden", !isEditCustomerData || state.requestScope !== "group");
   requestRoomTypeInput.closest(".field.grid-2").classList.toggle("hidden", isGroupLike || isAdditionalRooms || isRemoveRooms || isAdditionalServices);
   requestStatusInput.value = getDefaultRequestStatus(requestReasonInput.value, state.activeBooking?.status || "Campaign");
 }
@@ -2970,6 +3215,9 @@ async function handleRequestSubmit(event) {
 
   payload.roomTypeLabel = getRoomTypeLabelForGuests(payload.roomType, state.activeBooking.guests || 1);
   payload.requestedExtraRooms = Array.from(state.modalExtraRooms.values());
+  payload.requestedBookingRooms = reason === "edit_booking_data" && effectiveScope === "group"
+    ? serializeBookingRoomEdits()
+    : [];
 
   if (reason === "additional_rooms" && !payload.requestedExtraRooms.length) {
     showToast("Select at least one additional room.", true);
@@ -3063,6 +3311,9 @@ async function handleRequestSubmit(event) {
             status: "Cancelled",
           });
         }
+      } else if (reason === "edit_booking_data" && effectiveScope === "group") {
+        const groupBookings = state.activeBookingGroup.length ? state.activeBookingGroup : [state.activeBooking];
+        await applyGroupedBookingEdits(groupBookings, payload.requestedBookingRooms, payload);
       } else if (effectiveScope === "group") {
         const groupBookings = state.activeBookingGroup.length ? state.activeBookingGroup : [state.activeBooking];
         await ensureGroupAvailabilityForUpdate(groupBookings, payload.checkIn, payload.checkOut, payload.status);

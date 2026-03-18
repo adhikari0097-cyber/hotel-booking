@@ -47,8 +47,9 @@ create table if not exists public.booking_change_requests (
   id uuid primary key default gen_random_uuid(),
   booking_id uuid not null references public.bookings(id) on delete cascade,
   requested_by uuid not null references auth.users(id) on delete cascade,
-  reason text not null check (reason in ('cancel', 'hold', 'change_date', 'additional_rooms', 'additional_services', 'remove_rooms', 'delete_booking', 'wrong_data')),
+  reason text not null check (reason in ('cancel', 'hold', 'change_date', 'edit_booking_data', 'additional_rooms', 'additional_services', 'remove_rooms', 'delete_booking', 'wrong_data')),
   request_note text not null default '',
+  requested_scope text not null default 'single' check (requested_scope in ('single', 'group')),
   requested_guest_name text,
   requested_phone text,
   requested_check_in date,
@@ -59,6 +60,7 @@ create table if not exists public.booking_change_requests (
   requested_extra_rooms jsonb not null default '[]'::jsonb,
   requested_services jsonb not null default '[]'::jsonb,
   requested_remove_rooms jsonb not null default '[]'::jsonb,
+  requested_booking_rooms jsonb not null default '[]'::jsonb,
   requested_notes text,
   requested_booking_status text,
   status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
@@ -75,12 +77,14 @@ alter table public.booking_change_requests add column if not exists requested_ro
 alter table public.booking_change_requests add column if not exists requested_room_type_label text;
 alter table public.booking_change_requests add column if not exists requested_room_number integer;
 alter table public.booking_change_requests add column if not exists requested_extra_rooms jsonb not null default '[]'::jsonb;
+alter table public.booking_change_requests add column if not exists requested_scope text not null default 'single';
 alter table public.booking_change_requests add column if not exists requested_services jsonb not null default '[]'::jsonb;
 alter table public.booking_change_requests add column if not exists requested_remove_rooms jsonb not null default '[]'::jsonb;
+alter table public.booking_change_requests add column if not exists requested_booking_rooms jsonb not null default '[]'::jsonb;
 alter table public.booking_change_requests drop constraint if exists booking_change_requests_reason_check;
 alter table public.booking_change_requests
   add constraint booking_change_requests_reason_check
-  check (reason in ('cancel', 'hold', 'change_date', 'additional_rooms', 'additional_services', 'remove_rooms', 'delete_booking', 'wrong_data'));
+  check (reason in ('cancel', 'hold', 'change_date', 'edit_booking_data', 'additional_rooms', 'additional_services', 'remove_rooms', 'delete_booking', 'wrong_data'));
 
 create or replace function public.handle_new_user()
 returns trigger
