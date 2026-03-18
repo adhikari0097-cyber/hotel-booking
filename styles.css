@@ -1116,7 +1116,8 @@ h4 {
 .booking-group-controls-stack {
   flex-direction: column;
   align-items: stretch;
-  min-width: 170px;
+  min-width: 0;
+  gap: 8px;
 }
 
 .booking-group-controls-stack .secondary-btn,
@@ -1129,6 +1130,35 @@ h4 {
 
 .booking-group-controls-stack .request-state-chip {
   border: 0;
+}
+
+.booking-quick-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.booking-quick-actions .compact-control {
+  flex: 0 0 auto;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 14px;
+}
+
+.booking-quick-actions .compact-control::before {
+  font-size: 15px;
+}
+
+.compact-label {
+  display: none;
+  white-space: nowrap;
 }
 
 .booking-inline-request-actions {
@@ -2271,6 +2301,24 @@ h4 {
 
 .action-btn-icon-advance::before {
   content: "\2713";
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .booking-quick-actions .compact-control {
+    transition: width 0.18s ease, min-width 0.18s ease, padding 0.18s ease, background 0.18s ease;
+  }
+
+  .booking-quick-actions .compact-control:hover,
+  .booking-quick-actions .compact-control:focus-visible {
+    width: auto;
+    min-width: 148px;
+    padding: 0 14px;
+  }
+
+  .booking-quick-actions .compact-control:hover .compact-label,
+  .booking-quick-actions .compact-control:focus-visible .compact-label {
+    display: inline;
+  }
 }
 
 .action-btn.danger {

@@ -3258,11 +3258,23 @@ function renderBookings(bookings) {
         <div class="booking-group-statuses booking-group-controls booking-group-controls-stack">
           ${requestButton}
           ${requestActions}
-          <button class="secondary-btn action-btn-icon action-btn-icon-advance" type="button" data-booking-group-advance="${group.key}">Update Advance</button>
-          <button class="secondary-btn action-btn-icon action-btn-icon-whatsapp" type="button" data-booking-group-whatsapp="${group.key}">WhatsApp</button>
-          <button class="secondary-btn action-btn-icon action-btn-icon-pdf" type="button" data-booking-group-pdf="${group.key}">Export PDF</button>
-          <button class="secondary-btn booking-type-trigger action-btn-icon action-btn-icon-edit" type="button" data-booking-group-manage="${group.bookings[0].id}">Booking Type</button>
-          <button class="secondary-btn remove-reservation-trigger action-btn-icon action-btn-icon-remove" type="button" data-booking-group-remove="${group.bookings[0].id}">Remove reservation</button>
+          <div class="booking-quick-actions">
+            <button class="secondary-btn action-btn-icon action-btn-icon-advance compact-control" type="button" data-booking-group-advance="${group.key}" aria-label="Update Advance" title="Update Advance">
+              <span class="compact-label">Update Advance</span>
+            </button>
+            <button class="secondary-btn action-btn-icon action-btn-icon-whatsapp compact-control" type="button" data-booking-group-whatsapp="${group.key}" aria-label="WhatsApp" title="WhatsApp">
+              <span class="compact-label">WhatsApp</span>
+            </button>
+            <button class="secondary-btn action-btn-icon action-btn-icon-pdf compact-control" type="button" data-booking-group-pdf="${group.key}" aria-label="Export PDF" title="Export PDF">
+              <span class="compact-label">Export PDF</span>
+            </button>
+            <button class="secondary-btn booking-type-trigger action-btn-icon action-btn-icon-edit compact-control" type="button" data-booking-group-manage="${group.bookings[0].id}" aria-label="Booking Type" title="Booking Type">
+              <span class="compact-label">Booking Type</span>
+            </button>
+            <button class="secondary-btn remove-reservation-trigger action-btn-icon action-btn-icon-remove compact-control" type="button" data-booking-group-remove="${group.bookings[0].id}" aria-label="Remove Reservation" title="Remove Reservation">
+              <span class="compact-label">Remove Reservation</span>
+            </button>
+          </div>
         </div>
       </div>
       ${renderBookingGroupOverview(group, groupStatus)}
