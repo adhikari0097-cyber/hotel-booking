@@ -2973,20 +2973,20 @@ function renderBookingGroupOverview(group, groupStatus) {
     <div class="booking-group-overview">
       <section class="booking-overview-panel booking-overview-panel-reservation">
         <div class="booking-overview-panel-title">Reservation</div>
-        <div class="booking-overview-list">
-          <div class="booking-overview-item">
+        <div class="booking-overview-rows">
+          <div class="booking-overview-row">
             <span>Track Code</span>
             <strong>${group.trackCode || "-"}</strong>
           </div>
-          <div class="booking-overview-item">
+          <div class="booking-overview-row">
             <span>Customer</span>
             <strong>${group.guestName || "Guest"}</strong>
           </div>
-          <div class="booking-overview-item">
+          <div class="booking-overview-row">
             <span>Booked By</span>
             <strong>${group.bookings[0]?.createdByName || "-"}</strong>
           </div>
-          <div class="booking-overview-item">
+          <div class="booking-overview-row">
             <span>Phone</span>
             <strong>${group.phone || "-"}</strong>
           </div>
@@ -2994,20 +2994,20 @@ function renderBookingGroupOverview(group, groupStatus) {
       </section>
       <section class="booking-overview-panel booking-overview-panel-stay">
         <div class="booking-overview-panel-title">Stay</div>
-        <div class="booking-overview-list">
-          <div class="booking-overview-item">
+        <div class="booking-overview-rows">
+          <div class="booking-overview-row">
             <span>Check In</span>
             <strong>${group.checkIn || "-"}</strong>
           </div>
-          <div class="booking-overview-item">
+          <div class="booking-overview-row">
             <span>Check Out</span>
             <strong>${group.checkOut || "-"}</strong>
           </div>
-          <div class="booking-overview-item">
+          <div class="booking-overview-row">
             <span>Status</span>
             <strong>${groupStatus}</strong>
           </div>
-          <div class="booking-overview-item">
+          <div class="booking-overview-row">
             <span>Rooms / Pax</span>
             <strong>${group.bookings.length} room(s) · ${group.totalGuests} pax</strong>
           </div>
@@ -3015,20 +3015,20 @@ function renderBookingGroupOverview(group, groupStatus) {
       </section>
       <section class="booking-overview-panel booking-overview-panel-billing">
         <div class="booking-overview-panel-title">Billing</div>
-        <div class="booking-overview-list">
-          <div class="booking-overview-item booking-overview-item-strong">
+        <div class="booking-overview-rows">
+          <div class="booking-overview-row booking-overview-row-strong">
             <span>Total Price</span>
             <strong>${formatMoney(group.totalPrice || 0)}</strong>
           </div>
-          <div class="booking-overview-item">
+          <div class="booking-overview-row">
             <span>Advance</span>
             <strong>${advanceInfo.label}</strong>
           </div>
-          <div class="booking-overview-item">
+          <div class="booking-overview-row">
             <span>Advance Amount</span>
             <strong>${formatMoney(advanceInfo.amount || 0)}</strong>
           </div>
-          <div class="booking-overview-item booking-overview-item-strong">
+          <div class="booking-overview-row booking-overview-row-strong">
             <span>Balance</span>
             <strong>${formatMoney(balanceAmount)}</strong>
           </div>
@@ -3041,7 +3041,7 @@ function renderBookingGroupOverview(group, groupStatus) {
 function renderBookingHeaderSummary(group) {
   return `
     <div class="booking-group-summary-grid">
-      <div class="booking-summary-chip">
+      <div class="booking-summary-chip booking-summary-chip-wide">
         <span>Stay</span>
         <strong>${group.checkIn || "-"} -> ${group.checkOut || "-"}</strong>
       </div>

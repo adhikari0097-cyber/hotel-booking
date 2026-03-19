@@ -1189,6 +1189,44 @@ h4 {
   gap: 10px;
 }
 
+.booking-overview-rows {
+  display: grid;
+  gap: 10px;
+}
+
+.booking-overview-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.booking-overview-row span {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+
+.booking-overview-row strong {
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--text);
+  text-align: right;
+  word-break: break-word;
+}
+
+.booking-overview-row-strong {
+  background: #fff8e9;
+  border-color: #ead9a3;
+}
+
 .booking-overview-item {
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -1463,6 +1501,10 @@ h4 {
   gap: 16px;
 }
 
+#booking-list.booking-view-desktop .booking-summary-chip-wide {
+  grid-column: 1 / -1;
+}
+
 #booking-list.booking-view-desktop .booking-summary-chip {
   min-height: 108px;
   align-content: start;
@@ -1484,22 +1526,36 @@ h4 {
 }
 
 #booking-list.booking-view-desktop .booking-group-overview {
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(320px, 0.95fr);
+  grid-template-columns: minmax(0, 1.2fr) minmax(340px, 0.95fr);
+  grid-template-areas:
+    "reservation billing"
+    "stay billing";
   gap: 20px;
 }
 
-#booking-list.booking-view-desktop .booking-overview-list {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+#booking-list.booking-view-desktop .booking-overview-panel-reservation {
+  grid-area: reservation;
 }
 
-#booking-list.booking-view-desktop .booking-overview-panel-reservation .booking-overview-list,
-#booking-list.booking-view-desktop .booking-overview-panel-stay .booking-overview-list {
-  grid-template-columns: 1fr 1fr;
+#booking-list.booking-view-desktop .booking-overview-panel-stay {
+  grid-area: stay;
 }
 
-#booking-list.booking-view-desktop .booking-overview-panel-billing .booking-overview-list {
-  grid-template-columns: 1fr;
+#booking-list.booking-view-desktop .booking-overview-panel-billing {
+  grid-area: billing;
+}
+
+#booking-list.booking-view-desktop .booking-overview-rows {
+  gap: 12px;
+}
+
+#booking-list.booking-view-desktop .booking-overview-row {
+  padding: 16px 18px;
+  border-radius: 18px;
+}
+
+#booking-list.booking-view-desktop .booking-overview-row strong {
+  font-size: 16px;
 }
 
 #booking-list.booking-view-desktop .booking-group-controls-stack {
@@ -1516,7 +1572,7 @@ h4 {
 #booking-list.booking-view-desktop .booking-quick-actions {
   overflow: visible;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 12px;
 }
 
@@ -2250,11 +2306,19 @@ h4 {
   }
 
   #booking-list.booking-view-desktop .booking-group-overview {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "reservation"
+      "stay"
+      "billing";
   }
 
-  #booking-list.booking-view-desktop .booking-overview-panel-billing {
-    grid-column: 1 / -1;
+  #booking-list.booking-view-desktop .booking-room-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #booking-list.booking-view-desktop .booking-room-quick-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
