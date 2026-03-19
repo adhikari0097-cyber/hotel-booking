@@ -1466,19 +1466,6 @@ function renderBookingCustomPayments() {
   }
 }
 
-function syncPrimaryCustomPaymentFromAdvanceAmount() {
-  if (!bookingAdvancePaidInput?.checked || !bookingCustomPaymentsEnabledInput?.checked) return;
-  const amountValue = String(bookingAdvanceAmountInput?.value || "").trim();
-  if (!state.bookingCustomPayments.length) {
-    state.bookingCustomPayments = [createEmptyCustomPayment()];
-  }
-  state.bookingCustomPayments[0] = {
-    ...state.bookingCustomPayments[0],
-    amount: amountValue,
-  };
-  renderBookingCustomPayments();
-}
-
 function syncAdvanceAmountField() {
   const isChecked = Boolean(bookingAdvancePaidInput?.checked);
   const useCustomPayments = Boolean(bookingCustomPaymentsEnabledInput?.checked);
@@ -5847,7 +5834,6 @@ requestWeekendRateInput?.addEventListener("input", renderRequestOfferPreview);
 requestCheckInInput?.addEventListener("change", renderRequestOfferPreview);
 requestCheckOutInput?.addEventListener("change", renderRequestOfferPreview);
 bookingAdvancePaidInput?.addEventListener("change", handleAdvancePaymentToggle);
-bookingAdvanceAmountInput?.addEventListener("input", syncPrimaryCustomPaymentFromAdvanceAmount);
 bookingCustomPaymentsEnabledInput?.addEventListener("change", handleCustomPaymentsToggle);
 bookingAddCustomPaymentBtn?.addEventListener("click", () => {
   state.bookingCustomPayments.push(createEmptyCustomPayment());
