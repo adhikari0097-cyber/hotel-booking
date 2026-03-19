@@ -5,6 +5,7 @@ const CONFIG = {
   SUPABASE_PROFILES_TABLE: "profiles",
   SUPABASE_REQUESTS_TABLE: "booking_change_requests",
   SUPABASE_PRICING_TABLE: "room_pricing",
+  SUPABASE_ROOMS_TABLE: "room_inventory",
   GOOGLE_SHEETS_BACKUP_URL: "/.netlify/functions/proxy",
 };
 
@@ -45,7 +46,6 @@ const EXTRA_PERMISSION_DEFS = [
   },
 ];
 
-const TOTAL_ROOMS = ROOM_DEFS.reduce((sum, room) => sum + room.count, 0);
 const state = {
   supabase: null,
   realtimeChannel: null,
@@ -72,6 +72,8 @@ const state = {
   bookingViewMode: "mobile",
   roomPricing: new Map(),
   pricingSchemaReady: null,
+  roomInventory: [],
+  roomInventorySchemaReady: null,
   bookingRangePicker: null,
 };
 
@@ -299,6 +301,7 @@ const bookingAdvanceAmountInput = qs("#advanceAmount");
 const accountsList = qs("#accounts-list");
 const accountsEmpty = qs("#accounts-empty");
 const refreshAccountsBtn = qs("#refresh-accounts");
+const roomInventoryList = qs("#room-inventory-list");
 const pricingList = qs("#pricing-list");
 const refreshPricingBtn = qs("#refresh-pricing");
 const savePricingBtn = qs("#save-pricing");
@@ -566,6 +569,84 @@ function getRoomPricingLabel(roomType, pax = 0) {
   return ROOM_PRICING_DEFS.find((item) => item.roomType === roomType && Number(item.pax) === Number(pax))?.label || roomType;
 }
 
+function getDefaultRoomInventoryEntries() {
+  return ROOM_DEFS.flatMap((item) => Array.from({ length: item.count }, (_, index) => ({
+    roomType: item.type,
+    roomNumber: index + 1,
+    maxPax: item.maxPax,
+    isActive: true,
+  })));
+}
+
+function getRoomTypeSortIndex(roomType) {
+  const index = ROOM_DEFS.findIndex((item) => item.type === roomType);
+  return index === -1 ? ROOM_DEFS.length : index;
+}
+
+function sortRoomInventoryRows(a, b) {
+  const typeDiff = getRoomTypeSortIndex(a.roomType) - getRoomTypeSortIndex(b.roomType);
+  if (typeDiff !== 0) return typeDiff;
+  return Number(a.roomNumber || 0) - Number(b.roomNumber || 0);
+}
+
+function normalizeRoomInventoryRow(row) {
+  const roomType = normalizeRoomGroup(row?.room_type ?? row?.roomType);
+  const roomNumber = Number(row?.room_number ?? row?.roomNumber);
+  const roomDef = getRoomDef(roomType);
+  if (!roomType || !roomNumber || !roomDef) return null;
+  return {
+    id: row?.id || null,
+    roomType,
+    roomNumber,
+    maxPax: Number(row?.max_pax ?? row?.maxPax ?? roomDef.maxPax ?? 1),
+    isActive: row?.is_active ?? row?.isActive ?? true,
+  };
+}
+
+function setDefaultRoomInventoryState() {
+  state.roomInventory = getDefaultRoomInventoryEntries()
+    .map(normalizeRoomInventoryRow)
+    .filter(Boolean)
+    .sort(sortRoomInventoryRows);
+}
+
+function hydrateRoomInventory(rows = []) {
+  const normalized = rows
+    .map(normalizeRoomInventoryRow)
+    .filter(Boolean)
+    .sort(sortRoomInventoryRows);
+  return normalized.length ? normalized : getDefaultRoomInventoryEntries().map(normalizeRoomInventoryRow).filter(Boolean).sort(sortRoomInventoryRows);
+}
+
+function getRoomInventoryRows({ includeInactive = false } = {}) {
+  const source = state.roomInventory.length
+    ? state.roomInventory
+    : getDefaultRoomInventoryEntries().map(normalizeRoomInventoryRow).filter(Boolean);
+  return source
+    .filter((room) => includeInactive || room.isActive)
+    .sort(sortRoomInventoryRows);
+}
+
+function getRoomNumbersForType(roomType, { includeInactive = false, selectedNumber = null } = {}) {
+  const normalizedType = normalizeRoomGroup(roomType);
+  const selected = Number(selectedNumber || 0);
+  const numbers = getRoomInventoryRows({ includeInactive: true })
+    .filter((room) => room.roomType === normalizedType && (includeInactive || room.isActive || room.roomNumber === selected))
+    .map((room) => room.roomNumber)
+    .sort((a, b) => a - b);
+
+  if (!numbers.length && selected > 0) return [selected];
+  return Array.from(new Set(numbers));
+}
+
+function getNextRoomNumberForType(roomType) {
+  const normalizedType = normalizeRoomGroup(roomType);
+  const numbers = getRoomInventoryRows({ includeInactive: true })
+    .filter((room) => room.roomType === normalizedType)
+    .map((room) => room.roomNumber);
+  return numbers.length ? Math.max(...numbers) + 1 : 1;
+}
+
 function setDefaultRoomPricingState() {
   state.roomPricing = new Map(
     getDefaultRoomPricingEntries().map((item) => [getRoomPricingKey(item.roomType, item.pax), item])
@@ -725,6 +806,29 @@ function getRequestPriceSnapshot(request, booking) {
   });
 }
 
+async function loadRoomInventory() {
+  ensureSupabase();
+  try {
+    const { data, error } = await state.supabase
+      .from(CONFIG.SUPABASE_ROOMS_TABLE)
+      .select("*")
+      .order("room_type", { ascending: true })
+      .order("room_number", { ascending: true });
+
+    if (error) throw error;
+    state.roomInventory = hydrateRoomInventory(data || []);
+    state.roomInventorySchemaReady = true;
+  } catch (error) {
+    setDefaultRoomInventoryState();
+    state.roomInventorySchemaReady = false;
+    if (canManagePricing()) {
+      showToast("Room inventory table is not ready. Run the updated Supabase schema.sql.", true);
+    }
+  }
+
+  renderPricingScreen();
+}
+
 async function loadRoomPricing() {
   ensureSupabase();
   try {
@@ -747,6 +851,78 @@ async function loadRoomPricing() {
 
   renderPricingScreen();
   renderPricingSummary();
+}
+
+async function roomHasSavedBookings(roomType, roomNumber) {
+  const { data, error } = await state.supabase
+    .from(CONFIG.SUPABASE_TABLE)
+    .select("id")
+    .eq("room_type", normalizeRoomGroup(roomType))
+    .eq("room_number", Number(roomNumber))
+    .limit(1);
+
+  if (error) throw new Error(error.message || "Could not validate room usage.");
+  return Boolean(data?.length);
+}
+
+async function saveRoomInventory() {
+  if (!canManagePricing()) return;
+  if (state.roomInventorySchemaReady === false) {
+    throw new Error("Run the updated Supabase schema.sql before saving room setup.");
+  }
+
+  const rows = getRoomInventoryRows({ includeInactive: true });
+  const uniqueKeys = new Set(rows.map((room) => getRoomKey(room.roomType, room.roomNumber)));
+  if (uniqueKeys.size !== rows.length) {
+    throw new Error("Room setup contains duplicate room numbers.");
+  }
+
+  const { data: existingRows, error: existingError } = await state.supabase
+    .from(CONFIG.SUPABASE_ROOMS_TABLE)
+    .select("id, room_type, room_number");
+
+  if (existingError) {
+    throw new Error(existingError.message || "Could not load saved room setup.");
+  }
+
+  const removedRows = (existingRows || []).filter((row) => !uniqueKeys.has(getRoomKey(normalizeRoomGroup(row.room_type), Number(row.room_number))));
+  for (const row of removedRows) {
+    const inUse = await roomHasSavedBookings(row.room_type, row.room_number);
+    if (inUse) {
+      throw new Error(`${getRoomLabel(normalizeRoomGroup(row.room_type), row.room_number)} has existing bookings, so it cannot be deleted.`);
+    }
+  }
+
+  if (removedRows.length) {
+    const { error: deleteError } = await state.supabase
+      .from(CONFIG.SUPABASE_ROOMS_TABLE)
+      .delete()
+      .in("id", removedRows.map((row) => row.id));
+
+    if (deleteError) {
+      throw new Error(deleteError.message || "Could not delete removed rooms.");
+    }
+  }
+
+  const upsertRows = rows.map((room) => ({
+    room_type: room.roomType,
+    room_number: room.roomNumber,
+    max_pax: room.maxPax,
+    is_active: room.isActive,
+  }));
+
+  if (upsertRows.length) {
+    const { error: upsertError } = await state.supabase
+      .from(CONFIG.SUPABASE_ROOMS_TABLE)
+      .upsert(upsertRows, { onConflict: "room_type,room_number" });
+
+    if (upsertError) {
+      throw new Error(upsertError.message || "Could not save room setup.");
+    }
+  }
+
+  state.roomInventorySchemaReady = true;
+  await loadRoomInventory();
 }
 
 function canManagePricing() {
@@ -781,13 +957,90 @@ function renderRequestOfferPreview() {
 }
 
 function renderPricingScreen() {
-  if (!pricingList) return;
+  if (!pricingList || !roomInventoryList) return;
   if (!canManagePricing()) {
+    setHTML(roomInventoryList, "");
     setHTML(pricingList, `<p class="inline-note">You do not have room pricing access yet.</p>`);
     return;
   }
 
+  roomInventoryList.innerHTML = "";
   pricingList.innerHTML = "";
+
+  ROOM_DEFS.forEach((roomDef) => {
+    const rooms = getRoomInventoryRows({ includeInactive: true }).filter((room) => room.roomType === roomDef.type);
+    const activeCount = rooms.filter((room) => room.isActive).length;
+    const inventoryCard = document.createElement("article");
+    inventoryCard.className = "room-inventory-card";
+    inventoryCard.innerHTML = `
+      <div class="room-inventory-head">
+        <div>
+          <h4>${roomDef.label}</h4>
+          <p>${rooms.length} room(s) configured · ${activeCount} active</p>
+        </div>
+        <button class="secondary-btn small-btn" type="button" data-add-room-type="${roomDef.type}">Add Room</button>
+      </div>
+      <div class="room-config-list">
+        ${
+          rooms.length
+            ? rooms.map((room) => `
+                <div class="room-config-row${room.isActive ? "" : " room-config-row-off"}">
+                  <div class="room-config-main">
+                    <strong>${getRoomLabel(room.roomType, room.roomNumber)}</strong>
+                    <span>Max ${room.maxPax} Pax · ${room.isActive ? "On" : "Off"}</span>
+                  </div>
+                  <div class="room-config-actions">
+                    <label class="room-config-toggle">
+                      <input type="checkbox" ${room.isActive ? "checked" : ""} data-room-toggle="${room.roomType}-${room.roomNumber}" />
+                      <span>${room.isActive ? "On" : "Off"}</span>
+                    </label>
+                    <button class="ghost-btn small-btn" type="button" data-delete-room="${room.roomType}-${room.roomNumber}">Delete</button>
+                  </div>
+                </div>
+              `).join("")
+            : `<p class="inline-note">No rooms configured yet for ${roomDef.label}.</p>`
+        }
+      </div>
+    `;
+
+    inventoryCard.querySelector(`[data-add-room-type="${roomDef.type}"]`)?.addEventListener("click", () => {
+      state.roomInventory = [
+        ...getRoomInventoryRows({ includeInactive: true }),
+        normalizeRoomInventoryRow({
+          roomType: roomDef.type,
+          roomNumber: getNextRoomNumberForType(roomDef.type),
+          maxPax: roomDef.maxPax,
+          isActive: true,
+        }),
+      ].filter(Boolean).sort(sortRoomInventoryRows);
+      renderPricingScreen();
+    });
+
+    inventoryCard.querySelectorAll("[data-room-toggle]").forEach((input) => {
+      input.addEventListener("change", () => {
+        const [roomType, roomNumber] = String(input.dataset.roomToggle || "").split("-");
+        state.roomInventory = getRoomInventoryRows({ includeInactive: true }).map((room) => (
+          room.roomType === roomType && Number(room.roomNumber) === Number(roomNumber)
+            ? { ...room, isActive: input.checked }
+            : room
+        ));
+        renderPricingScreen();
+      });
+    });
+
+    inventoryCard.querySelectorAll("[data-delete-room]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const [roomType, roomNumber] = String(button.dataset.deleteRoom || "").split("-");
+        state.roomInventory = getRoomInventoryRows({ includeInactive: true }).filter((room) => !(
+          room.roomType === roomType && Number(room.roomNumber) === Number(roomNumber)
+        ));
+        renderPricingScreen();
+      });
+    });
+
+    roomInventoryList.appendChild(inventoryCard);
+  });
+
   ROOM_PRICING_DEFS.forEach((config) => {
     const pricing = getPricingConfig(config.roomType, config.pax);
     const card = document.createElement("article");
@@ -907,19 +1160,17 @@ function datesOverlap(startA, endA, startB, endB) {
   return startA < endB && endA > startB;
 }
 
-function buildRoomList() {
-  return ROOM_DEFS.flatMap((room) => {
-    const rooms = [];
-    for (let i = 1; i <= room.count; i += 1) {
-      rooms.push({
-        type: room.type,
-        number: i,
-        label: room.label,
-        fullLabel: `${room.label} ${i}`,
-        maxPax: room.maxPax,
-      });
-    }
-    return rooms;
+function buildRoomList({ includeInactive = false } = {}) {
+  return getRoomInventoryRows({ includeInactive }).map((room) => {
+    const roomDef = getRoomDef(room.roomType);
+    return {
+      type: room.roomType,
+      number: room.roomNumber,
+      label: roomDef?.label || "Room",
+      fullLabel: `${roomDef?.label || "Room"} ${room.roomNumber}`,
+      maxPax: Number(room.maxPax || roomDef?.maxPax || 1),
+      isActive: room.isActive,
+    };
   });
 }
 
@@ -1234,10 +1485,8 @@ function renderRoomServiceAssignments() {
 
 function populateRequestRoomNumbers(roomType, selectedNumber) {
   if (!requestRoomNumberInput) return;
-  const def = getRoomDef(normalizeRoomGroup(roomType));
-  const count = def?.count || 0;
-  setHTML(requestRoomNumberInput, Array.from({ length: count }, (_, index) => {
-    const value = index + 1;
+  const numbers = getRoomNumbersForType(roomType, { selectedNumber });
+  setHTML(requestRoomNumberInput, numbers.map((value) => {
     return `<option value="${value}"${Number(selectedNumber) === value ? " selected" : ""}>Room ${value}</option>`;
   }).join(""));
 }
@@ -1505,9 +1754,9 @@ function renderBookingRoomEditors(booking) {
       if (!roomTypeSelect || !roomNumberSelect || !paxSelect) return;
       const selectedType = roomTypeSelect.value;
       const def = getRoomDef(selectedType);
-      setHTML(roomNumberSelect, Array.from({ length: def?.count || 0 }, (_, index) => {
-        const number = index + 1;
-        const selected = number === Number(state.modalBookingRoomEdits.get(String(item.id))?.roomNumber || 1) ? "selected" : "";
+      const selectedRoomNumber = Number(state.modalBookingRoomEdits.get(String(item.id))?.roomNumber || 1);
+      setHTML(roomNumberSelect, getRoomNumbersForType(selectedType, { selectedNumber: selectedRoomNumber }).map((number) => {
+        const selected = number === selectedRoomNumber ? "selected" : "";
         return `<option value="${number}" ${selected}>Room ${number}</option>`;
       }).join(""));
       setHTML(paxSelect, Array.from({ length: def?.maxPax || 6 }, (_, index) => {
@@ -1522,10 +1771,11 @@ function renderBookingRoomEditors(booking) {
     roomTypeSelect?.addEventListener("change", () => {
       const current = state.modalBookingRoomEdits.get(String(item.id));
       const def = getRoomDef(roomTypeSelect.value);
+      const nextRoomNumbers = getRoomNumbersForType(roomTypeSelect.value, { selectedNumber: 1 });
       state.modalBookingRoomEdits.set(String(item.id), {
         ...current,
         roomType: roomTypeSelect.value,
-        roomNumber: 1,
+        roomNumber: nextRoomNumbers[0] || 1,
         guests: Math.min(Number(current?.guests || 1), def?.maxPax || 1),
       });
       syncRoomNumbers();
@@ -1963,6 +2213,7 @@ async function applySession(session) {
 
   renderShell("app");
   updateOnlineStatus();
+  await loadRoomInventory();
   await loadRoomPricing();
   await setupRealtime();
   await refreshLiveViews();
@@ -2271,18 +2522,25 @@ async function getAvailability(checkIn, checkOut) {
   const endDate = parseDate(checkOut);
   if (!startDate || !endDate || endDate <= startDate) return null;
 
+  const roomsByType = ROOM_DEFS.map((roomDef) => ({
+    room: roomDef,
+    rows: getRoomInventoryRows().filter((item) => item.roomType === roomDef.type),
+  }));
+
   const results = await Promise.all(
-    ROOM_DEFS.map(async (room) => ({
+    roomsByType.map(async ({ room, rows }) => ({
       room,
+      rows,
       bookings: await fetchRangeBookings(room.type, checkIn, checkOut),
     }))
   );
 
   const availability = {};
 
-  results.forEach(({ room, bookings }) => {
+  results.forEach(({ room, rows, bookings }) => {
     const booked = new Set();
     const occupied = new Map();
+    const activeRoomNumbers = new Set(rows.map((item) => Number(item.roomNumber)));
 
     bookings.forEach((booking) => {
       if (!isBlockingBooking(booking)) return;
@@ -2292,17 +2550,15 @@ async function getAvailability(checkIn, checkOut) {
       if (!datesOverlap(startDate, endDate, bookingStart, bookingEnd)) return;
       if (normalizeRoomGroup(booking.roomType) !== room.type) return;
       const roomNumber = Number(booking.roomNumber);
+      if (!activeRoomNumbers.has(roomNumber)) return;
       booked.add(roomNumber);
       if (!occupied.has(roomNumber)) occupied.set(roomNumber, booking);
     });
 
-    const available = [];
-    for (let i = 1; i <= room.count; i += 1) {
-      if (!booked.has(i)) available.push(i);
-    }
+    const available = rows.map((item) => Number(item.roomNumber)).filter((number) => !booked.has(number));
 
     availability[room.type] = {
-      total: room.count,
+      total: rows.length,
       booked: booked.size,
       available,
       occupied,
@@ -2557,7 +2813,7 @@ function renderRoomStatus(bookingsForDate) {
   });
 
   roomStatusList.innerHTML = "";
-  buildRoomList().forEach((room) => {
+  buildRoomList({ includeInactive: true }).forEach((room) => {
     const booking = bookedMap.get(`${room.type}-${room.number}`);
     const item = document.createElement("div");
     item.className = "room-item";
@@ -2580,8 +2836,8 @@ function renderRoomStatus(bookingsForDate) {
         <span>${room.fullLabel}</span>
         ${booking ? `<div class="muted">${booking.guestName || "-"}</div><div class="muted"><strong>Booked by:</strong> ${booking.createdByName || "-"}</div><div class="muted">${bookingSummary}</div>` : ""}
       </div>
-      <div class="status ${booking ? "status-booked" : "status-available"}">
-        ${booking ? "BOOKED" : "AVAILABLE"}
+      <div class="status ${booking ? "status-booked" : room.isActive ? "status-available" : "status-cancelled"}">
+        ${booking ? "BOOKED" : room.isActive ? "AVAILABLE" : "OFF"}
       </div>
     `;
     roomStatusList.appendChild(item);
@@ -4532,9 +4788,10 @@ function updateStats(bookings) {
     if (!isBlockingBooking(booking)) return;
     bookedRooms.add(`${normalizeRoomGroup(booking.roomType)}-${booking.roomNumber}`);
   });
+  const totalActiveRooms = getRoomInventoryRows().length;
   statTotal.textContent = bookings.length;
   statOccupied.textContent = bookedRooms.size;
-  statAvailable.textContent = TOTAL_ROOMS - bookedRooms.size;
+  statAvailable.textContent = Math.max(totalActiveRooms - bookedRooms.size, 0);
 }
 
 async function loadBookingsForDate(date) {
@@ -4700,6 +4957,24 @@ async function setupRealtime() {
       async () => {
         setSyncState("live");
         await loadRequests();
+        await refreshLiveViews();
+      }
+    )
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: CONFIG.SUPABASE_ROOMS_TABLE },
+      async () => {
+        setSyncState("live");
+        await loadRoomInventory();
+        await refreshLiveViews();
+      }
+    )
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: CONFIG.SUPABASE_PRICING_TABLE },
+      async () => {
+        setSyncState("live");
+        await loadRoomPricing();
         await refreshLiveViews();
       }
     )
@@ -5304,17 +5579,22 @@ logoutBtn.addEventListener("click", handleLogout);
 loadBookingsBtn.addEventListener("click", () => loadBookingsForDate(viewDateInput.value));
 refreshAccountsBtn.addEventListener("click", () => loadAccounts());
 refreshRequestsBtn.addEventListener("click", () => loadRequests());
-refreshPricingBtn?.addEventListener("click", () => loadRoomPricing());
+refreshPricingBtn?.addEventListener("click", async () => {
+  await loadRoomInventory();
+  await loadRoomPricing();
+});
 savePricingBtn?.addEventListener("click", async () => {
   try {
     savePricingBtn.disabled = true;
     savePricingBtn.textContent = "Saving...";
+    await saveRoomInventory();
     await saveRoomPricing();
+    await refreshLiveViews();
   } catch (error) {
     showToast(error.message, true);
   } finally {
     savePricingBtn.disabled = false;
-    savePricingBtn.textContent = "Save Prices";
+    savePricingBtn.textContent = "Save Room Fix";
   }
 });
 closeModalBtn.addEventListener("click", closeRequestModal);
@@ -5420,6 +5700,7 @@ window.addEventListener("offline", updateOnlineStatus);
   updateOnlineStatus();
   initSupabase();
   setAuthTab("login");
+  setDefaultRoomInventoryState();
   setDefaultRoomPricingState();
   renderPricingScreen();
   applyPhoneSanitizer(signupPhoneInput);
