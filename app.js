@@ -2971,7 +2971,7 @@ function renderBookingGroupOverview(group, groupStatus) {
   const balanceAmount = getBookingBalanceAmount(group);
   return `
     <div class="booking-group-overview">
-      <section class="booking-overview-panel">
+      <section class="booking-overview-panel booking-overview-panel-reservation">
         <div class="booking-overview-panel-title">Reservation</div>
         <div class="booking-overview-list">
           <div class="booking-overview-item">
@@ -2992,7 +2992,7 @@ function renderBookingGroupOverview(group, groupStatus) {
           </div>
         </div>
       </section>
-      <section class="booking-overview-panel">
+      <section class="booking-overview-panel booking-overview-panel-stay">
         <div class="booking-overview-panel-title">Stay</div>
         <div class="booking-overview-list">
           <div class="booking-overview-item">
