@@ -215,6 +215,19 @@
                 <p id="pricing-summary-empty" class="inline-note">Select rooms and nights to see the total price.</p>
               </div>
             </div>
+            <div id="customPaymentsField" class="custom-price-panel">
+              <div class="payment-entry-head">
+                <div>
+                  <p class="services-title">Custom Price</p>
+                  <p class="inline-note">Add extra custom prices with notes. This total is added to the booking total.</p>
+                </div>
+                <button id="addCustomPayment" class="subtle-btn" type="button">Add Price</button>
+              </div>
+              <div id="customPaymentList" class="payment-entry-list">
+                <p class="inline-note">No custom price entries added.</p>
+              </div>
+              <p id="customPaymentsTotal" class="inline-note">Total custom price: LKR 0.00</p>
+            </div>
             <div class="offer-panel">
               <p class="services-title">Offer</p>
               <p class="inline-note">Select the offer after room pricing. This offer applies to all rooms in this booking.</p>
@@ -238,26 +251,12 @@
                 <input id="advancePaid" name="advancePaid" type="checkbox" />
                 <span>Advance payment received</span>
               </label>
-              <label id="customPaymentsToggleCard" class="check-card hidden" for="customPaymentsEnabled">
-                <input id="customPaymentsEnabled" name="customPaymentsEnabled" type="checkbox" />
-                <span>Use custom payment entries</span>
-              </label>
               <div id="advanceAmountField" class="field hidden">
                 <label for="advanceAmount">Advance Amount</label>
                 <input id="advanceAmount" name="advanceAmount" type="number" min="0" step="0.01" inputmode="decimal" placeholder="LKR 0.00" />
               </div>
-              <div id="customPaymentsField" class="payment-entry-panel hidden">
-                <div class="payment-entry-head">
-                  <div>
-                    <p class="payment-entry-title">Customer Payments</p>
-                    <p class="inline-note">Add multiple payments with notes. The total paid amount updates automatically.</p>
-                  </div>
-                  <button id="addCustomPayment" class="subtle-btn" type="button">Add Payment</button>
-                </div>
-                <div id="customPaymentList" class="payment-entry-list"></div>
-                <p id="customPaymentsTotal" class="inline-note">Total paid: LKR 0.00</p>
-              </div>
-              <p class="inline-note">Turn this on if the customer has already paid the advance. Use custom payments when the customer pays in multiple parts.</p>
+              <p id="advanceBalancePreview" class="inline-note">Balance after advance: LKR 0.00</p>
+              <p class="inline-note">Turn this on if the customer has already paid the advance. Balance is calculated from total price minus advance payment.</p>
             </div>
             <div class="services-panel">
               <p class="services-title">Booking Services</p>
