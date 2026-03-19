@@ -238,11 +238,26 @@
                 <input id="advancePaid" name="advancePaid" type="checkbox" />
                 <span>Advance payment received</span>
               </label>
+              <label id="customPaymentsToggleCard" class="check-card hidden" for="customPaymentsEnabled">
+                <input id="customPaymentsEnabled" name="customPaymentsEnabled" type="checkbox" />
+                <span>Use custom payment entries</span>
+              </label>
               <div id="advanceAmountField" class="field hidden">
                 <label for="advanceAmount">Advance Amount</label>
                 <input id="advanceAmount" name="advanceAmount" type="number" min="0" step="0.01" inputmode="decimal" placeholder="LKR 0.00" />
               </div>
-              <p class="inline-note">Turn this on if the customer has already paid the advance.</p>
+              <div id="customPaymentsField" class="payment-entry-panel hidden">
+                <div class="payment-entry-head">
+                  <div>
+                    <p class="payment-entry-title">Customer Payments</p>
+                    <p class="inline-note">Add multiple payments with notes. The total paid amount updates automatically.</p>
+                  </div>
+                  <button id="addCustomPayment" class="subtle-btn" type="button">Add Payment</button>
+                </div>
+                <div id="customPaymentList" class="payment-entry-list"></div>
+                <p id="customPaymentsTotal" class="inline-note">Total paid: LKR 0.00</p>
+              </div>
+              <p class="inline-note">Turn this on if the customer has already paid the advance. Use custom payments when the customer pays in multiple parts.</p>
             </div>
             <div class="services-panel">
               <p class="services-title">Booking Services</p>

@@ -72,6 +72,7 @@ const state = {
   bookingViewMode: "mobile",
   roomPricing: new Map(),
   pricingSchemaReady: null,
+  bookingCustomPayments: [],
   roomInventory: [],
   roomInventorySchemaReady: null,
   bookingRangePicker: null,
@@ -296,8 +297,14 @@ const bookingOfferCustomField = qs("#booking-offer-custom-field");
 const bookingOfferCustomInput = qs("#booking-offer-custom");
 const bookingOfferPreview = qs("#booking-offer-preview");
 const bookingAdvancePaidInput = qs("#advancePaid");
+const bookingCustomPaymentsToggleCard = qs("#customPaymentsToggleCard");
+const bookingCustomPaymentsEnabledInput = qs("#customPaymentsEnabled");
 const bookingAdvanceAmountField = qs("#advanceAmountField");
 const bookingAdvanceAmountInput = qs("#advanceAmount");
+const bookingCustomPaymentsField = qs("#customPaymentsField");
+const bookingCustomPaymentList = qs("#customPaymentList");
+const bookingAddCustomPaymentBtn = qs("#addCustomPayment");
+const bookingCustomPaymentsTotal = qs("#customPaymentsTotal");
 const accountsList = qs("#accounts-list");
 const accountsEmpty = qs("#accounts-empty");
 const refreshAccountsBtn = qs("#refresh-accounts");
@@ -550,6 +557,59 @@ function formatMoney(value) {
 
 function roundCurrency(value) {
   return Math.round(Number(value || 0) * 100) / 100;
+}
+
+function createEmptyCustomPayment() {
+  return { amount: "", note: "" };
+}
+
+function normalizeCustomPayments(value) {
+  const source = typeof value === "string"
+    ? (() => {
+        try {
+          return JSON.parse(value);
+        } catch (error) {
+          return [];
+        }
+      })()
+    : value;
+
+  if (!Array.isArray(source)) return [];
+
+  return source
+    .map((item) => ({
+      amount: roundCurrency(Math.max(0, Number(item?.amount || 0))),
+      note: String(item?.note || "").trim(),
+    }))
+    .filter((item) => item.amount > 0);
+}
+
+function getCustomPaymentsTotal(payments = []) {
+  return roundCurrency(normalizeCustomPayments(payments).reduce((sum, item) => sum + Number(item.amount || 0), 0));
+}
+
+function getBookingPaymentEntries(booking) {
+  const customPayments = normalizeCustomPayments(booking?.customPayments);
+  if (customPayments.length) return customPayments;
+  const advanceAmount = roundCurrency(Number(booking?.advanceAmount || 0));
+  return advanceAmount > 0 ? [{ amount: advanceAmount, note: "" }] : [];
+}
+
+function getPaymentListMarkup(payments = []) {
+  const items = normalizeCustomPayments(payments);
+  if (!items.length) {
+    return '<p class="inline-note">No payment entries added.</p>';
+  }
+  return `
+    <div class="payment-history-list">
+      ${items.map((payment, index) => `
+        <div class="payment-history-item">
+          <strong>${index + 1}. ${formatMoney(payment.amount || 0)}</strong>
+          <span>${escapeHtml(payment.note || "No note")}</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
 }
 
 function getRoomPricingKey(roomType, pax = 0) {
@@ -1327,15 +1387,20 @@ async function toggleGroupServiceDirect(groupKey, serviceName) {
 function getAdvancePaymentInfo(bookings = []) {
   const items = Array.isArray(bookings) ? bookings : [];
   const total = items.length;
-  const amount = roundCurrency(Number(items.find((booking) => Number(booking.advanceAmount || 0) > 0)?.advanceAmount || items[0]?.advanceAmount || 0));
-  const paidCount = items.filter((booking) => Boolean(booking.advancePaid) || Number(booking.advanceAmount || 0) > 0).length;
+  const paymentSource = items.find((booking) => getBookingPaymentEntries(booking).length) || items[0] || null;
+  const payments = getBookingPaymentEntries(paymentSource);
+  const amount = getCustomPaymentsTotal(payments);
+  const paidCount = items.filter((booking) => {
+    const bookingPayments = getBookingPaymentEntries(booking);
+    return bookingPayments.length > 0 || Boolean(booking.advancePaid);
+  }).length;
   if (!total || paidCount === 0) {
-    return { label: "Pending", allPaid: false, partiallyPaid: false, amount };
+    return { label: "Pending", allPaid: false, partiallyPaid: false, amount, payments: [], paymentCount: 0 };
   }
   if (paidCount === total) {
-    return { label: "Received", allPaid: true, partiallyPaid: false, amount };
+    return { label: "Received", allPaid: true, partiallyPaid: false, amount, payments, paymentCount: payments.length };
   }
-  return { label: "Partial", allPaid: false, partiallyPaid: true, amount };
+  return { label: "Partial", allPaid: false, partiallyPaid: true, amount, payments, paymentCount: payments.length };
 }
 
 function getBookingBalanceAmount(group) {
@@ -1344,11 +1409,17 @@ function getBookingBalanceAmount(group) {
   return roundCurrency(Math.max(0, total - advanceAmount));
 }
 
-async function updateGroupAdvancePayment(groupKey, advanceAmount) {
+async function updateGroupAdvancePayment(groupKey, advanceAmount, customPayments = null) {
   const group = state.bookingGroups.get(groupKey);
   if (!group?.bookings?.length) throw new Error("Booking group not found.");
-  const normalizedAmount = roundCurrency(Math.max(0, Number(advanceAmount || 0)));
+  const normalizedPayments = customPayments === null
+    ? []
+    : normalizeCustomPayments(customPayments);
+  const normalizedAmount = roundCurrency(Math.max(0, Number(customPayments === null ? advanceAmount : getCustomPaymentsTotal(normalizedPayments))));
   const advancePaid = normalizedAmount > 0;
+  const paymentEntries = customPayments === null
+    ? (normalizedAmount > 0 ? [{ amount: normalizedAmount, note: "" }] : [])
+    : normalizedPayments;
 
   for (const booking of group.bookings) {
     await updateBooking(booking.id, {
@@ -1365,16 +1436,102 @@ async function updateGroupAdvancePayment(groupKey, advanceAmount) {
       roomsNeeded: booking.roomsNeeded,
       advancePaid,
       advanceAmount: normalizedAmount,
+      customPayments: paymentEntries,
     });
+  }
+}
+
+function renderBookingCustomPayments() {
+  if (!bookingCustomPaymentList) return;
+  if (!state.bookingCustomPayments.length) {
+    bookingCustomPaymentList.innerHTML = '<p class="inline-note">Add payment rows to track each customer payment with a note.</p>';
+  } else {
+    bookingCustomPaymentList.innerHTML = state.bookingCustomPayments.map((payment, index) => `
+      <div class="payment-entry-row" data-payment-index="${index}">
+        <div class="field payment-entry-field">
+          <label for="custom-payment-amount-${index}">Amount</label>
+          <input id="custom-payment-amount-${index}" type="number" min="0" step="0.01" inputmode="decimal" data-payment-amount placeholder="LKR 0.00" value="${payment.amount}" />
+        </div>
+        <div class="field payment-entry-field payment-entry-field-note">
+          <label for="custom-payment-note-${index}">Note</label>
+          <input id="custom-payment-note-${index}" type="text" data-payment-note placeholder="Cash / transfer / part payment" value="${escapeHtml(payment.note)}" />
+        </div>
+        <button class="subtle-btn payment-entry-remove" type="button" data-remove-payment="${index}">Remove</button>
+      </div>
+    `).join("");
+  }
+  if (bookingCustomPaymentsTotal) {
+    bookingCustomPaymentsTotal.textContent = `Total paid: ${formatMoney(getCustomPaymentsTotal(state.bookingCustomPayments))}`;
   }
 }
 
 function syncAdvanceAmountField() {
   const isChecked = Boolean(bookingAdvancePaidInput?.checked);
-  toggleHidden(bookingAdvanceAmountField, !isChecked);
+  const useCustomPayments = Boolean(bookingCustomPaymentsEnabledInput?.checked);
+  toggleHidden(bookingCustomPaymentsToggleCard, !isChecked);
+  toggleHidden(bookingAdvanceAmountField, !isChecked || useCustomPayments);
+  toggleHidden(bookingCustomPaymentsField, !isChecked || !useCustomPayments);
+
+  if (bookingCustomPaymentsEnabledInput && !isChecked) {
+    bookingCustomPaymentsEnabledInput.checked = false;
+  }
   if (!isChecked && bookingAdvanceAmountInput) {
     bookingAdvanceAmountInput.value = "";
   }
+  if (!isChecked) {
+    state.bookingCustomPayments = [];
+  }
+  if (isChecked && useCustomPayments && !state.bookingCustomPayments.length) {
+    state.bookingCustomPayments = [createEmptyCustomPayment()];
+  }
+  if (isChecked && bookingAdvanceAmountInput) {
+    if (useCustomPayments) {
+      bookingAdvanceAmountInput.value = String(getCustomPaymentsTotal(state.bookingCustomPayments) || "");
+    } else if (state.bookingCustomPayments.length && !bookingAdvanceAmountInput.value) {
+      bookingAdvanceAmountInput.value = String(getCustomPaymentsTotal(state.bookingCustomPayments) || "");
+    }
+  }
+  renderBookingCustomPayments();
+}
+
+function handleBookingCustomPaymentInput(index, field, value) {
+  if (!state.bookingCustomPayments[index]) return;
+  if (field === "amount") {
+    state.bookingCustomPayments[index].amount = value;
+  } else {
+    state.bookingCustomPayments[index].note = value;
+  }
+  if (bookingCustomPaymentsTotal) {
+    bookingCustomPaymentsTotal.textContent = `Total paid: ${formatMoney(getCustomPaymentsTotal(state.bookingCustomPayments))}`;
+  }
+}
+
+function getBookingCustomPaymentsPayload() {
+  if (!bookingCustomPaymentsEnabledInput?.checked) return [];
+  return normalizeCustomPayments(state.bookingCustomPayments);
+}
+
+async function promptGroupPaymentUpdate(groupKey) {
+  const group = state.bookingGroups.get(groupKey);
+  if (!group?.bookings?.length) throw new Error("Booking group not found.");
+  const advanceInfo = getAdvancePaymentInfo(group.bookings);
+  const currentLabel = advanceInfo.payments.length
+    ? advanceInfo.payments.map((payment) => `${formatMoney(payment.amount)}${payment.note ? ` (${payment.note})` : ""}`).join(" | ")
+    : "No payments";
+  const input = window.prompt(`Enter payment amount. Use 0 to clear all payments.\nCurrent: ${currentLabel}`, "");
+  if (input == null) return false;
+  const nextAmount = roundCurrency(Number(input));
+  if (Number.isNaN(nextAmount) || nextAmount < 0) {
+    throw new Error("Enter a valid payment amount.");
+  }
+  if (nextAmount === 0) {
+    await updateGroupAdvancePayment(groupKey, 0, []);
+    return true;
+  }
+  const note = window.prompt("Add a payment note (optional).", "") || "";
+  const nextPayments = [...advanceInfo.payments, { amount: nextAmount, note: note.trim() }];
+  await updateGroupAdvancePayment(groupKey, getCustomPaymentsTotal(nextPayments), nextPayments);
+  return true;
 }
 
 async function removeBookingRoomDirect(bookingId) {
@@ -1997,6 +2154,7 @@ function mapBooking(row) {
     offerPercentage: Number(row.offer_percentage || 0),
     advancePaid: Boolean(row.advance_paid),
     advanceAmount: Number(row.advance_amount || 0),
+    customPayments: normalizeCustomPayments(row.custom_payments),
     roomTotal: Number(row.room_total || 0),
     createdAt: row.created_at,
   };
@@ -2013,7 +2171,8 @@ function shouldRetryWithoutPricingColumns(message) {
     || text.includes("base_room_total")
     || text.includes("offer_percentage")
     || text.includes("advance_paid")
-    || text.includes("advance_amount");
+    || text.includes("advance_amount")
+    || text.includes("custom_payments");
 }
 
 function shouldRetryWithoutRequestPricingColumns(message) {
@@ -2040,8 +2199,13 @@ function applyPricingToBookingRow(row, values) {
   row.weekday_nights = pricing.weekdayNights;
   row.base_room_total = pricing.roomTotal;
   row.offer_percentage = Number(values.offerPercentage || 0);
-  row.advance_paid = Boolean(values.advancePaid);
-  row.advance_amount = roundCurrency(Number(values.advanceAmount || 0));
+  const customPayments = normalizeCustomPayments(values.customPayments);
+  const advanceAmount = customPayments.length
+    ? getCustomPaymentsTotal(customPayments)
+    : roundCurrency(Number(values.advanceAmount || 0));
+  row.advance_paid = Boolean(values.advancePaid) || customPayments.length > 0;
+  row.advance_amount = advanceAmount;
+  row.custom_payments = customPayments;
   row.room_total = applyOfferPercentage(pricing.roomTotal, row.offer_percentage);
 }
 
@@ -2055,6 +2219,7 @@ function stripPricingColumns(row) {
   delete row.offer_percentage;
   delete row.advance_paid;
   delete row.advance_amount;
+  delete row.custom_payments;
   delete row.room_total;
 }
 
@@ -3025,7 +3190,11 @@ function renderBookingGroupOverview(group, groupStatus) {
             <strong>${advanceInfo.label}</strong>
           </div>
           <div class="booking-overview-row">
-            <span>Advance Amount</span>
+            <span>Payments</span>
+            <strong>${advanceInfo.paymentCount || 0}</strong>
+          </div>
+          <div class="booking-overview-row">
+            <span>Paid Amount</span>
             <strong>${formatMoney(advanceInfo.amount || 0)}</strong>
           </div>
           <div class="booking-overview-row booking-overview-row-strong">
@@ -3175,10 +3344,19 @@ function buildBookingPdfMarkup(group) {
               <div><strong>Rooms</strong><span>${escapeHtml(String(group.bookings.length || 0))}</span></div>
               <div><strong>Total Price</strong><span>${escapeHtml(formatMoney(group.totalPrice || 0))}</span></div>
               <div><strong>Advance</strong><span>${escapeHtml(advanceInfo.label)}</span></div>
-              <div><strong>Advance Amount</strong><span>${escapeHtml(formatMoney(advanceInfo.amount || 0))}</span></div>
+              <div><strong>Payments</strong><span>${escapeHtml(String(advanceInfo.paymentCount || 0))}</span></div>
+              <div><strong>Paid Amount</strong><span>${escapeHtml(formatMoney(advanceInfo.amount || 0))}</span></div>
               <div><strong>Balance</strong><span>${escapeHtml(formatMoney(balanceAmount))}</span></div>
               <div><strong>Exported At</strong><span>${escapeHtml(new Date().toLocaleString("en-GB"))}</span></div>
             </div>
+            ${advanceInfo.payments.length ? `
+              <div class="pdf-services">
+                <strong>Payment Entries</strong>
+                ${advanceInfo.payments.map((payment, index) => `
+                  <div class="pdf-notes">${index + 1}. ${escapeHtml(formatMoney(payment.amount || 0))}${payment.note ? ` · ${escapeHtml(payment.note)}` : ""}</div>
+                `).join("")}
+              </div>
+            ` : ""}
             ${allServices.length ? `
               <div class="pdf-services">
                 <strong>Services</strong>
@@ -3283,8 +3461,12 @@ function buildReservationWhatsappMessage(group) {
     `Rooms: ${group.bookings.length || 0}`,
     `Total Price: ${formatMoney(group.totalPrice || 0)}`,
     `Advance Payment: ${advanceInfo.label}`,
-    `Advance Amount: ${formatMoney(advanceInfo.amount || 0)}`,
+    `Payment Entries: ${advanceInfo.paymentCount || 0}`,
+    `Paid Amount: ${formatMoney(advanceInfo.amount || 0)}`,
     `Balance: ${formatMoney(balanceAmount)}`,
+    ...(advanceInfo.payments.length
+      ? ["", "Payments:", ...advanceInfo.payments.map((payment, index) => `${index + 1}. ${formatMoney(payment.amount || 0)}${payment.note ? ` | ${payment.note}` : ""}`)]
+      : []),
     ``,
     `Room Details:`,
     ...roomLines.map((line, index) => `${index + 1}. ${line}`),
@@ -3422,15 +3604,17 @@ function openBookingDetailsModal(groupKey) {
       <div><strong>Dates:</strong> ${group.checkIn} -> ${group.checkOut}</div>
       <div><strong>Status:</strong> ${group.statuses.size === 1 ? Array.from(group.statuses)[0] : "Mixed"}</div>
       <div><strong>Advance:</strong> ${advanceInfo.label}</div>
-      <div><strong>Advance Amount:</strong> ${formatMoney(advanceInfo.amount || 0)}</div>
+      <div><strong>Payments:</strong> ${advanceInfo.paymentCount || 0}</div>
+      <div><strong>Paid Amount:</strong> ${formatMoney(advanceInfo.amount || 0)}</div>
       <div><strong>Balance:</strong> ${formatMoney(balanceAmount)}</div>
       <div><strong>Total Price:</strong> ${formatMoney(group.totalPrice || 0)}</div>
     </div>
     ${groupRequest ? `<div class="booking-details-request-banner">${getRequestStatusMarkup(groupRequest, "Latest request")}<span class="booking-history-meta">${formatRequestReason(groupRequest.reason)} · ${getRequestRequestedDate(groupRequest) || "-"}</span></div>` : `<div class="booking-details-request-banner">${getActiveStatusMarkup("Active")}<span class="booking-history-meta">No pending request.</span></div>`}
+    ${advanceInfo.payments.length ? `<div class="booking-details-services-panel"><div class="booking-details-panel-title">Payments</div>${getPaymentListMarkup(advanceInfo.payments)}</div>` : ""}
     ${groupServices.length ? `<div class="booking-details-services-panel"><div class="booking-details-panel-title">Services</div>${renderServiceChips(groupServices)}</div>` : ""}
     ${requestHistoryMarkup}
     <div class="booking-details-actions">
-      ${canManageBookings() ? `<button class="action-btn action-btn-icon action-btn-icon-advance" type="button" data-booking-group-action="advance">Update Advance</button>` : ""}
+      ${canManageBookings() ? `<button class="action-btn action-btn-icon action-btn-icon-advance" type="button" data-booking-group-action="advance">Add Payment</button>` : ""}
       <button class="action-btn action-btn-icon action-btn-icon-whatsapp" type="button" data-booking-group-action="whatsapp">WhatsApp</button>
       <button class="action-btn action-btn-icon action-btn-icon-pdf" type="button" data-booking-group-action="pdf">Export PDF</button>
       <button class="primary-btn" type="button" data-booking-group-action="manage">Manage Full Booking</button>
@@ -3479,19 +3663,13 @@ function openBookingDetailsModal(groupKey) {
   if (advanceBtn) {
     advanceBtn.addEventListener("click", async () => {
       try {
-        const input = window.prompt("Enter advance amount received. Use 0 to mark pending.", String(advanceInfo.amount || 0));
-        if (input == null) return;
-        const nextAmount = roundCurrency(Number(input));
-        if (Number.isNaN(nextAmount) || nextAmount < 0) {
-          showToast("Enter a valid advance amount.", true);
-          return;
-        }
-        await updateGroupAdvancePayment(group.key, nextAmount);
-        showToast(nextAmount > 0 ? "Advance payment updated." : "Advance payment marked as pending.");
+        const changed = await promptGroupPaymentUpdate(group.key);
+        if (!changed) return;
+        showToast("Payment entries updated.");
         await refreshLiveViews();
         openBookingDetailsModal(group.key);
       } catch (error) {
-        showToast(error.message || "Unable to update advance payment.", true);
+        showToast(error.message || "Unable to update payments.", true);
       }
     });
   }
@@ -3645,8 +3823,8 @@ function renderBookings(bookings) {
           ${requestActions}
           <div class="booking-quick-actions">
             ${canManageBookings() ? `
-              <button class="secondary-btn action-btn-icon action-btn-icon-advance compact-control" type="button" data-booking-group-advance="${group.key}" aria-label="Update Advance" title="Update Advance">
-                <span class="compact-label">Update Advance</span>
+              <button class="secondary-btn action-btn-icon action-btn-icon-advance compact-control" type="button" data-booking-group-advance="${group.key}" aria-label="Add Payment" title="Add Payment">
+                <span class="compact-label">Add Payment</span>
               </button>
             ` : ""}
             <button class="secondary-btn action-btn-icon action-btn-icon-whatsapp compact-control" type="button" data-booking-group-whatsapp="${group.key}" aria-label="WhatsApp" title="WhatsApp">
@@ -3779,18 +3957,12 @@ function renderBookings(bookings) {
     if (advanceGroupBtn) {
       advanceGroupBtn.addEventListener("click", async () => {
         try {
-          const input = window.prompt("Enter advance amount received. Use 0 to mark pending.", String(advanceInfo.amount || 0));
-          if (input == null) return;
-          const nextAmount = roundCurrency(Number(input));
-          if (Number.isNaN(nextAmount) || nextAmount < 0) {
-            showToast("Enter a valid advance amount.", true);
-            return;
-          }
-          await updateGroupAdvancePayment(advanceGroupBtn.dataset.bookingGroupAdvance, nextAmount);
-          showToast(nextAmount > 0 ? "Advance payment updated." : "Advance payment marked as pending.");
+          const changed = await promptGroupPaymentUpdate(advanceGroupBtn.dataset.bookingGroupAdvance);
+          if (!changed) return;
+          showToast("Payment entries updated.");
           await refreshLiveViews();
         } catch (error) {
-          showToast(error.message || "Unable to update advance payment.", true);
+          showToast(error.message || "Unable to update payments.", true);
         }
       });
     }
@@ -4166,6 +4338,7 @@ async function updateBooking(bookingId, values) {
     offerPercentage: "offerPercentage" in values ? Number(values.offerPercentage) : Number(currentBooking.offerPercentage || 0),
     advancePaid: "advancePaid" in values ? Boolean(values.advancePaid) : Boolean(currentBooking.advancePaid),
     advanceAmount: "advanceAmount" in values ? roundCurrency(Number(values.advanceAmount || 0)) : Number(currentBooking.advanceAmount || 0),
+    customPayments: "customPayments" in values ? normalizeCustomPayments(values.customPayments) : normalizeCustomPayments(currentBooking.customPayments),
   };
 
   const row = {
@@ -4182,6 +4355,7 @@ async function updateBooking(bookingId, values) {
     booking_status: merged.status,
     advance_paid: merged.advancePaid,
     advance_amount: merged.advanceAmount,
+    custom_payments: merged.customPayments,
   };
   applyPricingToBookingRow(row, merged);
 
@@ -4289,6 +4463,7 @@ async function approveRequest(requestId) {
         offerPercentage: request.requestedOfferPercentage ?? request.booking?.offerPercentage ?? 0,
         advancePaid: Boolean(request.booking?.advancePaid),
         advanceAmount: Number(request.booking?.advanceAmount || 0),
+        customPayments: request.booking?.customPayments || [],
       });
     }
 
@@ -5303,6 +5478,7 @@ async function handleRequestSubmit(event) {
             offerPercentage: payload.offerPercentage || state.activeBooking.offerPercentage || 0,
             advancePaid: Boolean(state.activeBooking.advancePaid),
             advanceAmount: Number(state.activeBooking.advanceAmount || 0),
+            customPayments: state.activeBooking.customPayments || [],
           });
         }
       } else if (reason === "additional_services") {
@@ -5431,8 +5607,11 @@ bookingForm.addEventListener("submit", async (event) => {
   const payload = Object.fromEntries(formData.entries());
   payload.phone = sanitizePhoneValue(payload.phone);
   payload.offerPercentage = getBookingOfferPercentage();
-  payload.advancePaid = Boolean(bookingAdvancePaidInput?.checked);
-  payload.advanceAmount = payload.advancePaid ? roundCurrency(Number(bookingAdvanceAmountInput?.value || 0)) : 0;
+  payload.customPayments = getBookingCustomPaymentsPayload();
+  payload.advancePaid = Boolean(bookingAdvancePaidInput?.checked) || payload.customPayments.length > 0;
+  payload.advanceAmount = payload.customPayments.length
+    ? getCustomPaymentsTotal(payload.customPayments)
+    : (payload.advancePaid ? roundCurrency(Number(bookingAdvanceAmountInput?.value || 0)) : 0);
   bookingPhoneInput.value = payload.phone;
 
   if (!payload.guestName || !payload.phone) {
@@ -5441,7 +5620,7 @@ bookingForm.addEventListener("submit", async (event) => {
   }
 
   if (payload.advancePaid && payload.advanceAmount <= 0) {
-    showToast("Enter the advance payment amount.", true);
+    showToast(payload.customPayments.length ? "Enter valid custom payment amounts." : "Enter the advance payment amount.", true);
     return;
   }
 
@@ -5540,7 +5719,9 @@ bookingForm.addEventListener("submit", async (event) => {
     setBookingDateRange(toDateInputValue(today), toDateInputValue(tomorrow));
     setOfferSelection(bookingOfferOptions, bookingOfferCustomField, bookingOfferCustomInput, 0);
     if (bookingAdvancePaidInput) bookingAdvancePaidInput.checked = false;
+    if (bookingCustomPaymentsEnabledInput) bookingCustomPaymentsEnabledInput.checked = false;
     if (bookingAdvanceAmountInput) bookingAdvanceAmountInput.value = "";
+    state.bookingCustomPayments = [];
     syncAdvanceAmountField();
     state.roomPlans.clear();
     state.bookingServices.clear();
@@ -5630,6 +5811,10 @@ function handleAdvancePaymentToggle() {
   syncAdvanceAmountField();
 }
 
+function handleCustomPaymentsToggle() {
+  syncAdvanceAmountField();
+}
+
 requestsDateFromFilter.addEventListener("change", handleRequestDateRangeChange);
 requestsDateToFilter.addEventListener("change", handleRequestDateRangeChange);
 requestsTrackFilter.addEventListener("input", () => loadRequests());
@@ -5642,6 +5827,29 @@ requestWeekendRateInput?.addEventListener("input", renderRequestOfferPreview);
 requestCheckInInput?.addEventListener("change", renderRequestOfferPreview);
 requestCheckOutInput?.addEventListener("change", renderRequestOfferPreview);
 bookingAdvancePaidInput?.addEventListener("change", handleAdvancePaymentToggle);
+bookingCustomPaymentsEnabledInput?.addEventListener("change", handleCustomPaymentsToggle);
+bookingAddCustomPaymentBtn?.addEventListener("click", () => {
+  state.bookingCustomPayments.push(createEmptyCustomPayment());
+  renderBookingCustomPayments();
+});
+bookingCustomPaymentList?.addEventListener("input", (event) => {
+  const row = event.target.closest("[data-payment-index]");
+  if (!row) return;
+  const index = Number(row.dataset.paymentIndex);
+  if (event.target.matches("[data-payment-amount]")) {
+    handleBookingCustomPaymentInput(index, "amount", event.target.value);
+  }
+  if (event.target.matches("[data-payment-note]")) {
+    handleBookingCustomPaymentInput(index, "note", event.target.value);
+  }
+});
+bookingCustomPaymentList?.addEventListener("click", (event) => {
+  const removeBtn = event.target.closest("[data-remove-payment]");
+  if (!removeBtn) return;
+  const index = Number(removeBtn.dataset.removePayment);
+  state.bookingCustomPayments.splice(index, 1);
+  renderBookingCustomPayments();
+});
 handleBookingOfferChange();
 handleRequestOfferChange();
 syncAdvanceAmountField();
