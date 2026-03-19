@@ -1912,7 +1912,7 @@ h4 {
   width: min(1920px, calc(100vw - 40px));
   max-width: none;
   margin: 22px auto 40px;
-  padding: 78px 0 48px;
+  padding: 104px 0 48px;
 }
 
 #app-shell.view-desktop .card {
@@ -1923,7 +1923,7 @@ h4 {
 
 #app-shell.view-desktop .bottom-nav {
   position: fixed;
-  top: 94px;
+  top: 118px;
   left: 50%;
   right: auto;
   bottom: auto;
