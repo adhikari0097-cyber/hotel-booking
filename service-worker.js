@@ -1,4 +1,4 @@
-const STATIC_CACHE = "hotel-booking-static-v2";
+const STATIC_CACHE = "hotel-booking-static-v3";
 const STATIC_ASSETS = [
   "/",
   "/index.html",
@@ -34,6 +34,21 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) {
+    return;
+  }
+
+  const isShellAsset = ["/", "/index.html", "/styles.css", "/app.js"].includes(url.pathname);
+
+  if (isShellAsset) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(STATIC_CACHE).then((cache) => cache.put(event.request, copy));
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
     return;
   }
 

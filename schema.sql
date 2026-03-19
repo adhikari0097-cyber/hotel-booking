@@ -93,6 +93,28 @@ values
   ('normal', 4, 0, 100)
 on conflict (room_type, pax) do nothing;
 
+create table if not exists public.room_inventory (
+  id uuid primary key default gen_random_uuid(),
+  room_type text not null check (room_type in ('kitchen', 'normal', 'driver')),
+  room_number integer not null check (room_number > 0),
+  max_pax integer not null check (max_pax > 0),
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint room_inventory_unique unique (room_type, room_number)
+);
+
+insert into public.room_inventory (room_type, room_number, max_pax, is_active)
+values
+  ('kitchen', 1, 6, true),
+  ('kitchen', 2, 6, true),
+  ('normal', 1, 4, true),
+  ('normal', 2, 4, true),
+  ('normal', 3, 4, true),
+  ('normal', 4, 4, true),
+  ('driver', 1, 4, true)
+on conflict (room_type, room_number) do nothing;
+
 create table if not exists public.booking_change_requests (
   id uuid primary key default gen_random_uuid(),
   booking_id uuid not null references public.bookings(id) on delete cascade,
@@ -248,6 +270,7 @@ alter table public.bookings enable row level security;
 alter table public.profiles enable row level security;
 alter table public.booking_change_requests enable row level security;
 alter table public.room_pricing enable row level security;
+alter table public.room_inventory enable row level security;
 
 drop policy if exists "anon can read bookings" on public.bookings;
 drop policy if exists "anon can insert bookings" on public.bookings;
@@ -316,6 +339,35 @@ for update
 to authenticated
 using (public.has_profile_permission('manage_pricing'))
 with check (public.has_profile_permission('manage_pricing'));
+
+drop policy if exists "approved users can read room inventory" on public.room_inventory;
+create policy "approved users can read room inventory"
+on public.room_inventory
+for select
+to authenticated
+using (public.is_approved_user());
+
+drop policy if exists "owner admin can insert room inventory" on public.room_inventory;
+create policy "owner admin can insert room inventory"
+on public.room_inventory
+for insert
+to authenticated
+with check (public.has_profile_permission('manage_pricing'));
+
+drop policy if exists "owner admin can update room inventory" on public.room_inventory;
+create policy "owner admin can update room inventory"
+on public.room_inventory
+for update
+to authenticated
+using (public.has_profile_permission('manage_pricing'))
+with check (public.has_profile_permission('manage_pricing'));
+
+drop policy if exists "owner admin can delete room inventory" on public.room_inventory;
+create policy "owner admin can delete room inventory"
+on public.room_inventory
+for delete
+to authenticated
+using (public.has_profile_permission('manage_pricing'));
 
 drop policy if exists "users can read own change requests" on public.booking_change_requests;
 create policy "users can read own change requests"
