@@ -2141,9 +2141,45 @@ h4 {
 }
 
 #app-shell.view-desktop .modal-card {
-  width: min(100%, 900px);
+  width: min(100%, 1080px);
   border-radius: 28px;
-  padding: 24px;
+  padding: 28px;
+}
+
+#app-shell.view-desktop .request-form-layout {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+#app-shell.view-desktop .request-form-layout > #request-reason-field,
+#app-shell.view-desktop .request-form-layout > .request-summary-panel,
+#app-shell.view-desktop .request-form-layout > #request-booking-rooms-section,
+#app-shell.view-desktop .request-form-layout > #request-extra-rooms-section,
+#app-shell.view-desktop .request-form-layout > #request-services-section,
+#app-shell.view-desktop .request-form-layout > #request-remove-rooms-section,
+#app-shell.view-desktop .request-form-layout > #request-price-section,
+#app-shell.view-desktop .request-form-layout > .primary-btn {
+  grid-column: 1 / -1;
+}
+
+#app-shell.view-desktop .request-summary-grid,
+#app-shell.view-desktop .request-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+#app-shell.view-desktop .request-summary-grid .booking-summary-chip-wide {
+  grid-column: 1 / -1;
+}
+
+#app-shell.view-desktop .request-form-grid .field-span-2 {
+  grid-column: 1 / -1;
+}
+
+#app-shell.view-desktop .request-section-card,
+#app-shell.view-desktop .request-summary-panel {
+  padding: 22px;
+  border-radius: 24px;
+  box-shadow: 0 12px 28px rgba(20, 26, 36, 0.04);
 }
 
 #app-shell.view-desktop .month-card,
@@ -2560,6 +2596,62 @@ h4 {
   box-shadow: var(--shadow);
   padding: 18px;
   border: 1px solid var(--border);
+}
+
+.request-form-layout {
+  display: grid;
+  gap: 16px;
+}
+
+.request-summary-panel,
+.request-section-card {
+  border: 1px solid #ebdfca;
+  background: #fffdf9;
+  border-radius: 18px;
+  padding: 16px;
+}
+
+.request-summary-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.request-summary-grid .booking-summary-chip {
+  min-height: 88px;
+  justify-content: center;
+}
+
+.request-summary-grid .booking-summary-chip strong {
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.request-form-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.request-section-card .extra-room-grid {
+  gap: 14px;
+}
+
+.request-section-card .booking-room-edit-option,
+.request-section-card .extra-room-option {
+  border-radius: 18px;
+  padding: 14px 16px;
+}
+
+.request-section-card .extra-room-option-head {
+  align-items: flex-start;
+}
+
+.request-section-card .field:last-child,
+.request-section-card .inline-note:last-child {
+  margin-bottom: 0;
+}
+
+.request-form-layout > .primary-btn {
+  margin-top: 4px;
 }
 
 .toast {

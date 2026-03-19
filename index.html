@@ -446,7 +446,7 @@
           </div>
           <button id="close-modal" class="ghost-btn" type="button">Close</button>
         </div>
-        <form id="request-form">
+        <form id="request-form" class="request-form-layout">
           <input id="modal-booking-id" type="hidden" />
           <div id="request-reason-field" class="field">
             <label for="request-reason">Update Reason *</label>
@@ -462,76 +462,97 @@
               <option value="delete_booking">Delete Booking</option>
             </select>
           </div>
-          <div class="field">
-            <label for="request-guest-name">Guest Name</label>
-            <input id="request-guest-name" type="text" />
-          </div>
-          <div class="field">
-            <label for="request-phone">Phone Number</label>
-            <input
-              id="request-phone"
-              type="tel"
-              inputmode="numeric"
-              pattern="[0-9]*"
-              maxlength="15"
-              autocomplete="tel-national"
-            />
-          </div>
-          <div id="request-current-dates" class="inline-note"></div>
-          <div class="field grid-2">
-            <div>
-              <label id="request-checkin-label" for="request-check-in">Check-in</label>
-              <input id="request-check-in" type="date" />
-            </div>
-            <div>
-              <label id="request-checkout-label" for="request-check-out">Check-out</label>
-              <input id="request-check-out" type="date" />
+          <div class="request-summary-panel">
+            <div class="request-summary-grid">
+              <div class="booking-summary-chip booking-summary-chip-wide">
+                <span>Current Dates</span>
+                <strong id="request-current-dates">-</strong>
+              </div>
+              <div class="booking-summary-chip">
+                <span>Current Room</span>
+                <strong id="request-current-room">-</strong>
+              </div>
             </div>
           </div>
-          <p id="request-date-help" class="inline-note hidden">
-            Enter the new requested date range. Owner/Admin will see both current and requested dates before approval.
-          </p>
-          <div id="request-current-room" class="inline-note"></div>
-          <div class="field grid-2">
-            <div>
-              <label for="request-room-type">Room Group</label>
-              <select id="request-room-type">
-                <option value="normal">Normal Room</option>
-                <option value="kitchen">Kitchen Room</option>
-                <option value="driver">Driver Room</option>
-              </select>
+          <section class="request-section-card">
+            <p class="services-title">Guest Details</p>
+            <div class="request-form-grid">
+              <div class="field">
+                <label for="request-guest-name">Guest Name</label>
+                <input id="request-guest-name" type="text" />
+              </div>
+              <div class="field">
+                <label for="request-phone">Phone Number</label>
+                <input
+                  id="request-phone"
+                  type="tel"
+                  inputmode="numeric"
+                  pattern="[0-9]*"
+                  maxlength="15"
+                  autocomplete="tel-national"
+                />
+              </div>
             </div>
-            <div>
-              <label for="request-room-number">Room Number</label>
-              <select id="request-room-number"></select>
+          </section>
+          <section class="request-section-card">
+            <p class="services-title">Stay Dates</p>
+            <div class="field grid-2">
+              <div>
+                <label id="request-checkin-label" for="request-check-in">Check-in</label>
+                <input id="request-check-in" type="date" />
+              </div>
+              <div>
+                <label id="request-checkout-label" for="request-check-out">Check-out</label>
+                <input id="request-check-out" type="date" />
+              </div>
             </div>
-          </div>
-          <div id="request-guests-field" class="field">
-            <label for="request-guests">Pax Count</label>
-            <select id="request-guests"></select>
-          </div>
-          <div id="request-extra-rooms-section" class="field hidden">
-            <label>Additional Rooms</label>
+            <p id="request-date-help" class="inline-note hidden">
+              Enter the new requested date range. Owner/Admin will see both current and requested dates before approval.
+            </p>
+          </section>
+          <section class="request-section-card">
+            <p class="services-title">Room Setup</p>
+            <div class="field grid-2">
+              <div>
+                <label for="request-room-type">Room Group</label>
+                <select id="request-room-type">
+                  <option value="normal">Normal Room</option>
+                  <option value="kitchen">Kitchen Room</option>
+                  <option value="driver">Driver Room</option>
+                </select>
+              </div>
+              <div>
+                <label for="request-room-number">Room Number</label>
+                <select id="request-room-number"></select>
+              </div>
+            </div>
+            <div id="request-guests-field" class="field">
+              <label for="request-guests">Pax Count</label>
+              <select id="request-guests"></select>
+            </div>
+          </section>
+          <div id="request-extra-rooms-section" class="request-section-card hidden">
+            <p class="services-title">Additional Rooms</p>
             <p class="inline-note">Select extra rooms only when the reason is requesting additional rooms.</p>
             <div id="request-extra-rooms" class="extra-room-grid"></div>
           </div>
-          <div id="request-services-section" class="field hidden">
-            <label>Additional Services</label>
+          <div id="request-services-section" class="request-section-card hidden">
+            <p class="services-title">Additional Services</p>
             <p class="inline-note">Select the extra services requested for this booking.</p>
             <div id="request-services" class="service-grid"></div>
           </div>
-          <div id="request-remove-rooms-section" class="field hidden">
-            <label>Remove Rooms</label>
+          <div id="request-remove-rooms-section" class="request-section-card hidden">
+            <p class="services-title">Remove Rooms</p>
             <p class="inline-note">Select the rooms that should be removed from this booking.</p>
             <div id="request-remove-rooms" class="extra-room-grid"></div>
           </div>
-          <div id="request-booking-rooms-section" class="field hidden">
-            <label>Booking Rooms</label>
+          <div id="request-booking-rooms-section" class="request-section-card hidden">
+            <p class="services-title">Booking Rooms</p>
             <p class="inline-note">Update room, pax, and services for each room in this booking.</p>
             <div id="request-booking-rooms" class="extra-room-grid"></div>
           </div>
-          <div id="request-price-section" class="field hidden">
-            <label>Room Price</label>
+          <div id="request-price-section" class="offer-panel hidden">
+            <p class="services-title">Room Pricing</p>
             <p id="request-current-price" class="inline-note">Current price: -</p>
             <div class="request-price-grid">
               <div>
@@ -553,24 +574,29 @@
             </div>
             <p id="request-offer-preview" class="inline-note">Final price: LKR 0.00</p>
           </div>
-          <div class="field">
-            <label for="request-status">Booking Status</label>
-            <select id="request-status">
-              <option value="Campaign">Campaign Booking</option>
-              <option value="Visit">Visit Booking</option>
-              <option value="BKC">BKC Booking</option>
-              <option value="Pending">Pending</option>
-              <option value="Cancelled">Cancelled</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="request-notes">Notes</label>
-            <textarea id="request-notes"></textarea>
-          </div>
-          <div class="field">
-            <label for="request-message">Comment</label>
-            <textarea id="request-message" placeholder="Explain why this change is needed."></textarea>
-          </div>
+          <section class="request-section-card">
+            <p class="services-title">Booking Details</p>
+            <div class="request-form-grid">
+              <div class="field">
+                <label for="request-status">Booking Status</label>
+                <select id="request-status">
+                  <option value="Campaign">Campaign Booking</option>
+                  <option value="Visit">Visit Booking</option>
+                  <option value="BKC">BKC Booking</option>
+                  <option value="Pending">Pending</option>
+                  <option value="Cancelled">Cancelled</option>
+                </select>
+              </div>
+              <div class="field field-span-2">
+                <label for="request-notes">Notes</label>
+                <textarea id="request-notes"></textarea>
+              </div>
+              <div class="field field-span-2">
+                <label for="request-message">Comment</label>
+                <textarea id="request-message" placeholder="Explain why this change is needed."></textarea>
+              </div>
+            </div>
+          </section>
           <button id="request-submit" class="primary-btn" type="submit">Submit</button>
         </form>
       </div>

@@ -5363,6 +5363,9 @@ function syncModalReasonDefaults() {
   const dateField = requestCheckInInput ? requestCheckInInput.closest(".field.grid-2") : null;
   const statusField = requestStatusInput ? requestStatusInput.closest(".field") : null;
   const notesField = requestNotesInput ? requestNotesInput.closest(".field") : null;
+  const guestSection = guestField ? guestField.closest(".request-section-card") : null;
+  const dateSection = dateField ? dateField.closest(".request-section-card") : null;
+  const roomSection = roomPickerField ? roomPickerField.closest(".request-section-card") : null;
   const showSingleRoomFields = !(isGroupLike || isAdditionalRooms || isRemoveRooms || isAdditionalServices || isPriceChange);
 
   setText(requestCheckInLabel, isDateChange ? "New Check-in" : "Check-in");
@@ -5380,6 +5383,9 @@ function syncModalReasonDefaults() {
   toggleHidden(dateField, isPriceChange);
   toggleHidden(statusField, isPriceChange);
   toggleHidden(notesField, isPriceChange);
+  toggleHidden(guestSection, isPriceChange);
+  toggleHidden(dateSection, isPriceChange);
+  toggleHidden(roomSection, !showSingleRoomFields);
   setValue(requestStatusInput, getDefaultRequestStatus(requestReasonInput.value, state.activeBooking?.status || "Campaign"));
 }
 
