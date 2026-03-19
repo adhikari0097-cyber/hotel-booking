@@ -1590,7 +1590,7 @@ h4 {
 
 #booking-list.booking-view-desktop .booking-room-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
+  grid-template-columns: minmax(0, 1fr) 240px;
   gap: 26px;
   padding: 24px;
   border-radius: 24px;
@@ -1607,7 +1607,7 @@ h4 {
 }
 
 #booking-list.booking-view-desktop .booking-room-facts {
-  grid-template-columns: repeat(3, minmax(210px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -1735,6 +1735,7 @@ h4 {
 .booking-room-fact-total {
   background: #f8f1dc;
   border-color: #ead9a3;
+  grid-column: 1 / -1;
 }
 
 .booking-room-row-meta,
