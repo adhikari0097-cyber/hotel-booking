@@ -300,6 +300,7 @@ const bookingAdvancePaidInput = qs("#advancePaid");
 const bookingCustomPaymentsToggleCard = qs("#customPaymentsToggleCard");
 const bookingCustomPaymentsEnabledInput = qs("#customPaymentsEnabled");
 const bookingAdvanceAmountField = qs("#advanceAmountField");
+const bookingAdvanceAmountLabel = document.querySelector('label[for="advanceAmount"]');
 const bookingAdvanceAmountInput = qs("#advanceAmount");
 const bookingCustomPaymentsField = qs("#customPaymentsField");
 const bookingCustomPaymentList = qs("#customPaymentList");
@@ -1465,12 +1466,29 @@ function renderBookingCustomPayments() {
   }
 }
 
+function syncPrimaryCustomPaymentFromAdvanceAmount() {
+  if (!bookingAdvancePaidInput?.checked || !bookingCustomPaymentsEnabledInput?.checked) return;
+  const amountValue = String(bookingAdvanceAmountInput?.value || "").trim();
+  if (!state.bookingCustomPayments.length) {
+    state.bookingCustomPayments = [createEmptyCustomPayment()];
+  }
+  state.bookingCustomPayments[0] = {
+    ...state.bookingCustomPayments[0],
+    amount: amountValue,
+  };
+  renderBookingCustomPayments();
+}
+
 function syncAdvanceAmountField() {
   const isChecked = Boolean(bookingAdvancePaidInput?.checked);
   const useCustomPayments = Boolean(bookingCustomPaymentsEnabledInput?.checked);
   toggleHidden(bookingCustomPaymentsToggleCard, !isChecked);
-  toggleHidden(bookingAdvanceAmountField, !isChecked || useCustomPayments);
+  toggleHidden(bookingAdvanceAmountField, !isChecked);
   toggleHidden(bookingCustomPaymentsField, !isChecked || !useCustomPayments);
+
+  if (bookingAdvanceAmountLabel) {
+    bookingAdvanceAmountLabel.textContent = useCustomPayments ? "Advance Amount" : "Advance Amount";
+  }
 
   if (bookingCustomPaymentsEnabledInput && !isChecked) {
     bookingCustomPaymentsEnabledInput.checked = false;
@@ -1482,13 +1500,12 @@ function syncAdvanceAmountField() {
     state.bookingCustomPayments = [];
   }
   if (isChecked && useCustomPayments && !state.bookingCustomPayments.length) {
-    state.bookingCustomPayments = [createEmptyCustomPayment()];
+    state.bookingCustomPayments = [{ amount: String(bookingAdvanceAmountInput?.value || ""), note: "" }];
   }
-  if (isChecked && bookingAdvanceAmountInput) {
-    if (useCustomPayments) {
-      bookingAdvanceAmountInput.value = String(getCustomPaymentsTotal(state.bookingCustomPayments) || "");
-    } else if (state.bookingCustomPayments.length && !bookingAdvanceAmountInput.value) {
-      bookingAdvanceAmountInput.value = String(getCustomPaymentsTotal(state.bookingCustomPayments) || "");
+  if (isChecked && useCustomPayments && bookingAdvanceAmountInput) {
+    const firstPaymentAmount = state.bookingCustomPayments[0]?.amount ?? "";
+    if (!bookingAdvanceAmountInput.value && firstPaymentAmount) {
+      bookingAdvanceAmountInput.value = String(firstPaymentAmount);
     }
   }
   renderBookingCustomPayments();
@@ -1498,6 +1515,9 @@ function handleBookingCustomPaymentInput(index, field, value) {
   if (!state.bookingCustomPayments[index]) return;
   if (field === "amount") {
     state.bookingCustomPayments[index].amount = value;
+    if (index === 0 && bookingCustomPaymentsEnabledInput?.checked && bookingAdvanceAmountInput) {
+      bookingAdvanceAmountInput.value = value;
+    }
   } else {
     state.bookingCustomPayments[index].note = value;
   }
@@ -5827,6 +5847,7 @@ requestWeekendRateInput?.addEventListener("input", renderRequestOfferPreview);
 requestCheckInInput?.addEventListener("change", renderRequestOfferPreview);
 requestCheckOutInput?.addEventListener("change", renderRequestOfferPreview);
 bookingAdvancePaidInput?.addEventListener("change", handleAdvancePaymentToggle);
+bookingAdvanceAmountInput?.addEventListener("input", syncPrimaryCustomPaymentFromAdvanceAmount);
 bookingCustomPaymentsEnabledInput?.addEventListener("change", handleCustomPaymentsToggle);
 bookingAddCustomPaymentBtn?.addEventListener("click", () => {
   state.bookingCustomPayments.push(createEmptyCustomPayment());
