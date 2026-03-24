@@ -504,6 +504,7 @@ const analyticsRoomTypes = qs("#analytics-room-types");
 const analyticsServices = qs("#analytics-services");
 const analyticsCustomers = qs("#analytics-customers");
 const analyticsStatuses = qs("#analytics-statuses");
+const analyticsSources = qs("#analytics-sources");
 const analyticsTitles = qs("#analytics-titles");
 const analyticsStaff = qs("#analytics-staff");
 const analyticsEmpty = qs("#analytics-empty");
@@ -3080,11 +3081,14 @@ async function loadAnalytics() {
     const staffTotals = new Map();
     const serviceTotals = new Map();
     const statusTotals = new Map();
+    const sourceTotals = new Map();
     const titleTotals = new Map();
 
     groups.forEach((group) => {
       const lifecycleStatus = getGroupLifecycleStatus(group);
       statusTotals.set(getLifecycleStatusLabel(lifecycleStatus), (statusTotals.get(getLifecycleStatusLabel(lifecycleStatus)) || 0) + 1);
+      const sourceLabel = group.statuses.size === 1 ? Array.from(group.statuses)[0] : "Mixed";
+      sourceTotals.set(sourceLabel, (sourceTotals.get(sourceLabel) || 0) + 1);
       const title = splitGuestTitleAndName(group.guestName || "").title || "No Title";
       titleTotals.set(title, (titleTotals.get(title) || 0) + 1);
 
@@ -3139,6 +3143,11 @@ async function loadAnalytics() {
     renderAnalyticsTableList(
       analyticsStatuses,
       Array.from(statusTotals.entries()).map(([label, value]) => ({ label, value, meta: "Reservations" })).sort((a, b) => b.value - a.value),
+      (value) => String(value),
+    );
+    renderAnalyticsTableList(
+      analyticsSources,
+      Array.from(sourceTotals.entries()).map(([label, value]) => ({ label, value, meta: "Booking source" })).sort((a, b) => b.value - a.value),
       (value) => String(value),
     );
     renderAnalyticsTableList(
