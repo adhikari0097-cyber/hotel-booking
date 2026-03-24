@@ -3242,6 +3242,11 @@ async function ensureRequestedBookingRoomsAvailability(roomEdits, excludedBookin
 async function applyGroupedBookingEdits(targetBookings, roomEdits, commonValues) {
   const editsByBookingId = new Map(roomEdits.map((item) => [String(item.bookingId), item]));
   const excludedBookingIds = targetBookings.map((booking) => booking.id);
+  const sharedTrackCode = await resolveBookingTrackCode(
+    targetBookings,
+    commonValues.status,
+    targetBookings[0]?.trackCode || "",
+  );
 
   await ensureRequestedBookingRoomsAvailability(
     roomEdits,
@@ -3264,6 +3269,7 @@ async function applyGroupedBookingEdits(targetBookings, roomEdits, commonValues)
       guests: roomEdit.guests,
       notes: mergeNotesAndServices(commonValues.notes, roomEdit.services || []),
       status: commonValues.status,
+      trackCode: sharedTrackCode,
       offerPercentage: commonValues.offerPercentage,
       advancePaid: commonValues.advancePaid,
       advanceAmount: commonValues.advanceAmount,
@@ -4057,6 +4063,39 @@ function getBookingStatusNote(status) {
   return String(status || "").trim().toLowerCase() === "pending"
     ? "Waiting for confirmation"
     : "";
+}
+
+function isPendingBookingStatus(status) {
+  return String(status || "").trim().toLowerCase() === "pending";
+}
+
+function getVisibleTrackCode(trackCode, status) {
+  const value = String(trackCode || "").trim();
+  if (!value || isPendingBookingStatus(status)) return "";
+  return value;
+}
+
+function getGroupDisplayTrackCode(group) {
+  if (!group) return "";
+  const status = group.statuses?.size === 1
+    ? Array.from(group.statuses)[0]
+    : (group.bookings?.[0]?.status || "");
+  return getVisibleTrackCode(group.trackCode, status);
+}
+
+async function resolveBookingTrackCode(bookings, nextStatus, currentTrackCode = "") {
+  const normalizedTrackCode = String(currentTrackCode || "").trim();
+  if (isPendingBookingStatus(nextStatus)) {
+    return normalizedTrackCode || getNextTrackCode(nextStatus);
+  }
+  const items = Array.isArray(bookings) ? bookings.filter(Boolean) : [];
+  const transitioningFromPending = items.length
+    ? items.every((booking) => isPendingBookingStatus(booking.status))
+    : false;
+  if (!normalizedTrackCode || transitioningFromPending || /^PND-\d+$/i.test(normalizedTrackCode)) {
+    return getNextTrackCode(nextStatus);
+  }
+  return normalizedTrackCode;
 }
 
 async function getNextTrackCode(status) {
@@ -5270,7 +5309,8 @@ function openBookingDetailsModal(groupKey) {
   const lifecycleStatus = getGroupLifecycleStatus(group);
   const lifecycleLabel = getLifecycleStatusLabel(lifecycleStatus);
   const directEditAllowed = canEditBookingGroupDirect(group);
-    bookingDetailsTitle.textContent = `${group.trackCode || "-"} · ${group.guestName || "Guest"}`;
+  const displayTrackCode = getGroupDisplayTrackCode(group);
+  bookingDetailsTitle.textContent = `${displayTrackCode ? `${displayTrackCode} · ` : ""}${group.guestName || "Guest"}`;
   const advanceInfo = getAdvancePaymentInfo(group.bookings);
   const customPriceItems = getGroupCustomPriceEntries(group.bookings);
   const customPriceTotal = getGroupCustomPriceTotal(group.bookings);
@@ -5340,7 +5380,7 @@ function openBookingDetailsModal(groupKey) {
 
   bookingDetailsBody.innerHTML = `
     <div class="booking-meta booking-meta-compact booking-details-summary">
-      <div><strong>Track Code:</strong> ${group.trackCode || "-"}</div>
+      <div><strong>Track Code:</strong> ${displayTrackCode || "-"}</div>
       <div><strong>Phone:</strong> <a href="tel:${group.phone || ""}">${group.phone || "-"}</a></div>
       <div><strong>Booked by:</strong> ${group.bookings[0]?.createdByName || "-"}</div>
       <div><strong>Rooms:</strong> ${group.bookings.length}</div>
@@ -5711,10 +5751,11 @@ function renderBookings(bookings) {
       ? `<button class="booking-request-brief" type="button" data-request-focus="${groupRequest.id}">${formatRequestReason(groupRequest.reason)} · ${getRequestRequestedDate(groupRequest) || "-"}</button>`
       : `<span class="booking-request-brief muted">No pending request.</span>`;
 
+    const displayTrackCode = getGroupDisplayTrackCode(group);
     card.innerHTML = `
       <div class="booking-group-head booking-group-head-dense">
         <div>
-          <h4>${group.trackCode || "-"} · ${group.guestName || "Guest"}</h4>
+          <h4>${displayTrackCode ? `${displayTrackCode} · ` : ""}${group.guestName || "Guest"}</h4>
           ${groupStatusNote ? `<div class="booking-status-note">${groupStatusNote}</div>` : ""}
           <div class="booking-group-summary">${renderBookingHeaderSummary(group)}</div>
         </div>
@@ -6393,7 +6434,12 @@ async function fetchRequests() {
 async function updateBooking(bookingId, values) {
   ensureSupabase();
   const currentBooking = state.bookingMap.get(bookingId) || {};
+  const nextStatus = "status" in values ? values.status : currentBooking.status;
+  const nextTrackCode = "trackCode" in values
+    ? values.trackCode
+    : await resolveBookingTrackCode([currentBooking], nextStatus, currentBooking.trackCode || "");
   const merged = {
+    trackCode: nextTrackCode,
     guestName: "guestName" in values ? values.guestName : currentBooking.guestName,
     phone: "phone" in values ? values.phone : currentBooking.phone,
     checkIn: "checkIn" in values ? values.checkIn : currentBooking.checkIn,
@@ -6420,6 +6466,7 @@ async function updateBooking(bookingId, values) {
   };
 
   const row = {
+    track_code: merged.trackCode || null,
     guest_name: merged.guestName,
     phone: merged.phone,
     check_in: merged.checkIn,
@@ -6675,6 +6722,11 @@ async function approveRequest(requestId) {
   }
 
   if (request.requestedScope === "group") {
+    const sharedTrackCode = await resolveBookingTrackCode(
+      targetBookings,
+      targetStatus,
+      targetBookings[0]?.trackCode || targetTrackCode,
+    );
     await ensureGroupAvailabilityForUpdate(
       targetBookings,
       request.requestedCheckIn || request.booking?.checkIn || "",
@@ -6693,6 +6745,7 @@ async function approveRequest(requestId) {
         roomNumber: bookingRow.roomNumber,
         notes: request.requestedNotes ?? bookingRow.notes ?? "",
         status: targetStatus,
+        trackCode: sharedTrackCode,
       });
     }
   } else {
@@ -6718,6 +6771,7 @@ async function approveRequest(requestId) {
       guests: Number(request.requestedGuests || request.booking?.guests || 1),
       notes: request.requestedNotes ?? request.booking?.notes ?? "",
       status: targetStatus,
+      trackCode: await resolveBookingTrackCode([request.booking], targetStatus, request.booking?.trackCode || ""),
     });
   }
   await updateRequestStatus(requestId, { status: "approved" });
@@ -7271,8 +7325,9 @@ function renderReservationPlannerMobile(bookings, plannerRooms, startDate, days,
 
     const colors = getPlannerBookingColors(booking, pendingCollections);
     const pendingLabel = getPlannerPendingLabel(booking, pendingCollections);
+    const displayTrackCode = getVisibleTrackCode(booking.trackCode, booking.status);
     const labelParts = [
-      booking.trackCode || `BOOK-${booking.id}`,
+      displayTrackCode || pendingLabel || "Pending Booking",
       getRoomLabel(normalizeRoomGroup(booking.roomType), booking.roomNumber),
       `${Number(booking.guests || 0)} Pax`,
       pendingLabel || booking.guestName || "Booking",
@@ -7428,15 +7483,16 @@ function renderReservationPlanner(bookings, startDate, days) {
     const span = Math.max(1, endOffset - startOffset);
     const colors = getPlannerBookingColors(booking, pendingCollections);
     const pendingLabel = getPlannerPendingLabel(booking, pendingCollections);
+    const displayTrackCode = getVisibleTrackCode(booking.trackCode, booking.status);
     const detailBits = [
-      booking.trackCode || `Booking ${booking.id}`,
+      displayTrackCode || pendingLabel || "Pending Booking",
       `${Number(booking.guests || 0)} Pax`,
       `${booking.guestName || "Guest"}`,
     ];
 
     return `
       <button
-        class="reservation-planner-booking${String(booking.status || "").toLowerCase() === "pending" ? " reservation-planner-booking-pending" : ""}"
+        class="reservation-planner-booking${isPlannerPendingBooking(booking, pendingCollections) ? " reservation-planner-booking-pending" : ""}"
         type="button"
         draggable="true"
         data-planner-group="${escapeHtml(getBookingGroupKey(booking))}"
@@ -7444,7 +7500,7 @@ function renderReservationPlanner(bookings, startDate, days) {
         style="grid-column:${roomIndex + 2}; grid-row:${startOffset + 2} / span ${span}; --planner-bg:${colors.bg}; --planner-border:${colors.border}; --planner-text:${colors.text};"
         title="${escapeHtml(detailBits.join(" | "))}"
       >
-        <span class="reservation-planner-booking-track">${escapeHtml(booking.trackCode || `BOOK-${booking.id}`)}</span>
+        ${displayTrackCode ? `<span class="reservation-planner-booking-track">${escapeHtml(displayTrackCode)}</span>` : ""}
         ${pendingLabel ? `<span class="reservation-planner-booking-pending-label">${escapeHtml(pendingLabel)}</span>` : ""}
         <span class="reservation-planner-booking-meta">${escapeHtml(`${Number(booking.guests || 0)} Pax`)}</span>
         <span class="reservation-planner-booking-name">${escapeHtml(booking.guestName || "Guest")}</span>
@@ -8156,6 +8212,11 @@ async function handleRequestSubmit(event) {
         await applyGroupedBookingEdits(groupBookings, payload.requestedBookingRooms, payload);
       } else if (effectiveScope === "group") {
         const groupBookings = state.activeBookingGroup.length ? state.activeBookingGroup : [state.activeBooking];
+        const sharedTrackCode = await resolveBookingTrackCode(
+          groupBookings,
+          payload.status,
+          groupBookings[0]?.trackCode || "",
+        );
         await ensureGroupAvailabilityForUpdate(groupBookings, payload.checkIn, payload.checkOut, payload.status);
         for (const bookingRow of groupBookings) {
           await updateBooking(bookingRow.id, {
@@ -8169,6 +8230,7 @@ async function handleRequestSubmit(event) {
             roomNumber: bookingRow.roomNumber,
             notes: payload.notes,
             status: payload.status,
+            trackCode: sharedTrackCode,
           });
         }
       } else {
