@@ -5148,6 +5148,38 @@ function getPlannerBookingColors(booking, pendingCollections) {
   return { bg: tint.bg, border: tint.border, text: "#241d17" };
 }
 
+function getPlannerPendingLabel(booking, pendingCollections) {
+  const pendingRequest = pendingCollections.byTrack.get(getBookingGroupKey(booking));
+  if (pendingRequest?.status === "pending") {
+    switch (pendingRequest.reason) {
+      case "change_date":
+        return "Pending: Date";
+      case "remove_rooms":
+        return "Pending: Remove";
+      case "delete_booking":
+        return "Pending: Delete";
+      case "change_room_price":
+        return "Pending: Price";
+      case "additional_rooms":
+        return "Pending: Rooms";
+      case "additional_services":
+        return "Pending: Services";
+      case "hold":
+        return "Pending: Hold";
+      case "cancel":
+        return "Pending: Cancel";
+      case "edit_booking_data":
+        return "Pending: Edit";
+      default:
+        return "Pending: Request";
+    }
+  }
+  if (String(booking.status || "").toLowerCase() === "pending") {
+    return "Pending: Booking";
+  }
+  return "";
+}
+
 function renderReservationPlanner(bookings, startDate, days) {
   if (!reservationPlannerBoard || !reservationPlannerEmpty) return;
 
@@ -5214,6 +5246,7 @@ function renderReservationPlanner(bookings, startDate, days) {
     const endOffset = Math.min(safeDays, Math.round((bookingEnd - rangeStart) / 86400000));
     const span = Math.max(1, endOffset - startOffset);
     const colors = getPlannerBookingColors(booking, pendingCollections);
+    const pendingLabel = getPlannerPendingLabel(booking, pendingCollections);
     const detailBits = [
       booking.trackCode || `Booking ${booking.id}`,
       `${Number(booking.guests || 0)} Pax`,
@@ -5229,6 +5262,7 @@ function renderReservationPlanner(bookings, startDate, days) {
         title="${escapeHtml(detailBits.join(" | "))}"
       >
         <span class="reservation-planner-booking-track">${escapeHtml(booking.trackCode || `BOOK-${booking.id}`)}</span>
+        ${pendingLabel ? `<span class="reservation-planner-booking-pending-label">${escapeHtml(pendingLabel)}</span>` : ""}
         <span class="reservation-planner-booking-meta">${escapeHtml(`${Number(booking.guests || 0)} Pax`)}</span>
         <span class="reservation-planner-booking-name">${escapeHtml(booking.guestName || "Guest")}</span>
       </button>
