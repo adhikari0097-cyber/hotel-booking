@@ -2463,6 +2463,12 @@ function isBlockingBooking(booking) {
   return status !== "cancelled" && lifecycle !== "hold" && lifecycle !== "checked_out";
 }
 
+function isVisibleBooking(booking) {
+  const status = String(booking?.status || "").toLowerCase();
+  const lifecycle = getBookingLifecycleStatus(booking);
+  return status !== "cancelled" && lifecycle !== "hold";
+}
+
 function mapBooking(row) {
   return {
     id: row.id,
@@ -6106,7 +6112,7 @@ async function loadReservationPlanner() {
     }
     const endDate = formatDateKey(addDays(parsedStart, rangeDays));
     const bookings = (await fetchBookingsForPeriod(startDate, endDate))
-      .filter((booking) => isBlockingBooking(booking));
+      .filter((booking) => isVisibleBooking(booking));
     renderReservationPlanner(bookings, startDate, rangeDays);
   } catch (error) {
     showToast(error.message, true);
@@ -6140,7 +6146,7 @@ function renderMonthCalendar(bookings, requests = Array.from(state.requestMap.va
   const dayMap = new Map();
 
   bookings.forEach((booking) => {
-    if (!isBlockingBooking(booking)) return;
+    if (!isVisibleBooking(booking)) return;
     const start = parseDate(booking.checkIn);
     const end = parseDate(booking.checkOut);
     if (!start || !end) return;
