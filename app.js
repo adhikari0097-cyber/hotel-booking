@@ -64,6 +64,7 @@ const state = {
   modalRemoveRooms: new Map(),
   modalBookingRoomEdits: new Map(),
   modalRequestedServices: new Set(),
+  modalCustomPayments: [],
   modalMode: "request",
   requestScope: "single",
   bookingListFilter: "active",
@@ -356,6 +357,14 @@ const requestOfferOptions = Array.from(document.querySelectorAll('input[name="re
 const requestOfferCustomField = qs("#request-offer-custom-field");
 const requestOfferCustomInput = qs("#request-offer-custom");
 const requestOfferPreview = qs("#request-offer-preview");
+const requestCustomPriceField = qs("#request-custom-price-field");
+const requestCustomPriceList = qs("#request-custom-price-list");
+const requestAddCustomPriceBtn = qs("#request-add-custom-price");
+const requestCustomPriceTotal = qs("#request-custom-price-total");
+const requestAdvanceField = qs("#request-advance-field");
+const requestAdvancePaidInput = qs("#request-advance-paid");
+const requestAdvanceAmountField = qs("#request-advance-amount-field");
+const requestAdvanceAmountInput = qs("#request-advance-amount");
 const requestStatusInput = qs("#request-status");
 const requestNotesInput = qs("#request-notes");
 const requestMessageInput = qs("#request-message");
@@ -997,8 +1006,84 @@ function getRequestOfferPercentage() {
   return getSelectedOfferPercentage(requestOfferOptions, requestOfferCustomInput);
 }
 
+function getRequestCustomPaymentsPayload() {
+  return normalizeCustomPayments(state.modalCustomPayments);
+}
+
+function updateRequestCustomPriceSummary() {
+  if (requestCustomPriceTotal) {
+    requestCustomPriceTotal.textContent = `Total custom price: ${formatMoney(getCustomPaymentsTotal(state.modalCustomPayments))}`;
+  }
+}
+
+function renderRequestCustomPrices() {
+  if (!requestCustomPriceList) return;
+  if (!state.modalCustomPayments.length) {
+    requestCustomPriceList.innerHTML = '<p class="inline-note">No custom price entries added.</p>';
+  } else {
+    requestCustomPriceList.innerHTML = state.modalCustomPayments.map((payment, index) => `
+      <div class="payment-entry-row" data-request-payment-index="${index}">
+        <div class="field payment-entry-field">
+          <label for="request-custom-price-amount-${index}">Amount</label>
+          <input id="request-custom-price-amount-${index}" type="number" min="0" step="0.01" inputmode="decimal" data-request-payment-amount placeholder="LKR 0.00" value="${payment.amount}" />
+        </div>
+        <div class="field payment-entry-field payment-entry-field-note">
+          <label for="request-custom-price-note-${index}">Note</label>
+          <input id="request-custom-price-note-${index}" type="text" data-request-payment-note placeholder="Special charge / discount note" value="${escapeHtml(payment.note)}" />
+        </div>
+        <button class="subtle-btn payment-entry-remove" type="button" data-remove-request-payment="${index}">Remove</button>
+      </div>
+    `).join("");
+  }
+  updateRequestCustomPriceSummary();
+}
+
+function syncRequestAdvanceAmountField() {
+  const isChecked = Boolean(requestAdvancePaidInput?.checked);
+  toggleHidden(requestAdvanceAmountField, !isChecked);
+  if (!isChecked && requestAdvanceAmountInput) {
+    requestAdvanceAmountInput.value = "";
+  }
+}
+
+function getRequestGroupRoomTotal() {
+  const bookings = state.activeBookingGroup.length ? state.activeBookingGroup : (state.activeBooking ? [state.activeBooking] : []);
+  if (!bookings.length) return 0;
+
+  const roomEdits = state.modalBookingRoomEdits.size
+    ? serializeBookingRoomEdits()
+    : bookings.map((booking) => buildBookingRoomEditOptions(booking));
+  const checkIn = requestCheckInInput?.value || state.activeBooking?.checkIn || "";
+  const checkOut = requestCheckOutInput?.value || state.activeBooking?.checkOut || "";
+  const offerPercentage = getRequestOfferPercentage();
+
+  return roundCurrency(roomEdits.reduce((sum, roomEdit) => {
+    const pricing = computeBookingPrice({
+      checkIn,
+      checkOut,
+      roomType: normalizeRoomGroup(roomEdit.roomType),
+      guests: Number(roomEdit.guests || 1),
+    });
+    return sum + applyOfferPercentage(pricing.roomTotal, offerPercentage);
+  }, 0));
+}
+
 function renderRequestOfferPreview() {
   if (!requestOfferPreview) return;
+  const isFullBookingEdit = requestReasonInput?.value === "edit_booking_data" && state.requestScope === "group";
+  if (isFullBookingEdit) {
+    const roomTotal = getRequestGroupRoomTotal();
+    const customPriceTotal = getCustomPaymentsTotal(state.modalCustomPayments);
+    const totalPrice = roundCurrency(roomTotal + customPriceTotal);
+    const advanceAmount = requestAdvancePaidInput?.checked ? roundCurrency(Number(requestAdvanceAmountInput?.value || 0)) : 0;
+    const balanceAmount = roundCurrency(Math.max(0, totalPrice - advanceAmount));
+    requestOfferPreview.textContent = advanceAmount > 0
+      ? `Total price: ${formatMoney(totalPrice)} · Balance after advance: ${formatMoney(balanceAmount)}`
+      : `Total price: ${formatMoney(totalPrice)}`;
+    updateRequestCustomPriceSummary();
+    return;
+  }
+
   const roomPrice = Number(requestWeekendRateInput?.value || state.activeBooking?.weekendRate || state.activeBooking?.weekdayRate || 0);
   const snapshot = getBookingPricingSnapshot({
     checkIn: requestCheckInInput?.value || state.activeBooking?.checkIn || "",
@@ -1010,6 +1095,7 @@ function renderRequestOfferPreview() {
   requestOfferPreview.textContent = snapshot.offerPercentage > 0
     ? `Final price after ${snapshot.offerPercentage}% offer: ${formatMoney(snapshot.roomTotal)}`
     : `Final price: ${formatMoney(snapshot.roomTotal)}`;
+  updateRequestCustomPriceSummary();
 }
 
 function renderPricingScreen() {
@@ -1503,6 +1589,17 @@ function handleBookingCustomPaymentInput(index, field, value) {
   renderPricingSummary();
 }
 
+function handleRequestCustomPaymentInput(index, field, value) {
+  if (!state.modalCustomPayments[index]) return;
+  if (field === "amount") {
+    state.modalCustomPayments[index].amount = value;
+  } else {
+    state.modalCustomPayments[index].note = value;
+  }
+  updateRequestCustomPriceSummary();
+  renderRequestOfferPreview();
+}
+
 function getBookingCustomPaymentsPayload() {
   return normalizeCustomPayments(state.bookingCustomPayments);
 }
@@ -1943,6 +2040,7 @@ function renderBookingRoomEditors(booking) {
         guests: Math.min(Number(current?.guests || 1), def?.maxPax || 1),
       });
       syncRoomNumbers();
+      renderRequestOfferPreview();
     });
 
     roomNumberSelect?.addEventListener("change", () => {
@@ -1959,6 +2057,7 @@ function renderBookingRoomEditors(booking) {
         ...current,
         guests: Number(paxSelect.value),
       });
+      renderRequestOfferPreview();
     });
 
     option.querySelectorAll(`[data-booking-room-service]`).forEach((button) => {
@@ -2048,6 +2147,10 @@ async function applyGroupedBookingEdits(targetBookings, roomEdits, commonValues)
       guests: roomEdit.guests,
       notes: mergeNotesAndServices(commonValues.notes, roomEdit.services || []),
       status: commonValues.status,
+      offerPercentage: commonValues.offerPercentage,
+      advancePaid: commonValues.advancePaid,
+      advanceAmount: commonValues.advanceAmount,
+      customPayments: commonValues.customPayments,
     });
   }
 }
@@ -3630,7 +3733,7 @@ function openBookingDetailsModal(groupKey) {
       ${canManageBookings() ? `<button class="action-btn action-btn-icon action-btn-icon-advance" type="button" data-booking-group-action="advance">Update Advance</button>` : ""}
       <button class="action-btn action-btn-icon action-btn-icon-whatsapp" type="button" data-booking-group-action="whatsapp">WhatsApp</button>
       <button class="action-btn action-btn-icon action-btn-icon-pdf" type="button" data-booking-group-action="pdf">Export PDF</button>
-      <button class="primary-btn" type="button" data-booking-group-action="manage">Manage Full Booking</button>
+      <button class="primary-btn" type="button" data-booking-group-action="manage">Edit Booking</button>
       ${isPendingGroupRemovalRequest(groupRequest)
         ? `<span class="booking-tag tag-pending">Pending Remove</span>`
         : `<button class="action-btn subtle-btn" type="button" data-booking-group-action="remove">Remove Full Booking</button>`}
@@ -3846,8 +3949,8 @@ function renderBookings(bookings) {
             <button class="secondary-btn action-btn-icon action-btn-icon-pdf compact-control" type="button" data-booking-group-pdf="${group.key}" aria-label="Export PDF" title="Export PDF">
               <span class="compact-label">Export PDF</span>
             </button>
-            <button class="secondary-btn booking-type-trigger action-btn-icon action-btn-icon-edit compact-control" type="button" data-booking-group-manage="${group.bookings[0].id}" aria-label="Booking Type" title="Booking Type">
-              <span class="compact-label">Booking Type</span>
+            <button class="secondary-btn booking-type-trigger action-btn-icon action-btn-icon-edit compact-control" type="button" data-booking-group-manage="${group.bookings[0].id}" aria-label="Edit Booking" title="Edit Booking">
+              <span class="compact-label">Edit Booking</span>
             </button>
             <button class="secondary-btn remove-reservation-trigger action-btn-icon action-btn-icon-remove compact-control" type="button" data-booking-group-remove="${group.bookings[0].id}" aria-label="Remove Reservation" title="Remove Reservation">
               <span class="compact-label">Remove Reservation</span>
@@ -3950,7 +4053,7 @@ function renderBookings(bookings) {
         try {
           await openRequestModal(bookingTypeBtn.dataset.bookingGroupManage, canManageBookings() ? "edit" : "request", "group");
         } catch (error) {
-          showToast(error.message || "Unable to open booking type editor.", true);
+          showToast(error.message || "Unable to open booking editor.", true);
         }
       });
     }
@@ -4034,13 +4137,17 @@ function closeRequestModal() {
   state.modalRemoveRooms = new Map();
   state.modalBookingRoomEdits = new Map();
   state.modalRequestedServices = new Set();
+  state.modalCustomPayments = [];
   setHTML(requestExtraRooms, "");
   setHTML(requestServices, "");
   setHTML(requestRemoveRooms, "");
   setHTML(requestBookingRooms, "");
+  setHTML(requestCustomPriceList, '<p class="inline-note">No custom price entries added.</p>');
+  setText(requestCustomPriceTotal, `Total custom price: ${formatMoney(0)}`);
   setText(requestCurrentPrice, "Current price: -");
   setText(requestOfferPreview, `Final price: ${formatMoney(0)}`);
   setOfferSelection(requestOfferOptions, requestOfferCustomField, requestOfferCustomInput, 0);
+  syncRequestAdvanceAmountField();
   state.modalMode = "request";
 }
 
@@ -4054,15 +4161,23 @@ async function openRequestModal(bookingId, mode, scope = "single") {
 
   state.activeBooking = booking;
   state.activeBookingGroup = state.bookingGroups.get(getBookingGroupKey(booking))?.bookings || [booking];
+  const groupBookings = state.activeBookingGroup.length ? state.activeBookingGroup : [booking];
+  const groupView = state.bookingGroups.get(getBookingGroupKey(booking));
+  const advanceInfo = getAdvancePaymentInfo(groupBookings);
+  const customPriceEntries = (scope === "group" ? getGroupCustomPriceEntries(groupBookings) : getBookingCustomPriceEntries(booking))
+    .map((item) => ({ amount: item.amount, note: item.note }));
   state.requestScope = scope;
   state.modalMode = mode;
+  state.modalCustomPayments = customPriceEntries;
   setValue(modalBookingId, booking.id);
   setValue(requestGuestNameInput, booking.guestName || "");
   setValue(requestPhoneInput, booking.phone || "");
-  setText(requestCurrentDates, `Current booking dates: ${booking.checkIn || "-"} -> ${booking.checkOut || "-"}`);
+  setText(requestCurrentDates, `${booking.checkIn || "-"} -> ${booking.checkOut || "-"}`);
   setText(
     requestCurrentRoom,
-    `Current room: ${getRoomLabel(normalizeRoomGroup(booking.roomType), booking.roomNumber)} · ${booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType)}`
+    scope === "group"
+      ? `${groupBookings.length} room(s) in reservation`
+      : `${getRoomLabel(normalizeRoomGroup(booking.roomType), booking.roomNumber)} · ${booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType)}`
   );
   setValue(requestCheckInInput, booking.checkIn || "");
   setValue(requestCheckOutInput, booking.checkOut || "");
@@ -4071,25 +4186,28 @@ async function openRequestModal(bookingId, mode, scope = "single") {
   populateRequestRoomNumbers(selectedRoomType, booking.roomNumber);
   populateRequestGuestsOptions(selectedRoomType, booking.guests || 1);
   setValue(requestStatusInput, booking.status || "Campaign");
-  setText(
-    requestCurrentPrice,
-    `Current pricing: ${formatBookingPriceBreakdown(booking)}`
-  );
+  setText(requestCurrentPrice, scope === "group"
+    ? `Current total: ${formatMoney(groupView?.totalPrice || (Number(booking.roomTotal || 0) + getCustomPaymentsTotal(customPriceEntries)))}`
+    : `Current pricing: ${formatBookingPriceBreakdown(booking)}`);
   setValue(requestWeekendRateInput, Number(booking.weekendRate || booking.weekdayRate || 0));
   setOfferSelection(requestOfferOptions, requestOfferCustomField, requestOfferCustomInput, Number(booking.offerPercentage || 0));
-  renderRequestOfferPreview();
+  if (requestAdvancePaidInput) requestAdvancePaidInput.checked = Boolean(advanceInfo.amount > 0 || advanceInfo.allPaid || advanceInfo.partiallyPaid);
+  if (requestAdvanceAmountInput) requestAdvanceAmountInput.value = advanceInfo.amount ? String(roundCurrency(advanceInfo.amount)) : "";
+  syncRequestAdvanceAmountField();
+  renderRequestCustomPrices();
   setValue(requestNotesInput, booking.notes || "");
   setValue(requestMessageInput, "");
   setValue(requestReasonInput, scope === "group" ? "edit_booking_data" : "change_date");
   setText(modalTitle, scope === "group"
-    ? (mode === "edit" ? "Update Full Booking" : "Request Full Booking Change")
-    : (mode === "edit" ? "Update Booking" : "Request Booking Change"));
-  setText(requestSubmitBtn, mode === "edit" ? "Save Booking Update" : "Submit Change Request");
+    ? (mode === "edit" ? "Edit Booking" : "Request Full Booking Change")
+    : (mode === "edit" ? "Edit Booking" : "Request Booking Change"));
+  setText(requestSubmitBtn, mode === "edit" ? "Save Booking" : "Submit Change Request");
   syncModalReasonDefaults();
   await renderAdditionalRoomOptions(booking);
   renderServiceRequestOptions(booking);
   renderRemoveRoomOptions(booking);
   renderBookingRoomEditors(booking);
+  renderRequestOfferPreview();
   if (requestModal) requestModal.classList.remove("hidden");
 }
 
@@ -4136,7 +4254,7 @@ function formatRequestReason(reason) {
     case "change_date":
       return "Customer request to change date";
     case "edit_booking_data":
-      return "Edit Customer booking data";
+      return "Edit Booking";
     case "change_room_price":
       return "Request room price change";
     case "additional_rooms":
@@ -5363,7 +5481,9 @@ function syncModalReasonDefaults() {
   const isAdditionalServices = reason === "additional_services";
   const isRemoveRooms = reason === "remove_rooms";
   const isGroupLike = state.requestScope === "group";
+  const isFullBookingEdit = isEditCustomerData && isGroupLike;
   const roomPickerField = requestRoomTypeInput ? requestRoomTypeInput.closest(".field.grid-2") : null;
+  const priceGrid = requestWeekendRateInput ? requestWeekendRateInput.closest(".request-price-grid") : null;
   const guestField = requestGuestNameInput ? requestGuestNameInput.closest(".field") : null;
   const phoneField = requestPhoneInput ? requestPhoneInput.closest(".field") : null;
   const dateField = requestCheckInInput ? requestCheckInInput.closest(".field.grid-2") : null;
@@ -5381,7 +5501,10 @@ function syncModalReasonDefaults() {
   toggleHidden(requestServicesSection, !isAdditionalServices);
   toggleHidden(requestRemoveRoomsSection, !isRemoveRooms);
   toggleHidden(requestBookingRoomsSection, !isEditCustomerData || state.requestScope !== "group");
-  toggleHidden(requestPriceSection, !isPriceChange);
+  toggleHidden(requestPriceSection, !(isPriceChange || isFullBookingEdit));
+  toggleHidden(priceGrid, isFullBookingEdit);
+  toggleHidden(requestCustomPriceField, !isFullBookingEdit);
+  toggleHidden(requestAdvanceField, !isFullBookingEdit);
   toggleHidden(roomPickerField, !showSingleRoomFields);
   toggleHidden(requestGuestsField, !showSingleRoomFields);
   toggleHidden(guestField, isPriceChange);
@@ -5393,6 +5516,7 @@ function syncModalReasonDefaults() {
   toggleHidden(dateSection, isPriceChange);
   toggleHidden(roomSection, !showSingleRoomFields);
   setValue(requestStatusInput, getDefaultRequestStatus(requestReasonInput.value, state.activeBooking?.status || "Campaign"));
+  renderRequestOfferPreview();
 }
 
 async function handleRequestSubmit(event) {
@@ -5406,6 +5530,7 @@ async function handleRequestSubmit(event) {
   const effectiveScope = state.requestScope === "group" || reason === "edit_booking_data"
     ? "group"
     : state.requestScope;
+  const isFullBookingEdit = reason === "edit_booking_data" && effectiveScope === "group";
   const selectedServices = Array.from(state.modalRequestedServices.values());
   const payload = {
     guestName: requestGuestNameInput.value.trim(),
@@ -5422,7 +5547,18 @@ async function handleRequestSubmit(event) {
     requestedRemoveRooms: Array.from(state.modalRemoveRooms.values()),
     weekendRate: Number(requestWeekendRateInput?.value || state.activeBooking.weekendRate || state.activeBooking.weekdayRate || 0),
     weekdayRate: Number(requestWeekendRateInput?.value || state.activeBooking.weekendRate || state.activeBooking.weekdayRate || 0),
-    offerPercentage: getRequestOfferPercentage(),
+    offerPercentage: (reason === "change_room_price" || isFullBookingEdit)
+      ? getRequestOfferPercentage()
+      : Number(state.activeBooking.offerPercentage || 0),
+    customPayments: isFullBookingEdit
+      ? getRequestCustomPaymentsPayload()
+      : normalizeCustomPayments(state.activeBooking.customPayments),
+    advancePaid: isFullBookingEdit
+      ? Boolean(requestAdvancePaidInput?.checked)
+      : Boolean(state.activeBooking.advancePaid),
+    advanceAmount: isFullBookingEdit
+      ? (requestAdvancePaidInput?.checked ? roundCurrency(Number(requestAdvanceAmountInput?.value || 0)) : 0)
+      : roundCurrency(Number(state.activeBooking.advanceAmount || 0)),
   };
 
   payload.roomTypeLabel = getRoomTypeLabelForGuests(payload.roomType, payload.guests);
@@ -5448,6 +5584,11 @@ async function handleRequestSubmit(event) {
 
   if (reason === "change_room_price" && payload.weekendRate < 0) {
     showToast("Price cannot be negative.", true);
+    return;
+  }
+
+  if (isFullBookingEdit && payload.advancePaid && payload.advanceAmount <= 0) {
+    showToast("Enter the advance payment amount.", true);
     return;
   }
 
@@ -5611,7 +5752,7 @@ async function handleRequestSubmit(event) {
     showToast(error.message, true);
   } finally {
     requestSubmitBtn.disabled = false;
-    requestSubmitBtn.textContent = state.modalMode === "edit" ? "Save Booking Update" : "Submit Change Request";
+    requestSubmitBtn.textContent = state.modalMode === "edit" ? "Save Booking" : "Submit Change Request";
   }
 }
 
@@ -5839,6 +5980,35 @@ requestOfferCustomInput?.addEventListener("input", handleRequestOfferChange);
 requestWeekendRateInput?.addEventListener("input", renderRequestOfferPreview);
 requestCheckInInput?.addEventListener("change", renderRequestOfferPreview);
 requestCheckOutInput?.addEventListener("change", renderRequestOfferPreview);
+requestAdvancePaidInput?.addEventListener("change", () => {
+  syncRequestAdvanceAmountField();
+  renderRequestOfferPreview();
+});
+requestAdvanceAmountInput?.addEventListener("input", renderRequestOfferPreview);
+requestAddCustomPriceBtn?.addEventListener("click", () => {
+  state.modalCustomPayments.push(createEmptyCustomPayment());
+  renderRequestCustomPrices();
+  renderRequestOfferPreview();
+});
+requestCustomPriceList?.addEventListener("input", (event) => {
+  const row = event.target.closest("[data-request-payment-index]");
+  if (!row) return;
+  const index = Number(row.dataset.requestPaymentIndex);
+  if (event.target.matches("[data-request-payment-amount]")) {
+    handleRequestCustomPaymentInput(index, "amount", event.target.value);
+  }
+  if (event.target.matches("[data-request-payment-note]")) {
+    handleRequestCustomPaymentInput(index, "note", event.target.value);
+  }
+});
+requestCustomPriceList?.addEventListener("click", (event) => {
+  const removeBtn = event.target.closest("[data-remove-request-payment]");
+  if (!removeBtn) return;
+  const index = Number(removeBtn.dataset.removeRequestPayment);
+  state.modalCustomPayments.splice(index, 1);
+  renderRequestCustomPrices();
+  renderRequestOfferPreview();
+});
 bookingAdvancePaidInput?.addEventListener("change", handleAdvancePaymentToggle);
 bookingAdvanceAmountInput?.addEventListener("input", renderPricingSummary);
 bookingAddCustomPaymentBtn?.addEventListener("click", () => {
@@ -5868,6 +6038,7 @@ bookingCustomPaymentList?.addEventListener("click", (event) => {
 handleBookingOfferChange();
 handleRequestOfferChange();
 syncAdvanceAmountField();
+syncRequestAdvanceAmountField();
 requestRoomTypeInput.addEventListener("change", () => {
   populateRequestRoomNumbers(requestRoomTypeInput.value, 1);
   populateRequestGuestsOptions(requestRoomTypeInput.value, requestGuestsInput?.value || 1);

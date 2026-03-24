@@ -453,7 +453,7 @@
               <option value="cancel">Customer request to cancel</option>
               <option value="hold">Customer request to hold</option>
               <option value="change_date">Customer request to change date</option>
-              <option value="edit_booking_data">Edit Customer booking data</option>
+              <option value="edit_booking_data">Edit Booking</option>
               <option value="change_room_price" hidden>Change room price</option>
               <option value="additional_rooms" hidden>Requesting additional rooms</option>
               <option value="additional_services" hidden>Requesting additional services</option>
@@ -572,6 +572,30 @@
               <input id="request-offer-custom" type="number" min="0" max="100" step="0.01" inputmode="decimal" />
             </div>
             <p id="request-offer-preview" class="inline-note">Final price: LKR 0.00</p>
+            <div id="request-custom-price-field" class="payment-entry-panel">
+              <div class="payment-entry-head">
+                <div>
+                  <p class="payment-entry-title">Custom Price</p>
+                  <p class="inline-note">Add extra custom price rows for the full booking.</p>
+                </div>
+                <button id="request-add-custom-price" class="subtle-btn" type="button">Add Price</button>
+              </div>
+              <div id="request-custom-price-list" class="payment-entry-list">
+                <p class="inline-note">No custom price entries added.</p>
+              </div>
+              <p id="request-custom-price-total" class="inline-note">Total custom price: LKR 0.00</p>
+            </div>
+            <div id="request-advance-field" class="payment-entry-panel">
+              <p class="payment-entry-title">Advance Payment</p>
+              <label class="check-card" for="request-advance-paid">
+                <input id="request-advance-paid" type="checkbox" />
+                <span>Advance payment received</span>
+              </label>
+              <div id="request-advance-amount-field" class="field hidden">
+                <label for="request-advance-amount">Advance Amount</label>
+                <input id="request-advance-amount" type="number" min="0" step="0.01" inputmode="decimal" placeholder="LKR 0.00" />
+              </div>
+            </div>
           </div>
           <section class="request-section-card">
             <p class="services-title">Booking Details</p>
