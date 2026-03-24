@@ -1963,6 +1963,223 @@ h4 {
   letter-spacing: 0.04em;
 }
 
+.planner-toolbar-card,
+.reservation-planner-card {
+  display: grid;
+  gap: 18px;
+}
+
+.planner-toolbar-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.planner-toolbar-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, auto));
+  gap: 12px;
+  align-items: end;
+}
+
+.planner-summary-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.planner-summary-card {
+  display: grid;
+  gap: 6px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid #ece2d3;
+  background: linear-gradient(180deg, #ffffff 0%, #fbf8f2 100%);
+}
+
+.planner-summary-card span {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #7a6f65;
+}
+
+.planner-summary-card strong {
+  font-size: 18px;
+  color: #12372c;
+}
+
+.planner-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  align-items: center;
+}
+
+.planner-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #665f59;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.planner-legend-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  border: 1px solid #d8ccb9;
+  background: #f8f4ed;
+}
+
+.planner-legend-swatch-pending {
+  background: #d9c3f7;
+  border-color: #9b68dd;
+}
+
+.planner-legend-swatch-track {
+  background: #fde9b8;
+  border-color: #efcf79;
+}
+
+.planner-legend-swatch-click {
+  background: #edf6f1;
+  border-color: #cfe3d8;
+}
+
+.reservation-planner-scroll {
+  overflow: auto;
+  padding-bottom: 6px;
+}
+
+.reservation-planner-board {
+  min-width: max-content;
+}
+
+.reservation-planner-grid {
+  display: grid;
+  position: relative;
+  gap: 0;
+  min-width: 100%;
+}
+
+.reservation-planner-corner,
+.reservation-planner-room-head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 12px;
+  background: linear-gradient(180deg, #fffdf9 0%, #fbf7f0 100%);
+  border-bottom: 1px solid #e7dccd;
+}
+
+.reservation-planner-corner {
+  left: 0;
+  z-index: 7;
+  justify-content: flex-start;
+  padding-left: 18px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #70665c;
+  border-right: 1px solid #e7dccd;
+}
+
+.reservation-planner-room-head {
+  flex-direction: column;
+  gap: 4px;
+  min-width: 150px;
+  border-right: 1px solid #eee4d7;
+}
+
+.reservation-planner-room-head strong {
+  font-size: 15px;
+  color: #1d1916;
+}
+
+.reservation-planner-room-head span {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #7a6e63;
+}
+
+.reservation-planner-date {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  display: grid;
+  gap: 4px;
+  align-content: center;
+  padding: 10px 14px;
+  background: linear-gradient(180deg, #fffefb 0%, #faf7f2 100%);
+  border-right: 1px solid #e7dccd;
+  border-bottom: 1px solid #f0e8dc;
+}
+
+.reservation-planner-date strong {
+  font-size: 15px;
+  color: #1d1916;
+}
+
+.reservation-planner-date span {
+  font-size: 12px;
+  color: #776b60;
+}
+
+.reservation-planner-cell {
+  background: #fffdf9;
+  border-right: 1px solid #f0e7da;
+  border-bottom: 1px solid #f0e7da;
+}
+
+.reservation-planner-booking {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 4px;
+  margin: 4px;
+  padding: 10px 12px;
+  border-radius: 18px;
+  border: 1px solid var(--planner-border);
+  background: var(--planner-bg);
+  color: var(--planner-text);
+  box-shadow: 0 10px 24px rgba(50, 40, 20, 0.08);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.reservation-planner-booking-track {
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.reservation-planner-booking-meta,
+.reservation-planner-booking-name {
+  font-size: 12px;
+  line-height: 1.25;
+  opacity: 0.92;
+}
+
+.reservation-planner-booking-pending {
+  box-shadow: 0 10px 24px rgba(107, 56, 151, 0.16);
+}
+
 #app-shell.view-desktop .app-header {
   width: min(1920px, calc(100vw - 40px));
   max-width: none;
@@ -2108,6 +2325,29 @@ h4 {
   grid-template-columns: minmax(520px, 0.95fr) minmax(340px, 0.72fr) minmax(920px, 1.75fr);
   align-items: start;
   column-gap: 34px;
+}
+
+#app-shell.view-desktop #screen-planner {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 28px;
+}
+
+#app-shell.view-desktop .planner-toolbar-card {
+  position: sticky;
+  top: 158px;
+  z-index: 6;
+}
+
+#app-shell.view-desktop .reservation-planner-card {
+  padding: 24px 26px 28px;
+}
+
+#app-shell.view-desktop .reservation-planner-scroll {
+  max-height: calc(100vh - 340px);
+}
+
+#app-shell.view-desktop .reservation-planner-room-head {
+  min-width: 164px;
 }
 
 #app-shell.view-desktop .month-card {
@@ -2469,6 +2709,7 @@ h4 {
   }
 
   #app-shell.view-desktop #screen-view,
+  #app-shell.view-desktop #screen-planner,
   #app-shell.view-desktop #screen-accounts .accounts-list,
   #app-shell.view-desktop #screen-pricing .room-inventory-list,
   #app-shell.view-desktop #screen-pricing .pricing-list {
@@ -2481,6 +2722,10 @@ h4 {
   }
 
   #app-shell.view-desktop .request-extra-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .planner-summary-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -2499,6 +2744,11 @@ h4 {
   #app-shell.view-desktop #booking-form > .offer-panel,
   #app-shell.view-desktop #booking-form > .payment-panel {
     grid-column: 1 / -1;
+  }
+
+  .planner-toolbar-actions {
+    grid-template-columns: 1fr;
+    width: 100%;
   }
 }
 

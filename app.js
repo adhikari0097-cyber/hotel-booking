@@ -56,6 +56,7 @@ const state = {
   bookingServices: new Set(),
   bookingMap: new Map(),
   bookingGroups: new Map(),
+  plannerBookingGroups: new Map(),
   requestMap: new Map(),
   profileMap: new Map(),
   activeBooking: null,
@@ -260,12 +261,21 @@ const bookingEmpty = qs("#booking-empty");
 const bookingListCard = qs("#booking-list");
 const bookingViewMobileBtn = qs("#app-view-mobile");
 const bookingViewDesktopBtn = qs("#app-view-desktop");
-const bookingFilterButtons = {
+  const bookingFilterButtons = {
   active: qs("#booking-filter-active"),
   cancelled: qs("#booking-filter-cancelled"),
   all: qs("#booking-filter-all"),
   pending: qs("#booking-filter-pending"),
 };
+const plannerStartDateInput = qs("#plannerStartDate");
+const plannerRangeDaysInput = qs("#plannerRangeDays");
+const plannerLoadBtn = qs("#loadPlanner");
+const plannerSummaryRange = qs("#plannerSummaryRange");
+const plannerSummaryReservations = qs("#plannerSummaryReservations");
+const plannerSummaryNights = qs("#plannerSummaryNights");
+const plannerSummaryRooms = qs("#plannerSummaryRooms");
+const reservationPlannerBoard = qs("#reservation-planner-board");
+const reservationPlannerEmpty = qs("#reservation-planner-empty");
 const roomStatusList = qs("#room-status-list");
 const statTotal = qs("#stat-total");
 const statOccupied = qs("#stat-occupied");
@@ -377,6 +387,7 @@ const closeBookingDetailsBtn = qs("#close-booking-details");
 const navButtons = {
   booking: qs("#tab-booking"),
   view: qs("#tab-view"),
+  planner: qs("#tab-planner"),
   requests: qs("#tab-requests"),
   accounts: qs("#tab-accounts"),
   pricing: qs("#tab-pricing"),
@@ -387,6 +398,7 @@ let pdfPrintFrame = null;
 const screens = {
   booking: qs("#screen-booking"),
   view: qs("#screen-view"),
+  planner: qs("#screen-planner"),
   requests: qs("#screen-requests"),
   accounts: qs("#screen-accounts"),
   pricing: qs("#screen-pricing"),
@@ -1462,7 +1474,7 @@ function renderGroupServiceToggleButtons(group) {
 }
 
 async function toggleGroupServiceDirect(groupKey, serviceName) {
-  const group = state.bookingGroups.get(groupKey);
+  const group = getBookingGroupByKey(groupKey);
   if (!group?.bookings?.length) throw new Error("Booking group not found.");
   const parsed = parseBookingNotes(group.bookings[0].notes);
   const next = new Set(parsed.services);
@@ -1517,7 +1529,7 @@ function getBookingBalanceAmount(group) {
 }
 
 async function updateGroupAdvancePayment(groupKey, advanceAmount) {
-  const group = state.bookingGroups.get(groupKey);
+  const group = getBookingGroupByKey(groupKey);
   if (!group?.bookings?.length) throw new Error("Booking group not found.");
   const normalizedAmount = roundCurrency(Math.max(0, Number(advanceAmount || 0)));
   const advancePaid = normalizedAmount > 0;
@@ -1623,7 +1635,7 @@ function syncCustomPriceRowsFromServices() {
 }
 
 async function promptGroupPaymentUpdate(groupKey) {
-  const group = state.bookingGroups.get(groupKey);
+  const group = getBookingGroupByKey(groupKey);
   if (!group?.bookings?.length) throw new Error("Booking group not found.");
   const advanceInfo = getAdvancePaymentInfo(group.bookings);
   const input = window.prompt("Enter advance amount received. Use 0 to mark pending.", String(advanceInfo.amount || 0));
@@ -2383,15 +2395,20 @@ function updateHeaderProfile() {
 }
 
 function updateNavVisibility() {
+  const showPlanner = Boolean(state.currentProfile?.approved);
   const showAccounts = canManageAccounts();
   const showRequests = Boolean(state.currentProfile?.approved);
   const showPricing = canManagePricing();
+  navButtons.planner.classList.toggle("hidden", !showPlanner);
   navButtons.requests.classList.toggle("hidden", !showRequests);
   navButtons.accounts.classList.toggle("hidden", !showAccounts);
   navButtons.pricing.classList.toggle("hidden", !showPricing);
-  const visibleTabs = 2 + Number(showRequests) + Number(showAccounts) + Number(showPricing);
+  const visibleTabs = 2 + Number(showPlanner) + Number(showRequests) + Number(showAccounts) + Number(showPricing);
   const columns = `repeat(${visibleTabs}, 1fr)`;
   qs(".bottom-nav").style.gridTemplateColumns = columns;
+  if (!showPlanner && screens.planner.classList.contains("screen-active")) {
+    setScreen("booking");
+  }
   if (!showRequests && screens.requests.classList.contains("screen-active")) {
     setScreen("booking");
   }
@@ -2409,6 +2426,9 @@ function setScreen(target) {
 
   screens[target].classList.add("screen-active");
   navButtons[target].classList.add("nav-active");
+  if (target === "planner") {
+    loadReservationPlanner();
+  }
 }
 
 function updateOnlineStatus() {
@@ -3121,6 +3141,18 @@ function getBookingGroupKey(booking) {
   return booking.trackCode || `booking-${booking.id}`;
 }
 
+function getBookingGroupByKey(groupKey) {
+  return state.bookingGroups.get(groupKey) || state.plannerBookingGroups.get(groupKey) || null;
+}
+
+function mergeBookingsIntoStateMap(bookings = []) {
+  const merged = new Map(state.bookingMap);
+  bookings.forEach((booking) => {
+    merged.set(booking.id, booking);
+  });
+  state.bookingMap = merged;
+}
+
 function groupBookingsForDisplay(bookings) {
   const groups = new Map();
 
@@ -3484,7 +3516,7 @@ function buildBookingPdfMarkup(group) {
 }
 
 function exportBookingGroupPdf(groupKey) {
-  const group = state.bookingGroups.get(groupKey);
+  const group = getBookingGroupByKey(groupKey);
   if (!group) {
     showToast("Booking details not found.", true);
     return;
@@ -3588,7 +3620,7 @@ function buildReservationWhatsappMessage(group) {
 }
 
 function openReservationWhatsapp(groupKey) {
-  const group = state.bookingGroups.get(groupKey);
+  const group = getBookingGroupByKey(groupKey);
   if (!group) {
     showToast("Booking details not found.", true);
     return;
@@ -3640,7 +3672,7 @@ async function launchBookingAction(bookingId, { scope = "single", reason = "chan
 }
 
 function openBookingDetailsModal(groupKey) {
-  const group = state.bookingGroups.get(groupKey);
+  const group = getBookingGroupByKey(groupKey);
   if (!group) {
     showToast("Booking details not found.", true);
     return;
@@ -4160,9 +4192,9 @@ async function openRequestModal(bookingId, mode, scope = "single") {
   }
 
   state.activeBooking = booking;
-  state.activeBookingGroup = state.bookingGroups.get(getBookingGroupKey(booking))?.bookings || [booking];
+  state.activeBookingGroup = getBookingGroupByKey(getBookingGroupKey(booking))?.bookings || [booking];
   const groupBookings = state.activeBookingGroup.length ? state.activeBookingGroup : [booking];
-  const groupView = state.bookingGroups.get(getBookingGroupKey(booking));
+  const groupView = getBookingGroupByKey(getBookingGroupKey(booking));
   const advanceInfo = getAdvancePaymentInfo(groupBookings);
   const customPriceEntries = (scope === "group" ? getGroupCustomPriceEntries(groupBookings) : getBookingCustomPriceEntries(booking))
     .map((item) => ({ amount: item.amount, note: item.note }));
@@ -5100,6 +5132,160 @@ function updateStats(bookings) {
   statAvailable.textContent = Math.max(totalActiveRooms - bookedRooms.size, 0);
 }
 
+function getPlannerRooms(bookings = []) {
+  const bookedRoomKeys = new Set(
+    bookings.map((booking) => `${normalizeRoomGroup(booking.roomType)}-${Number(booking.roomNumber)}`),
+  );
+  return buildRoomList({ includeInactive: true }).filter((room) => room.isActive || bookedRoomKeys.has(`${room.type}-${room.number}`));
+}
+
+function getPlannerBookingColors(booking, pendingCollections) {
+  const hasPendingRequest = pendingCollections.byTrack.get(getBookingGroupKey(booking))?.status === "pending";
+  if (String(booking.status || "").toLowerCase() === "pending" || hasPendingRequest) {
+    return { bg: "#d9c3f7", border: "#9b68dd", text: "#44206b" };
+  }
+  const tint = getTrackCodeTint(getBookingGroupKey(booking));
+  return { bg: tint.bg, border: tint.border, text: "#241d17" };
+}
+
+function renderReservationPlanner(bookings, startDate, days) {
+  if (!reservationPlannerBoard || !reservationPlannerEmpty) return;
+
+  mergeBookingsIntoStateMap(bookings);
+  const groupedBookings = groupBookingsForDisplay(bookings);
+  state.plannerBookingGroups = new Map(groupedBookings.map((group) => [group.key, group]));
+
+  const plannerRooms = getPlannerRooms(bookings);
+  const rangeStart = parseDate(startDate);
+  const safeDays = Math.max(7, Math.min(60, Number(days || 14)));
+  const pendingCollections = getLatestPendingRequestCollections();
+  const dateList = Array.from({ length: safeDays }, (_, index) => addDays(rangeStart, index));
+  const rangeEnd = addDays(rangeStart, safeDays);
+  const occupiedNights = bookings.reduce((sum, booking) => {
+    const checkIn = parseDate(booking.checkIn);
+    const checkOut = parseDate(booking.checkOut);
+    if (!checkIn || !checkOut) return sum;
+    const startOffset = Math.max(0, Math.round((checkIn - rangeStart) / 86400000));
+    const endOffset = Math.min(safeDays, Math.round((checkOut - rangeStart) / 86400000));
+    return sum + Math.max(0, endOffset - startOffset);
+  }, 0);
+
+  setText(plannerSummaryRange, `${formatDateKey(rangeStart)} -> ${formatDateKey(addDays(rangeStart, safeDays - 1))}`);
+  setText(plannerSummaryReservations, String(groupedBookings.length));
+  setText(plannerSummaryNights, String(occupiedNights));
+  setText(plannerSummaryRooms, String(plannerRooms.length));
+
+  if (!plannerRooms.length) {
+    setHTML(reservationPlannerBoard, "");
+    reservationPlannerEmpty.textContent = "No rooms available to show in the planner.";
+    reservationPlannerEmpty.style.display = "block";
+    return;
+  }
+
+  const roomIndexMap = new Map(plannerRooms.map((room, index) => [`${room.type}-${room.number}`, index]));
+  const roomHeaders = plannerRooms.map((room, index) => `
+    <div class="reservation-planner-room-head" style="grid-column:${index + 2}; grid-row:1;">
+      <strong>${escapeHtml(room.fullLabel)}</strong>
+      <span>${escapeHtml(getRoomTypeDisplay(room.type))}</span>
+    </div>
+  `).join("");
+
+  const dateLabels = dateList.map((date, index) => `
+    <div class="reservation-planner-date" style="grid-column:1; grid-row:${index + 2};">
+      <strong>${date.toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}</strong>
+      <span>${date.toLocaleDateString("en-GB", { weekday: "short" })}</span>
+    </div>
+  `).join("");
+
+  const cells = dateList.map((_, rowIndex) => plannerRooms.map((_, columnIndex) => `
+    <div class="reservation-planner-cell" style="grid-column:${columnIndex + 2}; grid-row:${rowIndex + 2};"></div>
+  `).join("")).join("");
+
+  const bars = bookings.map((booking) => {
+    const roomKey = `${normalizeRoomGroup(booking.roomType)}-${Number(booking.roomNumber)}`;
+    const roomIndex = roomIndexMap.get(roomKey);
+    if (roomIndex == null) return "";
+
+    const bookingStart = parseDate(booking.checkIn);
+    const bookingEnd = parseDate(booking.checkOut);
+    if (!bookingStart || !bookingEnd || bookingEnd <= rangeStart || bookingStart >= rangeEnd) return "";
+
+    const startOffset = Math.max(0, Math.round((bookingStart - rangeStart) / 86400000));
+    const endOffset = Math.min(safeDays, Math.round((bookingEnd - rangeStart) / 86400000));
+    const span = Math.max(1, endOffset - startOffset);
+    const colors = getPlannerBookingColors(booking, pendingCollections);
+    const detailBits = [
+      booking.trackCode || `Booking ${booking.id}`,
+      `${Number(booking.guests || 0)} Pax`,
+      `${booking.guestName || "Guest"}`,
+    ];
+
+    return `
+      <button
+        class="reservation-planner-booking${String(booking.status || "").toLowerCase() === "pending" ? " reservation-planner-booking-pending" : ""}"
+        type="button"
+        data-planner-group="${escapeHtml(getBookingGroupKey(booking))}"
+        style="grid-column:${roomIndex + 2}; grid-row:${startOffset + 2} / span ${span}; --planner-bg:${colors.bg}; --planner-border:${colors.border}; --planner-text:${colors.text};"
+        title="${escapeHtml(detailBits.join(" | "))}"
+      >
+        <span class="reservation-planner-booking-track">${escapeHtml(booking.trackCode || `BOOK-${booking.id}`)}</span>
+        <span class="reservation-planner-booking-meta">${escapeHtml(`${Number(booking.guests || 0)} Pax`)}</span>
+        <span class="reservation-planner-booking-name">${escapeHtml(booking.guestName || "Guest")}</span>
+      </button>
+    `;
+  }).join("");
+
+  reservationPlannerBoard.innerHTML = `
+    <div
+      class="reservation-planner-grid"
+      style="grid-template-columns: 170px repeat(${plannerRooms.length}, minmax(150px, 1fr)); grid-template-rows: 68px repeat(${safeDays}, 72px);"
+    >
+      <div class="reservation-planner-corner" style="grid-column:1; grid-row:1;">Dates</div>
+      ${roomHeaders}
+      ${dateLabels}
+      ${cells}
+      ${bars}
+    </div>
+  `;
+
+  reservationPlannerEmpty.textContent = bookings.length
+    ? ""
+    : "No bookings found in this range. Rooms are still shown for planning.";
+  reservationPlannerEmpty.style.display = bookings.length ? "none" : "block";
+
+  reservationPlannerBoard.querySelectorAll("[data-planner-group]").forEach((button) => {
+    button.addEventListener("click", () => {
+      openBookingDetailsModal(button.dataset.plannerGroup);
+    });
+  });
+}
+
+async function loadReservationPlanner() {
+  if (!state.currentProfile?.approved || !plannerStartDateInput || !plannerRangeDaysInput) return;
+  const startDate = plannerStartDateInput.value;
+  const rangeDays = Math.max(7, Math.min(60, Number(plannerRangeDaysInput.value || 14)));
+
+  if (!startDate) {
+    reservationPlannerEmpty.textContent = "Select a start date to load the booking planner.";
+    reservationPlannerEmpty.style.display = "block";
+    return;
+  }
+
+  try {
+    const parsedStart = parseDate(startDate);
+    if (!parsedStart) {
+      showToast("Select a valid planner start date.", true);
+      return;
+    }
+    const endDate = formatDateKey(addDays(parsedStart, rangeDays));
+    const bookings = (await fetchBookingsForPeriod(startDate, endDate))
+      .filter((booking) => String(booking.status || "").toLowerCase() !== "cancelled");
+    renderReservationPlanner(bookings, startDate, rangeDays);
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
 async function loadBookingsForDate(date) {
   if (!date || !state.currentProfile?.approved) {
     bookingEmpty.textContent = "Select a date to see bookings.";
@@ -5235,6 +5421,9 @@ async function refreshLiveViews() {
   await refreshAvailability();
   if (viewDateInput.value) {
     await loadBookingsForDate(viewDateInput.value);
+  }
+  if (plannerStartDateInput?.value) {
+    await loadReservationPlanner();
   }
 }
 
@@ -5903,6 +6092,12 @@ bookingForm.addEventListener("submit", async (event) => {
 ensureRequestModalSections();
 state.bookingViewMode = getDefaultBookingViewMode();
 applyBookingViewMode();
+if (plannerStartDateInput && !plannerStartDateInput.value) {
+  plannerStartDateInput.value = toDateInputValue(new Date());
+}
+if (plannerRangeDaysInput && !plannerRangeDaysInput.value) {
+  plannerRangeDaysInput.value = "14";
+}
 
 loginForm.addEventListener("submit", handleLogin);
 signupForm.addEventListener("submit", handleSignup);
@@ -6083,9 +6278,11 @@ checkAvailabilityBtn.addEventListener("click", refreshAvailability);
 
 navButtons.booking.addEventListener("click", () => setScreen("booking"));
 navButtons.view.addEventListener("click", () => setScreen("view"));
+navButtons.planner.addEventListener("click", () => setScreen("planner"));
 navButtons.requests.addEventListener("click", () => setScreen("requests"));
 navButtons.accounts.addEventListener("click", () => setScreen("accounts"));
 navButtons.pricing.addEventListener("click", () => setScreen("pricing"));
+plannerLoadBtn?.addEventListener("click", () => loadReservationPlanner());
 
 window.addEventListener("online", updateOnlineStatus);
 window.addEventListener("offline", updateOnlineStatus);

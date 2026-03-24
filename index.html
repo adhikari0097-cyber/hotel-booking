@@ -347,6 +347,66 @@
           </div>
         </section>
 
+        <section class="screen" id="screen-planner" aria-labelledby="tab-planner">
+          <div class="card planner-toolbar-card">
+            <div class="planner-toolbar-head">
+              <div>
+                <p class="eyebrow">Reservation Planner</p>
+                <h3>Booking Timeline</h3>
+              </div>
+              <div class="planner-toolbar-actions">
+                <div class="field compact-field">
+                  <label for="plannerStartDate">Start Date</label>
+                  <input id="plannerStartDate" type="date" />
+                </div>
+                <div class="field compact-field">
+                  <label for="plannerRangeDays">Range</label>
+                  <select id="plannerRangeDays">
+                    <option value="7">7 Days</option>
+                    <option value="14" selected>14 Days</option>
+                    <option value="21">21 Days</option>
+                    <option value="30">30 Days</option>
+                    <option value="45">45 Days</option>
+                    <option value="60">60 Days</option>
+                  </select>
+                </div>
+                <button id="loadPlanner" class="secondary-btn" type="button">Load Planner</button>
+              </div>
+            </div>
+            <p class="inline-note">Pick a 7 to 60 day range. Pending reservations stay purple. The same track code keeps the same color across rooms and nights.</p>
+            <div class="planner-summary-strip">
+              <div class="planner-summary-card">
+                <span>Range</span>
+                <strong id="plannerSummaryRange">-</strong>
+              </div>
+              <div class="planner-summary-card">
+                <span>Reservations</span>
+                <strong id="plannerSummaryReservations">0</strong>
+              </div>
+              <div class="planner-summary-card">
+                <span>Occupied Room Nights</span>
+                <strong id="plannerSummaryNights">0</strong>
+              </div>
+              <div class="planner-summary-card">
+                <span>Rooms Shown</span>
+                <strong id="plannerSummaryRooms">0</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reservation-planner-card">
+            <div class="planner-legend">
+              <span class="planner-legend-item"><span class="planner-legend-swatch planner-legend-swatch-pending"></span>Pending</span>
+              <span class="planner-legend-item"><span class="planner-legend-swatch planner-legend-swatch-track"></span>Track Code Color</span>
+              <span class="planner-legend-item"><span class="planner-legend-swatch planner-legend-swatch-click"></span>Click a booking to open details and edit</span>
+            </div>
+            <div class="reservation-planner-scroll">
+              <div id="reservation-planner-board" class="reservation-planner-board"></div>
+            </div>
+            <p id="reservation-planner-empty" class="empty-state">Select a range to load the booking planner.</p>
+          </div>
+        </section>
+
         <section class="screen" id="screen-requests" aria-labelledby="tab-requests">
           <div class="card">
             <div class="accounts-header">
@@ -429,6 +489,7 @@
       <nav class="bottom-nav">
         <button id="tab-booking" class="nav-btn nav-active" type="button">New Booking</button>
         <button id="tab-view" class="nav-btn" type="button">View By Date</button>
+        <button id="tab-planner" class="nav-btn" type="button">Booking Planner</button>
         <button id="tab-requests" class="nav-btn" type="button">Requests</button>
         <button id="tab-accounts" class="nav-btn hidden" type="button">Accounts</button>
         <button id="tab-pricing" class="nav-btn hidden" type="button">Room Fix</button>
