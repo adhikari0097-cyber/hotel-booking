@@ -2217,9 +2217,9 @@ h4 {
   left: 0;
   z-index: 7;
   justify-content: flex-start;
-  padding-left: 10px;
+  padding-left: 8px;
   border-right: 1px solid #e7dccd;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -2227,14 +2227,17 @@ h4 {
 }
 
 .reservation-planner-mobile-room-head {
-  min-width: 82px;
+  min-width: 46px;
   border-right: 1px solid #eee4d7;
+  padding: 4px 2px;
 }
 
 .reservation-planner-mobile-room-head strong {
-  font-size: 11px;
-  line-height: 1.15;
+  font-size: 8px;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
   color: #201b17;
+  word-break: break-word;
 }
 
 .reservation-planner-mobile-date {
@@ -2242,22 +2245,22 @@ h4 {
   left: 0;
   z-index: 4;
   display: grid;
-  gap: 2px;
+  gap: 1px;
   align-content: center;
-  padding: 8px 10px;
+  padding: 4px 8px;
   background: linear-gradient(180deg, #fffefb 0%, #faf7f2 100%);
   border-right: 1px solid #e7dccd;
   border-bottom: 1px solid #f0e8dc;
 }
 
 .reservation-planner-mobile-date strong {
-  font-size: 11px;
+  font-size: 8px;
   line-height: 1.1;
   color: #1d1916;
 }
 
 .reservation-planner-mobile-date span {
-  font-size: 10px;
+  font-size: 8px;
   color: #776b60;
 }
 
@@ -2270,17 +2273,22 @@ h4 {
 
 .reservation-planner-mobile-marker {
   place-self: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 7px;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
   border: 1px solid var(--planner-border);
   background: var(--planner-bg);
   box-shadow: 0 6px 16px rgba(50, 40, 20, 0.08);
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 0;
+  min-width: 0;
+  min-height: 0;
 }
 
 .reservation-planner-mobile-marker-pending {
-  width: 24px;
-  height: 24px;
+  width: 16px;
+  height: 16px;
   box-shadow: 0 8px 18px rgba(107, 56, 151, 0.18);
 }
 
@@ -2869,8 +2877,16 @@ h4 {
     gap: 10px;
   }
 
+  .planner-legend-item {
+    font-size: 11px;
+  }
+
   .reservation-planner-card {
-    padding: 18px;
+    padding: 14px 14px 110px;
+  }
+
+  .reservation-planner-scroll {
+    padding-bottom: 104px;
   }
 
   .booking-list-head {

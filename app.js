@@ -5187,6 +5187,13 @@ function useDesktopPlannerLayout() {
   return state.bookingViewMode === "desktop" && window.innerWidth >= 980;
 }
 
+function getPlannerMobileRoomLabel(room) {
+  const roomType = normalizeRoomGroup(room.type);
+  if (roomType === "kitchen") return `Kitchen ${room.number}`;
+  if (roomType === "driver") return `Driver ${room.number}`;
+  return `Normal ${room.number}`;
+}
+
 function bindPlannerBookingButtons() {
   reservationPlannerBoard.querySelectorAll("[data-planner-group]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -5202,7 +5209,7 @@ function renderReservationPlannerMobile(bookings, plannerRooms, startDate, days,
   const roomIndexMap = new Map(plannerRooms.map((room, index) => [`${room.type}-${room.number}`, index]));
   const roomHeaders = plannerRooms.map((room, index) => `
     <div class="reservation-planner-mobile-room-head" style="grid-column:${index + 2}; grid-row:1;">
-      <strong>${escapeHtml(room.fullLabel)}</strong>
+      <strong>${escapeHtml(getPlannerMobileRoomLabel(room))}</strong>
     </div>
   `).join("");
   const dateLabels = dateList.map((date, index) => `
@@ -5251,7 +5258,7 @@ function renderReservationPlannerMobile(bookings, plannerRooms, startDate, days,
   reservationPlannerBoard.innerHTML = `
     <div
       class="reservation-planner-mobile-grid"
-      style="grid-template-columns: 88px repeat(${plannerRooms.length}, minmax(82px, 1fr)); grid-template-rows: 56px repeat(${safeDays}, 54px);"
+      style="grid-template-columns: 74px repeat(${plannerRooms.length}, 46px); grid-template-rows: 44px repeat(${safeDays}, 42px);"
     >
       <div class="reservation-planner-mobile-corner" style="grid-column:1; grid-row:1;">Dates</div>
       ${roomHeaders}
