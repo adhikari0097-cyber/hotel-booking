@@ -2398,19 +2398,24 @@ async function toggleGroupServiceDirect(groupKey, serviceName) {
   if (!group?.bookings?.length) throw new Error("Booking group not found.");
   const parsed = parseBookingNotes(group.bookings[0].notes);
   const next = new Set(parsed.services);
+  const hadService = next.has(serviceName);
   if (getGroupLifecycleStatus(group) === "checked_in" && !canManageBookings()) {
-    if (next.has(serviceName)) {
+    if (hadService) {
       showToast("Checked-in bookings can add new services, but existing services cannot be removed.", true);
       return;
     }
     next.add(serviceName);
-  } else if (next.has(serviceName)) {
+  } else if (hadService) {
     next.delete(serviceName);
   } else {
     next.add(serviceName);
   }
   const nextServices = Array.from(next);
-  const nextCustomPayments = syncGroupCustomPaymentsWithServices(group.bookings, nextServices);
+  let nextCustomPayments = syncGroupCustomPaymentsWithServices(group.bookings, nextServices);
+  if (hadService && !next.has(serviceName)) {
+    const removedKey = String(serviceName || "").trim().toLowerCase();
+    nextCustomPayments = nextCustomPayments.filter((item) => String(item.note || "").trim().toLowerCase() !== removedKey);
+  }
   const linkedEntry = nextCustomPayments.find((item) => String(item.note || "").trim().toLowerCase() === String(serviceName || "").trim().toLowerCase());
   if (linkedEntry && next.has(serviceName)) {
     const amountInput = window.prompt(`Enter price for ${serviceName}. Leave empty or 0 if not charged.`, linkedEntry.amount ? String(linkedEntry.amount) : "");

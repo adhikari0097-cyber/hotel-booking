@@ -3259,6 +3259,36 @@ h4 {
   padding: 22px;
 }
 
+.auth-brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.auth-brand-logo {
+  display: block;
+  object-fit: contain;
+  background: #fff;
+  border: 1px solid rgba(199, 164, 91, 0.28);
+  box-shadow: 0 10px 24px rgba(20, 26, 36, 0.08);
+}
+
+.auth-brand-logo-ourway {
+  width: 96px;
+  height: 96px;
+  border-radius: 22px;
+  padding: 10px;
+}
+
+.auth-brand-logo-muthugala {
+  width: 84px;
+  height: 84px;
+  border-radius: 22px;
+  padding: 6px;
+}
+
 .auth-copy {
   color: var(--muted);
   font-size: 14px;
