@@ -23,6 +23,29 @@ const DEFAULT_SERVICE_DEFS = [
   { name: "Van", defaultPrice: 0, isActive: true },
 ];
 
+const EXPORT_FIELD_DEFS = [
+  { key: "trackCode", label: "Track Code", note: "Show reservation track code." },
+  { key: "customer", label: "Customer", note: "Show customer / guest name." },
+  { key: "phone", label: "Phone", note: "Show customer phone number." },
+  { key: "bookedBy", label: "Booked By", note: "Show staff member who created the booking." },
+  { key: "stay", label: "Stay Dates", note: "Show check-in and check-out date range." },
+  { key: "totalPax", label: "Total Pax", note: "Show total guest count." },
+  { key: "rooms", label: "Rooms", note: "Show number of rooms in the reservation." },
+  { key: "totalPrice", label: "Total Price", note: "Show booking total price." },
+  { key: "customPrice", label: "Custom Price", note: "Show total custom price amount." },
+  { key: "lifecycle", label: "Lifecycle", note: "Show booked / checked-in / checked-out / hold status." },
+  { key: "advance", label: "Advance Status", note: "Show whether advance payment was received." },
+  { key: "advanceAmount", label: "Advance Amount", note: "Show advance payment amount." },
+  { key: "balance", label: "Balance", note: "Show remaining balance amount." },
+  { key: "checkInAt", label: "Checked In At", note: "Show actual check-in timestamp." },
+  { key: "checkOutAt", label: "Checked Out At", note: "Show actual check-out timestamp." },
+  { key: "exportedAt", label: "Exported At", note: "Show export generated timestamp." },
+  { key: "services", label: "Services", note: "Show selected services as chips/list." },
+  { key: "servicePrices", label: "Service Prices", note: "Show prices attached to services." },
+  { key: "customPriceEntries", label: "Custom Price Entries", note: "Show itemized custom prices." },
+  { key: "roomDetails", label: "Room Details", note: "Show room-by-room reservation breakdown." },
+];
+
 const ROOM_DEFS = [
   { type: "kitchen", label: "Kitchen Room", count: 2, maxPax: 6 },
   { type: "normal", label: "Normal Room", count: 4, maxPax: 4 },
@@ -98,6 +121,8 @@ const state = {
   runtimeSettings: {
     checkInTime: "14:00",
     checkOutTime: "11:00",
+    pdfFields: EXPORT_FIELD_DEFS.map((item) => item.key),
+    whatsappFields: EXPORT_FIELD_DEFS.map((item) => item.key),
   },
   bookingRangePicker: null,
 };
@@ -423,6 +448,7 @@ const refreshAccountsBtn = qs("#refresh-accounts");
 const roomInventoryList = qs("#room-inventory-list");
 const pricingList = qs("#pricing-list");
 const serviceCatalogList = qs("#service-catalog-list");
+const exportSettingsList = qs("#export-settings-list");
 const refreshPricingBtn = qs("#refresh-pricing");
 const savePricingBtn = qs("#save-pricing");
 const runtimeCheckInTimeInput = qs("#runtime-checkin-time");
@@ -718,6 +744,49 @@ function normalizeServiceCatalogRow(row = {}) {
     name: String(row.name || row.service_name || "").trim(),
     defaultPrice: roundCurrency(Math.max(0, Number(row.defaultPrice ?? row.default_price ?? 0))),
     isActive: row.isActive == null ? row.is_active !== false : Boolean(row.isActive),
+  };
+}
+
+function normalizeExportFieldList(value, fallbackToAll = true) {
+  const validKeys = new Set(EXPORT_FIELD_DEFS.map((item) => item.key));
+  const source = Array.isArray(value)
+    ? value
+    : (value == null
+        ? null
+        : typeof value === "string"
+          ? (() => {
+              try {
+                return JSON.parse(value);
+              } catch (error) {
+                return value.split(",").map((item) => item.trim());
+              }
+            })()
+          : []);
+  if (source == null) {
+    return fallbackToAll ? EXPORT_FIELD_DEFS.map((item) => item.key) : [];
+  }
+  return Array.from(new Set(source.map((item) => String(item || "").trim()).filter((item) => validKeys.has(item))));
+}
+
+function getEditableServiceCatalogRows() {
+  const source = (state.serviceCatalog?.length ? state.serviceCatalog : DEFAULT_SERVICE_DEFS);
+  return source.map((item) => normalizeServiceCatalogRow(item));
+}
+
+function isExportFieldEnabled(channel, fieldKey) {
+  const list = normalizeExportFieldList(channel === "pdf" ? state.runtimeSettings?.pdfFields : state.runtimeSettings?.whatsappFields);
+  return list.includes(fieldKey);
+}
+
+function toggleRuntimeExportField(channel, fieldKey, enabled) {
+  const fieldName = channel === "pdf" ? "pdfFields" : "whatsappFields";
+  const current = normalizeExportFieldList(state.runtimeSettings?.[fieldName]);
+  const next = enabled
+    ? Array.from(new Set([...current, fieldKey]))
+    : current.filter((item) => item !== fieldKey);
+  state.runtimeSettings = {
+    ...state.runtimeSettings,
+    [fieldName]: next,
   };
 }
 
@@ -1150,7 +1219,7 @@ async function loadRoomPricing() {
 
 async function saveServiceCatalog() {
   if (!canManagePricing()) return;
-  const rows = getServiceCatalogRows({ includeInactive: true });
+  const rows = getEditableServiceCatalogRows();
   const names = rows.map((row) => String(row.name || "").trim()).filter(Boolean);
   if (names.length !== rows.length) {
     throw new Error("Every service needs a name before saving.");
@@ -1208,11 +1277,15 @@ async function loadRuntimeSettings() {
     state.runtimeSettings = {
       checkInTime: data?.check_in_time || "14:00",
       checkOutTime: data?.check_out_time || "11:00",
+      pdfFields: normalizeExportFieldList(data?.pdf_fields),
+      whatsappFields: normalizeExportFieldList(data?.whatsapp_fields),
     };
   } catch (error) {
     state.runtimeSettings = {
       checkInTime: "14:00",
       checkOutTime: "11:00",
+      pdfFields: normalizeExportFieldList(null),
+      whatsappFields: normalizeExportFieldList(null),
     };
     if (canManagePricing()) {
       showToast("Booking runtime settings table is not ready. Run the updated Supabase schema.sql.", true);
@@ -1228,6 +1301,8 @@ async function saveRuntimeSettings() {
     id: true,
     check_in_time: runtimeCheckInTimeInput?.value || "14:00",
     check_out_time: runtimeCheckOutTimeInput?.value || "11:00",
+    pdf_fields: normalizeExportFieldList(state.runtimeSettings?.pdfFields),
+    whatsapp_fields: normalizeExportFieldList(state.runtimeSettings?.whatsappFields),
   };
   const { error } = await state.supabase
     .from(CONFIG.SUPABASE_RUNTIME_SETTINGS_TABLE)
@@ -1238,6 +1313,8 @@ async function saveRuntimeSettings() {
   state.runtimeSettings = {
     checkInTime: row.check_in_time,
     checkOutTime: row.check_out_time,
+    pdfFields: normalizeExportFieldList(row.pdf_fields),
+    whatsappFields: normalizeExportFieldList(row.whatsapp_fields),
   };
 }
 
@@ -1422,19 +1499,21 @@ function renderRequestOfferPreview() {
 }
 
 function renderPricingScreen() {
-  if (!pricingList || !roomInventoryList || !serviceCatalogList) return;
+  if (!pricingList || !roomInventoryList || !serviceCatalogList || !exportSettingsList) return;
   if (!state.serviceCatalog?.length) setDefaultServiceCatalogState();
   if (runtimeCheckInTimeInput) runtimeCheckInTimeInput.value = getRuntimeCheckInTime();
   if (runtimeCheckOutTimeInput) runtimeCheckOutTimeInput.value = getRuntimeCheckOutTime();
   if (!canManagePricing()) {
     setHTML(roomInventoryList, "");
     setHTML(serviceCatalogList, "");
+    setHTML(exportSettingsList, "");
     setHTML(pricingList, `<p class="inline-note">You do not have room pricing access yet.</p>`);
     return;
   }
 
   roomInventoryList.innerHTML = "";
   serviceCatalogList.innerHTML = "";
+  exportSettingsList.innerHTML = "";
   pricingList.innerHTML = "";
 
   ROOM_DEFS.forEach((roomDef) => {
@@ -1547,6 +1626,50 @@ function renderPricingScreen() {
     pricingList.appendChild(card);
   });
 
+  const exportCard = document.createElement("article");
+  exportCard.className = "pricing-card";
+  exportCard.innerHTML = `
+    <div class="pricing-card-head">
+      <div>
+        <h4>Export Details</h4>
+        <p>Choose which booking details should appear in WhatsApp messages and PDF exports.</p>
+      </div>
+    </div>
+    <div class="export-settings-grid">
+      ${[
+        { key: "pdf", title: "PDF Export", note: "These fields appear when you export the booking as PDF." },
+        { key: "whatsapp", title: "WhatsApp Message", note: "These fields appear in WhatsApp share text and email body." },
+      ].map((section) => `
+        <section class="export-settings-panel">
+          <div class="export-settings-head">
+            <h5>${section.title}</h5>
+            <p>${section.note}</p>
+          </div>
+          <div class="export-field-list">
+            ${EXPORT_FIELD_DEFS.map((field) => `
+              <label class="export-field-row">
+                <input type="checkbox" ${isExportFieldEnabled(section.key, field.key) ? "checked" : ""} data-export-channel="${section.key}" data-export-field="${field.key}" />
+                <span>
+                  <strong>${field.label}</strong>
+                  <small>${field.note}</small>
+                </span>
+              </label>
+            `).join("")}
+          </div>
+        </section>
+      `).join("")}
+    </div>
+  `;
+
+  exportCard.querySelectorAll("[data-export-field]").forEach((input) => {
+    input.addEventListener("change", () => {
+      toggleRuntimeExportField(input.dataset.exportChannel, input.dataset.exportField, input.checked);
+    });
+  });
+
+  exportSettingsList.appendChild(exportCard);
+
+  const serviceRows = getEditableServiceCatalogRows();
   const serviceCard = document.createElement("article");
   serviceCard.className = "pricing-card";
   serviceCard.innerHTML = `
@@ -1559,8 +1682,8 @@ function renderPricingScreen() {
     </div>
     <div class="service-config-list">
       ${
-        getServiceCatalogRows({ includeInactive: true }).length
-          ? getServiceCatalogRows({ includeInactive: true }).map((service, index) => `
+        serviceRows.length
+          ? serviceRows.map((service, index) => `
               <div class="service-config-row${service.isActive ? "" : " room-config-row-off"}" data-service-index="${index}">
                 <div class="service-config-main">
                   <label class="field compact-field">
@@ -1588,7 +1711,7 @@ function renderPricingScreen() {
 
   serviceCard.querySelector("[data-add-service]")?.addEventListener("click", () => {
     state.serviceCatalog = [
-      ...getServiceCatalogRows({ includeInactive: true }),
+      ...getEditableServiceCatalogRows(),
       normalizeServiceCatalogRow({ name: "", defaultPrice: 0, isActive: true }),
     ];
     renderPricingScreen();
@@ -1624,7 +1747,7 @@ function renderPricingScreen() {
     });
 
     deleteBtn?.addEventListener("click", () => {
-      state.serviceCatalog = getServiceCatalogRows({ includeInactive: true }).filter((_, itemIndex) => itemIndex !== index);
+      state.serviceCatalog = getEditableServiceCatalogRows().filter((_, itemIndex) => itemIndex !== index);
       renderPricingScreen();
     });
   });
@@ -4182,6 +4305,25 @@ function buildBookingPdfMarkup(group) {
   const allServices = getGroupServices(group.bookings);
   const servicePricingRows = getServicePricingRows(group.bookings);
   const lifecycleLabel = getLifecycleStatusLabel(getGroupLifecycleStatus(group));
+  const enabledFields = normalizeExportFieldList(state.runtimeSettings?.pdfFields);
+  const hasField = (fieldKey) => enabledFields.includes(fieldKey);
+  const summaryItems = [
+    hasField("customer") ? { label: "Customer", value: group.guestName || "Guest" } : null,
+    hasField("bookedBy") ? { label: "Booked By", value: group.bookings[0]?.createdByName || "-" } : null,
+    hasField("phone") ? { label: "Phone", value: group.phone || "-" } : null,
+    hasField("stay") ? { label: "Stay", value: `${group.checkIn || "-"} -> ${group.checkOut || "-"}` } : null,
+    hasField("totalPax") ? { label: "Total Pax", value: String(group.totalGuests || 0) } : null,
+    hasField("rooms") ? { label: "Rooms", value: String(group.bookings.length || 0) } : null,
+    hasField("totalPrice") ? { label: "Total Price", value: formatMoney(group.totalPrice || 0) } : null,
+    hasField("customPrice") ? { label: "Custom Price", value: formatMoney(customPriceTotal) } : null,
+    hasField("lifecycle") ? { label: "Lifecycle", value: lifecycleLabel } : null,
+    hasField("advance") ? { label: "Advance", value: advanceInfo.label } : null,
+    hasField("advanceAmount") ? { label: "Advance Amount", value: formatMoney(advanceInfo.amount || 0) } : null,
+    hasField("balance") ? { label: "Balance", value: formatMoney(balanceAmount) } : null,
+    hasField("checkInAt") ? { label: "Check In At", value: group.bookings[0]?.checkedInAt ? new Date(group.bookings[0].checkedInAt).toLocaleString("en-GB") : "-" } : null,
+    hasField("checkOutAt") ? { label: "Check Out At", value: group.bookings[0]?.checkedOutAt ? new Date(group.bookings[0].checkedOutAt).toLocaleString("en-GB") : "-" } : null,
+    hasField("exportedAt") ? { label: "Exported At", value: new Date().toLocaleString("en-GB") } : null,
+  ].filter(Boolean);
   const roomCards = group.bookings.map((booking) => {
     const noteMeta = parseBookingNotes(booking.notes);
     const details = [
@@ -4258,29 +4400,22 @@ function buildBookingPdfMarkup(group) {
             <p class="pdf-kicker">Reservation Export</p>
             <div class="pdf-title-row">
               <div>
-                <h1>${escapeHtml(group.trackCode || "-")}</h1>
-                <p>${escapeHtml(group.guestName || "Guest")} · ${escapeHtml(group.phone || "-")}</p>
+                <h1>${escapeHtml(hasField("trackCode") ? (group.trackCode || "-") : "Reservation Export")}</h1>
+                <p>${escapeHtml([
+                  hasField("customer") ? (group.guestName || "Guest") : "",
+                  hasField("phone") ? (group.phone || "-") : "",
+                ].filter(Boolean).join(" · ") || "Booking details export")}</p>
               </div>
               <div class="pdf-badge">${escapeHtml(group.statuses.size === 1 ? Array.from(group.statuses)[0] : "Mixed")}</div>
             </div>
-            <div class="pdf-summary">
-              <div><strong>Customer</strong><span>${escapeHtml(group.guestName || "Guest")}</span></div>
-              <div><strong>Booked By</strong><span>${escapeHtml(group.bookings[0]?.createdByName || "-")}</span></div>
-              <div><strong>Phone</strong><span>${escapeHtml(group.phone || "-")}</span></div>
-              <div><strong>Stay</strong><span>${escapeHtml(`${group.checkIn || "-"} -> ${group.checkOut || "-"}`)}</span></div>
-              <div><strong>Total Pax</strong><span>${escapeHtml(String(group.totalGuests || 0))}</span></div>
-              <div><strong>Rooms</strong><span>${escapeHtml(String(group.bookings.length || 0))}</span></div>
-              <div><strong>Total Price</strong><span>${escapeHtml(formatMoney(group.totalPrice || 0))}</span></div>
-              <div><strong>Custom Price</strong><span>${escapeHtml(formatMoney(customPriceTotal))}</span></div>
-              <div><strong>Lifecycle</strong><span>${escapeHtml(lifecycleLabel)}</span></div>
-              <div><strong>Advance</strong><span>${escapeHtml(advanceInfo.label)}</span></div>
-              <div><strong>Advance Amount</strong><span>${escapeHtml(formatMoney(advanceInfo.amount || 0))}</span></div>
-              <div><strong>Balance</strong><span>${escapeHtml(formatMoney(balanceAmount))}</span></div>
-              <div><strong>Check In At</strong><span>${escapeHtml(group.bookings[0]?.checkedInAt ? new Date(group.bookings[0].checkedInAt).toLocaleString("en-GB") : "-")}</span></div>
-              <div><strong>Check Out At</strong><span>${escapeHtml(group.bookings[0]?.checkedOutAt ? new Date(group.bookings[0].checkedOutAt).toLocaleString("en-GB") : "-")}</span></div>
-              <div><strong>Exported At</strong><span>${escapeHtml(new Date().toLocaleString("en-GB"))}</span></div>
-            </div>
-            ${customPriceItems.length ? `
+            ${summaryItems.length ? `
+              <div class="pdf-summary">
+                ${summaryItems.map((item) => `
+                  <div><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(item.value)}</span></div>
+                `).join("")}
+              </div>
+            ` : ""}
+            ${hasField("customPriceEntries") && customPriceItems.length ? `
               <div class="pdf-services">
                 <strong>Custom Price Entries</strong>
                 ${customPriceItems.map((payment, index) => `
@@ -4288,21 +4423,23 @@ function buildBookingPdfMarkup(group) {
                 `).join("")}
               </div>
             ` : ""}
-            ${allServices.length ? `
+            ${hasField("services") && allServices.length ? `
               <div class="pdf-services">
                 <strong>Services</strong>
                 <div class="pdf-chip-list">${allServices.map((service) => `<span class="pdf-chip">${escapeHtml(service)}</span>`).join("")}</div>
               </div>
             ` : ""}
-            <div class="pdf-services">
-              <strong>Service Prices</strong>
-              ${
-                servicePricingRows.length
-                  ? servicePricingRows.map((row) => `<div class="pdf-notes">${escapeHtml(row.service)}: ${escapeHtml(row.amount > 0 ? formatMoney(row.amount) : "-")}</div>`).join("")
-                  : `<div class="pdf-notes">No services added.</div>`
-              }
-            </div>
-            <div class="pdf-room-list">${roomCards}</div>
+            ${hasField("servicePrices") ? `
+              <div class="pdf-services">
+                <strong>Service Prices</strong>
+                ${
+                  servicePricingRows.length
+                    ? servicePricingRows.map((row) => `<div class="pdf-notes">${escapeHtml(row.service)}: ${escapeHtml(row.amount > 0 ? formatMoney(row.amount) : "-")}</div>`).join("")
+                    : `<div class="pdf-notes">No services added.</div>`
+                }
+              </div>
+            ` : ""}
+            ${hasField("roomDetails") ? `<div class="pdf-room-list">${roomCards}</div>` : ""}
           </div>
         </div>
       </body>
@@ -4377,6 +4514,8 @@ function buildReservationWhatsappMessage(group) {
   const customPriceTotal = getGroupCustomPriceTotal(group.bookings);
   const balanceAmount = getBookingBalanceAmount(group);
   const servicePricingRows = getServicePricingRows(group.bookings);
+  const enabledFields = normalizeExportFieldList(state.runtimeSettings?.whatsappFields);
+  const hasField = (fieldKey) => enabledFields.includes(fieldKey);
   const roomLines = group.bookings.map((booking) => {
     const noteMeta = parseBookingNotes(booking.notes);
     const extraBits = [];
@@ -4394,30 +4533,29 @@ function buildReservationWhatsappMessage(group) {
   return [
     `Reservation Details`,
     ``,
-    `Track Code: ${group.trackCode || "-"}`,
-    `Customer: ${group.guestName || "Guest"}`,
-    `Phone: ${group.phone || "-"}`,
-    `Booked By: ${group.bookings[0]?.createdByName || "-"}`,
-    `Stay: ${group.checkIn || "-"} -> ${group.checkOut || "-"}`,
-    `Total Pax: ${group.totalGuests || 0}`,
-    `Rooms: ${group.bookings.length || 0}`,
-    `Total Price: ${formatMoney(group.totalPrice || 0)}`,
-    `Lifecycle: ${getLifecycleStatusLabel(getGroupLifecycleStatus(group))}`,
-    `Custom Price: ${formatMoney(customPriceTotal)}`,
-    `Advance Payment: ${advanceInfo.label}`,
-    `Advance Amount: ${formatMoney(advanceInfo.amount || 0)}`,
-    `Balance: ${formatMoney(balanceAmount)}`,
-    `Check In At: ${group.bookings[0]?.checkedInAt ? new Date(group.bookings[0].checkedInAt).toLocaleString("en-GB") : "-"}`,
-    `Check Out At: ${group.bookings[0]?.checkedOutAt ? new Date(group.bookings[0].checkedOutAt).toLocaleString("en-GB") : "-"}`,
-    ...(servicePricingRows.length
+    ...(hasField("trackCode") ? [`Track Code: ${group.trackCode || "-"}`] : []),
+    ...(hasField("customer") ? [`Customer: ${group.guestName || "Guest"}`] : []),
+    ...(hasField("phone") ? [`Phone: ${group.phone || "-"}`] : []),
+    ...(hasField("bookedBy") ? [`Booked By: ${group.bookings[0]?.createdByName || "-"}`] : []),
+    ...(hasField("stay") ? [`Stay: ${group.checkIn || "-"} -> ${group.checkOut || "-"}`] : []),
+    ...(hasField("totalPax") ? [`Total Pax: ${group.totalGuests || 0}`] : []),
+    ...(hasField("rooms") ? [`Rooms: ${group.bookings.length || 0}`] : []),
+    ...(hasField("totalPrice") ? [`Total Price: ${formatMoney(group.totalPrice || 0)}`] : []),
+    ...(hasField("lifecycle") ? [`Lifecycle: ${getLifecycleStatusLabel(getGroupLifecycleStatus(group))}`] : []),
+    ...(hasField("customPrice") ? [`Custom Price: ${formatMoney(customPriceTotal)}`] : []),
+    ...(hasField("advance") ? [`Advance Payment: ${advanceInfo.label}`] : []),
+    ...(hasField("advanceAmount") ? [`Advance Amount: ${formatMoney(advanceInfo.amount || 0)}`] : []),
+    ...(hasField("balance") ? [`Balance: ${formatMoney(balanceAmount)}`] : []),
+    ...(hasField("checkInAt") ? [`Check In At: ${group.bookings[0]?.checkedInAt ? new Date(group.bookings[0].checkedInAt).toLocaleString("en-GB") : "-"}`] : []),
+    ...(hasField("checkOutAt") ? [`Check Out At: ${group.bookings[0]?.checkedOutAt ? new Date(group.bookings[0].checkedOutAt).toLocaleString("en-GB") : "-"}`] : []),
+    ...(hasField("servicePrices") && servicePricingRows.length
       ? ["", "Service Prices:", ...servicePricingRows.map((row) => `${row.service}: ${row.amount > 0 ? formatMoney(row.amount) : "-"}`)]
       : []),
-    ...(customPriceItems.length
+    ...(hasField("customPriceEntries") && customPriceItems.length
       ? ["", "Custom Price Entries:", ...customPriceItems.map((payment, index) => `${index + 1}. ${formatMoney(payment.amount || 0)}${payment.note ? ` | ${payment.note}` : ""}`)]
       : []),
-    ``,
-    `Room Details:`,
-    ...roomLines.map((line, index) => `${index + 1}. ${line}`),
+    ...(hasField("services") && getGroupServices(group.bookings).length ? ["", `Services: ${getGroupServices(group.bookings).join(", ")}`] : []),
+    ...(hasField("roomDetails") ? ["", `Room Details:`, ...roomLines.map((line, index) => `${index + 1}. ${line}`)] : []),
   ].join("\n");
 }
 

@@ -3342,6 +3342,64 @@ h4 {
   gap: 10px;
 }
 
+.export-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.export-settings-panel {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 14px;
+  background: #fff;
+  display: grid;
+  gap: 12px;
+}
+
+.export-settings-head h5 {
+  margin-bottom: 4px;
+  font-size: 15px;
+}
+
+.export-settings-head p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.export-field-list {
+  display: grid;
+  gap: 10px;
+}
+
+.export-field-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fcfaf6;
+}
+
+.export-field-row strong,
+.export-field-row small {
+  display: block;
+}
+
+.export-field-row strong {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.export-field-row small {
+  margin-top: 3px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
 .service-config-row {
   display: flex;
   align-items: flex-start;

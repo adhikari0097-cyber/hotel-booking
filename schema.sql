@@ -153,12 +153,26 @@ create table if not exists public.booking_runtime_settings (
   id boolean primary key default true,
   check_in_time text not null default '14:00',
   check_out_time text not null default '11:00',
+  pdf_fields jsonb not null default '["trackCode","customer","phone","bookedBy","stay","totalPax","rooms","totalPrice","customPrice","lifecycle","advance","advanceAmount","balance","checkInAt","checkOutAt","exportedAt","services","servicePrices","customPriceEntries","roomDetails"]'::jsonb,
+  whatsapp_fields jsonb not null default '["trackCode","customer","phone","bookedBy","stay","totalPax","rooms","totalPrice","customPrice","lifecycle","advance","advanceAmount","balance","checkInAt","checkOutAt","exportedAt","services","servicePrices","customPriceEntries","roomDetails"]'::jsonb,
   updated_at timestamptz not null default now(),
   constraint booking_runtime_settings_singleton check (id = true)
 );
 
-insert into public.booking_runtime_settings (id, check_in_time, check_out_time)
-values (true, '14:00', '11:00')
+alter table public.booking_runtime_settings
+  add column if not exists pdf_fields jsonb not null default '["trackCode","customer","phone","bookedBy","stay","totalPax","rooms","totalPrice","customPrice","lifecycle","advance","advanceAmount","balance","checkInAt","checkOutAt","exportedAt","services","servicePrices","customPriceEntries","roomDetails"]'::jsonb;
+
+alter table public.booking_runtime_settings
+  add column if not exists whatsapp_fields jsonb not null default '["trackCode","customer","phone","bookedBy","stay","totalPax","rooms","totalPrice","customPrice","lifecycle","advance","advanceAmount","balance","checkInAt","checkOutAt","exportedAt","services","servicePrices","customPriceEntries","roomDetails"]'::jsonb;
+
+insert into public.booking_runtime_settings (id, check_in_time, check_out_time, pdf_fields, whatsapp_fields)
+values (
+  true,
+  '14:00',
+  '11:00',
+  '["trackCode","customer","phone","bookedBy","stay","totalPax","rooms","totalPrice","customPrice","lifecycle","advance","advanceAmount","balance","checkInAt","checkOutAt","exportedAt","services","servicePrices","customPriceEntries","roomDetails"]'::jsonb,
+  '["trackCode","customer","phone","bookedBy","stay","totalPax","rooms","totalPrice","customPrice","lifecycle","advance","advanceAmount","balance","checkInAt","checkOutAt","exportedAt","services","servicePrices","customPriceEntries","roomDetails"]'::jsonb
+)
 on conflict (id) do nothing;
 
 create table if not exists public.booking_change_requests (
