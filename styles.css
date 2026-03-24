@@ -328,6 +328,11 @@ h4 {
   border-color: #dcc48b;
 }
 
+.calendar-day.pending {
+  background: linear-gradient(180deg, #f5efff 0%, #e6d8fb 100%);
+  border-color: #ba98ea;
+}
+
 .calendar-day-number {
   display: block;
   font-size: 22px;
@@ -1206,6 +1211,13 @@ h4 {
 
 .booking-group-summary {
   margin-top: 8px;
+}
+
+.booking-status-note {
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b46c1;
 }
 
 .booking-group-summary-grid {

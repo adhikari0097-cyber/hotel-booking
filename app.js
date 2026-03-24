@@ -3210,7 +3210,7 @@ async function loadAnalytics() {
     groups.forEach((group) => {
       const lifecycleStatus = getGroupLifecycleStatus(group);
       statusTotals.set(getLifecycleStatusLabel(lifecycleStatus), (statusTotals.get(getLifecycleStatusLabel(lifecycleStatus)) || 0) + 1);
-      const sourceLabel = group.statuses.size === 1 ? Array.from(group.statuses)[0] : "Mixed";
+      const sourceLabel = group.statuses.size === 1 ? getBookingStatusLabel(Array.from(group.statuses)[0]) : "Mixed";
       sourceTotals.set(sourceLabel, (sourceTotals.get(sourceLabel) || 0) + 1);
       const title = splitGuestTitleAndName(group.guestName || "").title || "No Title";
       titleTotals.set(title, (titleTotals.get(title) || 0) + 1);
@@ -3557,9 +3557,40 @@ function getStatusTrackPrefix(status) {
       return "VIS";
     case "CAMPAIGN":
       return "CAM";
+    case "CALL":
+      return "CAL";
+    case "PENDING":
+      return "PND";
     default:
       return "BK";
   }
+}
+
+function getBookingStatusLabel(status) {
+  switch (String(status || "").trim().toLowerCase()) {
+    case "campaign":
+      return "Campaign Booking";
+    case "visit":
+      return "Visit Booking";
+    case "bkc":
+      return "BKC Booking";
+    case "call":
+      return "Call Booking";
+    case "pending":
+      return "Pending Booking";
+    case "cancelled":
+      return "Cancelled";
+    case "removed booking":
+      return "Removed Booking";
+    default:
+      return String(status || "Booking");
+  }
+}
+
+function getBookingStatusNote(status) {
+  return String(status || "").trim().toLowerCase() === "pending"
+    ? "Waiting for confirmation"
+    : "";
 }
 
 async function getNextTrackCode(status) {
@@ -4163,6 +4194,8 @@ function renderBookingGroupOverview(group, groupStatus) {
   const customPriceTotal = getGroupCustomPriceTotal(group.bookings);
   const balanceAmount = getBookingBalanceAmount(group);
   const lifecycleLabel = getLifecycleStatusLabel(getGroupLifecycleStatus(group));
+  const statusLabel = getBookingStatusLabel(groupStatus);
+  const statusNote = getBookingStatusNote(groupStatus);
   const checkedInAt = group.bookings[0]?.checkedInAt ? new Date(group.bookings[0].checkedInAt).toLocaleString("en-GB") : "-";
   const checkedOutAt = group.bookings[0]?.checkedOutAt ? new Date(group.bookings[0].checkedOutAt).toLocaleString("en-GB") : "-";
   return `
@@ -4201,8 +4234,9 @@ function renderBookingGroupOverview(group, groupStatus) {
           </div>
           <div class="booking-overview-row">
             <span>Status</span>
-            <strong>${groupStatus}</strong>
+            <strong>${statusLabel}</strong>
           </div>
+          ${statusNote ? `<div class="booking-overview-row booking-overview-row-note"><span>Status Note</span><strong>${statusNote}</strong></div>` : ""}
           <div class="booking-overview-row">
             <span>Lifecycle</span>
             <strong>${lifecycleLabel}</strong>
@@ -4884,6 +4918,9 @@ function openBookingDetailsModal(groupKey) {
     `
     : "";
 
+  const statusLabel = getBookingStatusLabel(group.statuses.size === 1 ? Array.from(group.statuses)[0] : "Mixed");
+  const statusNote = group.statuses.size === 1 ? getBookingStatusNote(Array.from(group.statuses)[0]) : "";
+
   bookingDetailsBody.innerHTML = `
     <div class="booking-meta booking-meta-compact booking-details-summary">
       <div><strong>Track Code:</strong> ${group.trackCode || "-"}</div>
@@ -4892,7 +4929,8 @@ function openBookingDetailsModal(groupKey) {
       <div><strong>Rooms:</strong> ${group.bookings.length}</div>
       <div><strong>Guests:</strong> ${group.totalGuests}</div>
       <div><strong>Dates:</strong> ${group.checkIn} -> ${group.checkOut}</div>
-      <div><strong>Status:</strong> ${group.statuses.size === 1 ? Array.from(group.statuses)[0] : "Mixed"}</div>
+      <div><strong>Status:</strong> ${statusLabel}</div>
+      ${statusNote ? `<div><strong>Status Note:</strong> ${statusNote}</div>` : ""}
       <div><strong>Lifecycle:</strong> ${lifecycleLabel}</div>
       <div><strong>Checked In At:</strong> ${group.bookings[0]?.checkedInAt ? new Date(group.bookings[0].checkedInAt).toLocaleString("en-GB") : "-"}</div>
       <div><strong>Checked Out At:</strong> ${group.bookings[0]?.checkedOutAt ? new Date(group.bookings[0].checkedOutAt).toLocaleString("en-GB") : "-"}</div>
@@ -5121,6 +5159,8 @@ function renderBookings(bookings) {
     const card = document.createElement("div");
     card.className = "booking-card booking-group-card";
     const groupStatus = group.statuses.size === 1 ? Array.from(group.statuses)[0] : "Mixed";
+    const groupStatusLabel = getBookingStatusLabel(groupStatus);
+    const groupStatusNote = getBookingStatusNote(groupStatus);
     const lifecycleStatus = getGroupLifecycleStatus(group);
     const lifecycleLabel = getLifecycleStatusLabel(lifecycleStatus);
     const directEditAllowed = canEditBookingGroupDirect(group);
@@ -5196,11 +5236,13 @@ function renderBookings(bookings) {
       <div class="booking-group-head booking-group-head-dense">
         <div>
           <h4>${group.trackCode || "-"} · ${group.guestName || "Guest"}</h4>
+          ${groupStatusNote ? `<div class="booking-status-note">${groupStatusNote}</div>` : ""}
           <div class="booking-group-summary">${renderBookingHeaderSummary(group)}</div>
         </div>
         <div class="booking-group-statuses booking-group-controls booking-group-controls-stack">
           ${requestButton}
           ${requestActions}
+          <span class="booking-tag ${String(groupStatus || "").toLowerCase() === "pending" ? "tag-pending" : "tag-success"}">${groupStatusLabel}</span>
           <span class="booking-tag ${lifecycleStatus === "checked_out" ? "tag-rejected" : lifecycleStatus === "checked_in" ? "tag-success" : lifecycleStatus === "hold" ? "tag-pending" : "tag-success"}">${lifecycleLabel}</span>
           <div class="booking-quick-actions">
             ${canManageBookings() ? `
@@ -6573,7 +6615,7 @@ function getPlannerPendingLabel(booking, pendingCollections) {
     }
   }
   if (String(booking.status || "").toLowerCase() === "pending") {
-    return "Pending: Booking";
+    return "Waiting for confirmation";
   }
   return "";
 }
@@ -6864,6 +6906,7 @@ function renderMonthCalendar(bookings, requests = Array.from(state.requestMap.va
         kitchenRooms: new Set(),
         driverRooms: new Set(),
         pending: 0,
+        hasPendingBooking: false,
       };
       next.bookings += 1;
       const roomKey = `${normalizeRoomGroup(booking.roomType)}-${booking.roomNumber}`;
@@ -6872,6 +6915,10 @@ function renderMonthCalendar(bookings, requests = Array.from(state.requestMap.va
       if (roomGroup === "normal") next.normalRooms.add(roomKey);
       if (roomGroup === "kitchen") next.kitchenRooms.add(roomKey);
       if (roomGroup === "driver") next.driverRooms.add(roomKey);
+      if (String(booking.status || "").toLowerCase() === "pending") {
+        next.pending += 1;
+        next.hasPendingBooking = true;
+      }
       dayMap.set(key, next);
       cursor = addDays(cursor, 1);
     }
@@ -6889,6 +6936,7 @@ function renderMonthCalendar(bookings, requests = Array.from(state.requestMap.va
         kitchenRooms: new Set(),
         driverRooms: new Set(),
         pending: 0,
+        hasPendingBooking: false,
       };
       next.pending += 1;
       dayMap.set(key, next);
@@ -6909,9 +6957,11 @@ function renderMonthCalendar(bookings, requests = Array.from(state.requestMap.va
     if (key === selectedDateKey) button.classList.add("selected");
     if (key === todayKey) button.classList.add("today");
     if (meta && meta.rooms.size > 0) button.classList.add("booked");
+    if (meta?.hasPendingBooking || meta?.pending) button.classList.add("pending");
 
     const lines = [];
     if (meta?.pending) lines.push(`<span class="calendar-stat calendar-stat-pending">${meta.pending} Pending</span>`);
+    if (meta?.hasPendingBooking) lines.push(`<span class="calendar-stat calendar-stat-pending">Waiting for confirmation</span>`);
     if (meta?.normalRooms?.size) lines.push(`<span class="calendar-stat calendar-stat-normal">${meta.normalRooms.size} Normal</span>`);
     if (meta?.kitchenRooms?.size) lines.push(`<span class="calendar-stat calendar-stat-kitchen">${meta.kitchenRooms.size} Kitchen</span>`);
     if (meta?.driverRooms?.size) lines.push(`<span class="calendar-stat calendar-stat-driver">${meta.driverRooms.size} Driver</span>`);
