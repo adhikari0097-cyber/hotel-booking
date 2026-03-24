@@ -222,13 +222,13 @@ function getPresetRangeDates(presetKey) {
 
   switch (presetKey) {
     case "this-month":
-      return { from: startOfMonth(today), to: today };
+      return { from: startOfMonth(today), to: endOfMonth(today) };
     case "last-month": {
       const base = new Date(currentYear, currentMonth - 1, 1, 12, 0, 0);
       return { from: startOfMonth(base), to: endOfMonth(base) };
     }
     case "this-year":
-      return { from: new Date(currentYear, 0, 1, 12, 0, 0), to: today };
+      return { from: new Date(currentYear, 0, 1, 12, 0, 0), to: new Date(currentYear, 11, 31, 12, 0, 0) };
     case "last-year":
       return { from: new Date(currentYear - 1, 0, 1, 12, 0, 0), to: new Date(currentYear - 1, 11, 31, 12, 0, 0) };
     default:
@@ -250,7 +250,7 @@ function ensureSelectOptionValue(select, value, label) {
 function applyPlannerPreset(presetKey) {
   if (!plannerStartDateInput || !plannerRangeDaysInput) return;
   const { from, to } = getPresetRangeDates(presetKey);
-  const days = Math.max(7, Math.min(60, getNightCount(formatDateKey(from), formatDateKey(addDays(to, 1)))));
+  const days = Math.max(7, getNightCount(formatDateKey(from), formatDateKey(addDays(to, 1))));
   plannerStartDateInput.value = toDateInputValue(from);
   ensureSelectOptionValue(plannerRangeDaysInput, days, `${days} Days`);
   loadReservationPlanner();
@@ -1230,24 +1230,39 @@ async function saveServiceCatalog() {
   const existingIds = new Set(rows.map((row) => row.id).filter(Boolean));
   const { data: existingRows, error: fetchError } = await state.supabase
     .from(CONFIG.SUPABASE_SERVICES_TABLE)
-    .select("id");
+    .select("id, service_name");
   if (fetchError) {
     throw new Error(fetchError.message || "Could not read current service catalog.");
   }
 
-  const upsertRows = rows.map((row) => ({
-    id: row.id || undefined,
-    service_name: row.name,
-    default_price: roundCurrency(row.defaultPrice),
-    is_active: row.isActive,
-  }));
+  const existingById = new Map((existingRows || []).map((row) => [row.id, row]));
+  const updateRows = rows.filter((row) => row.id && existingById.has(row.id));
+  const insertRows = rows.filter((row) => !row.id);
 
-  if (upsertRows.length) {
-    const { error: upsertError } = await state.supabase
+  for (const row of updateRows) {
+    const { error: updateError } = await state.supabase
       .from(CONFIG.SUPABASE_SERVICES_TABLE)
-      .upsert(upsertRows, { onConflict: "service_name" });
-    if (upsertError) {
-      throw new Error(upsertError.message || "Could not save service catalog.");
+      .update({
+        service_name: row.name,
+        default_price: roundCurrency(row.defaultPrice),
+        is_active: row.isActive,
+      })
+      .eq("id", row.id);
+    if (updateError) {
+      throw new Error(updateError.message || `Could not update service ${row.name}.`);
+    }
+  }
+
+  if (insertRows.length) {
+    const { error: insertError } = await state.supabase
+      .from(CONFIG.SUPABASE_SERVICES_TABLE)
+      .insert(insertRows.map((row) => ({
+        service_name: row.name,
+        default_price: roundCurrency(row.defaultPrice),
+        is_active: row.isActive,
+      })));
+    if (insertError) {
+      throw new Error(insertError.message || "Could not add new services.");
     }
   }
 
@@ -6637,11 +6652,49 @@ function bindPlannerBookingButtons() {
       openBookingDetailsModal(button.dataset.plannerGroup);
     });
   });
+  reservationPlannerBoard.querySelectorAll("[data-planner-empty-room]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        await openBookingFromPlannerCell(
+          button.dataset.plannerEmptyRoom,
+          button.dataset.plannerEmptyNumber,
+          button.dataset.plannerEmptyDate,
+        );
+      } catch (error) {
+        showToast(error.message || "Could not start a booking from the planner.", true);
+      }
+    });
+  });
+}
+
+async function openBookingFromPlannerCell(roomType, roomNumber, dateKey) {
+  if (!dateKey) return;
+  const normalizedRoomType = normalizeRoomGroup(roomType);
+  const numericRoomNumber = Number(roomNumber);
+  const checkInDate = parseDate(dateKey);
+  if (!checkInDate || !normalizedRoomType || !numericRoomNumber) return;
+
+  const checkOutDate = addDays(checkInDate, 1);
+  setScreen("booking");
+  setBookingDateRange(formatDateKey(checkInDate), formatDateKey(checkOutDate));
+  state.roomPlans.clear();
+  state.bookingServices.clear();
+  state.bookingCustomPayments = [];
+  if (bookingAdvancePaidInput) bookingAdvancePaidInput.checked = false;
+  if (bookingAdvanceAmountInput) bookingAdvanceAmountInput.value = "";
+  syncAdvanceAmountField();
+  const defaultNights = getNightCount(formatDateKey(checkInDate), formatDateKey(checkOutDate));
+  const plan = getRoomPlan(normalizedRoomType, numericRoomNumber, defaultNights);
+  plan.nights = defaultNights;
+  plan.extraPax = 0;
+  plan.pax = 1;
+  await refreshAvailability();
+  showToast(`${getRoomLabel(normalizedRoomType, numericRoomNumber)} selected for ${formatDateKey(checkInDate)}.`);
 }
 
 function renderReservationPlannerMobile(bookings, plannerRooms, startDate, days, pendingCollections) {
   const rangeStart = parseDate(startDate);
-  const safeDays = Math.max(7, Math.min(60, Number(days || 14)));
+  const safeDays = Math.max(7, Math.min(366, Number(days || 14)));
   const dateList = Array.from({ length: safeDays }, (_, index) => addDays(rangeStart, index));
   const roomIndexMap = new Map(plannerRooms.map((room, index) => [`${room.type}-${room.number}`, index]));
   const roomHeaders = plannerRooms.map((room, index) => `
@@ -6687,6 +6740,8 @@ function renderReservationPlannerMobile(bookings, plannerRooms, startDate, days,
 
   const cells = dateList.map((_, rowIndex) => plannerRooms.map((_, columnIndex) => {
     const marker = bookingCells.get(`${rowIndex}:${columnIndex}`);
+    const room = plannerRooms[columnIndex];
+    const date = dateList[rowIndex];
     return `
       <div class="reservation-planner-mobile-cell" style="grid-column:${columnIndex + 2}; grid-row:${rowIndex + 2};">
         ${
@@ -6701,7 +6756,17 @@ function renderReservationPlannerMobile(bookings, plannerRooms, startDate, days,
                 style="--planner-bg:${marker.colors.bg}; --planner-border:${marker.colors.border}; --planner-text:${marker.colors.text};"
               ></button>
             `
-            : ""
+            : `
+              <button
+                class="reservation-planner-mobile-empty-trigger"
+                type="button"
+                data-planner-empty-room="${escapeHtml(room.type)}"
+                data-planner-empty-number="${escapeHtml(String(room.number))}"
+                data-planner-empty-date="${escapeHtml(formatDateKey(date))}"
+                aria-label="Add booking on ${escapeHtml(getPlannerMobileRoomLabel(room))} for ${escapeHtml(formatDateKey(date))}"
+                title="Add booking"
+              ></button>
+            `
         }
       </div>
     `;
@@ -6733,7 +6798,7 @@ function renderReservationPlanner(bookings, startDate, days) {
 
   const plannerRooms = getPlannerRooms(bookings);
   const rangeStart = parseDate(startDate);
-  const safeDays = Math.max(7, Math.min(60, Number(days || 14)));
+  const safeDays = Math.max(7, Math.min(366, Number(days || 14)));
   const pendingCollections = getLatestPendingRequestCollections();
   const dateList = Array.from({ length: safeDays }, (_, index) => addDays(rangeStart, index));
   const rangeEnd = addDays(rangeStart, safeDays);
@@ -6778,8 +6843,18 @@ function renderReservationPlanner(bookings, startDate, days) {
     </div>
   `).join("");
 
-  const cells = dateList.map((_, rowIndex) => plannerRooms.map((_, columnIndex) => `
-    <div class="reservation-planner-cell" style="grid-column:${columnIndex + 2}; grid-row:${rowIndex + 2};"></div>
+  const cells = dateList.map((date, rowIndex) => plannerRooms.map((room, columnIndex) => `
+    <div class="reservation-planner-cell" style="grid-column:${columnIndex + 2}; grid-row:${rowIndex + 2};">
+      <button
+        class="reservation-planner-empty-trigger"
+        type="button"
+        data-planner-empty-room="${escapeHtml(room.type)}"
+        data-planner-empty-number="${escapeHtml(String(room.number))}"
+        data-planner-empty-date="${escapeHtml(formatDateKey(date))}"
+        aria-label="Add booking on ${escapeHtml(room.fullLabel)} for ${escapeHtml(formatDateKey(date))}"
+        title="Add booking"
+      ></button>
+    </div>
   `).join("")).join("");
 
   const bars = bookings.map((booking) => {
@@ -6841,7 +6916,7 @@ function renderReservationPlanner(bookings, startDate, days) {
 async function loadReservationPlanner() {
   if (!state.currentProfile?.approved || !plannerStartDateInput || !plannerRangeDaysInput) return;
   const startDate = plannerStartDateInput.value;
-  const rangeDays = Math.max(7, Math.min(60, Number(plannerRangeDaysInput.value || 14)));
+  const rangeDays = Math.max(7, Math.min(366, Number(plannerRangeDaysInput.value || 14)));
 
   if (!startDate) {
     reservationPlannerEmpty.textContent = "Select a start date to load the booking planner.";

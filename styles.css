@@ -2150,9 +2150,28 @@ h4 {
 }
 
 .reservation-planner-cell {
+  position: relative;
   background: #fffdf9;
   border-right: 1px solid #f0e7da;
   border-bottom: 1px solid #f0e7da;
+}
+
+.reservation-planner-empty-trigger,
+.reservation-planner-mobile-empty-trigger {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.18s ease, background 0.18s ease;
+}
+
+.reservation-planner-cell:hover .reservation-planner-empty-trigger,
+.reservation-planner-empty-trigger:focus-visible {
+  opacity: 1;
+  background: rgba(11, 61, 46, 0.05);
+  outline: 0;
 }
 
 .reservation-planner-booking {
@@ -2303,6 +2322,10 @@ h4 {
   min-height: 0;
   margin: 0;
   cursor: pointer;
+}
+
+.reservation-planner-mobile-empty-trigger {
+  opacity: 0.16;
 }
 
 .reservation-planner-mobile-marker-pending {
