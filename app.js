@@ -6,6 +6,7 @@ const CONFIG = {
   SUPABASE_REQUESTS_TABLE: "booking_change_requests",
   SUPABASE_PRICING_TABLE: "room_pricing",
   SUPABASE_ROOMS_TABLE: "room_inventory",
+  SUPABASE_RUNTIME_SETTINGS_TABLE: "booking_runtime_settings",
   GOOGLE_SHEETS_BACKUP_URL: "/.netlify/functions/proxy",
 };
 
@@ -77,6 +78,10 @@ const state = {
   bookingCustomPayments: [],
   roomInventory: [],
   roomInventorySchemaReady: null,
+  runtimeSettings: {
+    checkInTime: "14:00",
+    checkOutTime: "11:00",
+  },
   bookingRangePicker: null,
 };
 
@@ -279,6 +284,8 @@ const plannerSummaryNights = qs("#plannerSummaryNights");
 const plannerSummaryRooms = qs("#plannerSummaryRooms");
 const reservationPlannerBoard = qs("#reservation-planner-board");
 const reservationPlannerEmpty = qs("#reservation-planner-empty");
+const holdBookingCards = qs("#hold-booking-cards");
+const holdBookingEmpty = qs("#hold-booking-empty");
 const roomStatusList = qs("#room-status-list");
 const statTotal = qs("#stat-total");
 const statOccupied = qs("#stat-occupied");
@@ -325,6 +332,8 @@ const roomInventoryList = qs("#room-inventory-list");
 const pricingList = qs("#pricing-list");
 const refreshPricingBtn = qs("#refresh-pricing");
 const savePricingBtn = qs("#save-pricing");
+const runtimeCheckInTimeInput = qs("#runtime-checkin-time");
+const runtimeCheckOutTimeInput = qs("#runtime-checkout-time");
 const requestsList = qs("#requests-list");
 const requestsEmpty = qs("#requests-empty");
 const refreshRequestsBtn = qs("#refresh-requests");
@@ -391,6 +400,7 @@ const navButtons = {
   booking: qs("#tab-booking"),
   view: qs("#tab-view"),
   planner: qs("#tab-planner"),
+  hold: qs("#tab-hold"),
   requests: qs("#tab-requests"),
   accounts: qs("#tab-accounts"),
   pricing: qs("#tab-pricing"),
@@ -402,6 +412,7 @@ const screens = {
   booking: qs("#screen-booking"),
   view: qs("#screen-view"),
   planner: qs("#screen-planner"),
+  hold: qs("#screen-hold"),
   requests: qs("#screen-requests"),
   accounts: qs("#screen-accounts"),
   pricing: qs("#screen-pricing"),
@@ -626,6 +637,39 @@ function getCustomPriceListMarkup(payments = []) {
         <div class="payment-history-item">
           <strong>${index + 1}. ${formatMoney(payment.amount || 0)}</strong>
           <span>${escapeHtml(payment.note || "No note")}</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function getGroupServices(bookings = []) {
+  return Array.from(new Set((bookings || []).flatMap((booking) => parseBookingNotes(booking.notes).services)));
+}
+
+function getServicePricingRows(bookings = []) {
+  const services = getGroupServices(bookings);
+  const entries = getGroupCustomPriceEntries(bookings);
+  return services.map((service) => {
+    const match = entries.find((item) => String(item.note || "").trim().toLowerCase() === service.toLowerCase());
+    return {
+      service,
+      amount: match ? roundCurrency(Number(match.amount || 0)) : 0,
+    };
+  });
+}
+
+function getServicePricingMarkup(bookings = []) {
+  const rows = getServicePricingRows(bookings);
+  if (!rows.length) {
+    return '<p class="inline-note">No services added.</p>';
+  }
+  return `
+    <div class="payment-history-list">
+      ${rows.map((row) => `
+        <div class="payment-history-item">
+          <strong>${escapeHtml(row.service)}</strong>
+          <span>${row.amount > 0 ? escapeHtml(formatMoney(row.amount)) : "-"}</span>
         </div>
       `).join("")}
     </div>
@@ -933,6 +977,51 @@ async function loadRoomPricing() {
   renderPricingSummary();
 }
 
+async function loadRuntimeSettings() {
+  ensureSupabase();
+  try {
+    const { data, error } = await state.supabase
+      .from(CONFIG.SUPABASE_RUNTIME_SETTINGS_TABLE)
+      .select("*")
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    state.runtimeSettings = {
+      checkInTime: data?.check_in_time || "14:00",
+      checkOutTime: data?.check_out_time || "11:00",
+    };
+  } catch (error) {
+    state.runtimeSettings = {
+      checkInTime: "14:00",
+      checkOutTime: "11:00",
+    };
+    if (canManagePricing()) {
+      showToast("Booking runtime settings table is not ready. Run the updated Supabase schema.sql.", true);
+    }
+  }
+  if (runtimeCheckInTimeInput) runtimeCheckInTimeInput.value = getRuntimeCheckInTime();
+  if (runtimeCheckOutTimeInput) runtimeCheckOutTimeInput.value = getRuntimeCheckOutTime();
+}
+
+async function saveRuntimeSettings() {
+  if (!canManagePricing()) return;
+  const row = {
+    id: true,
+    check_in_time: runtimeCheckInTimeInput?.value || "14:00",
+    check_out_time: runtimeCheckOutTimeInput?.value || "11:00",
+  };
+  const { error } = await state.supabase
+    .from(CONFIG.SUPABASE_RUNTIME_SETTINGS_TABLE)
+    .upsert(row, { onConflict: "id" });
+  if (error) {
+    throw new Error(error.message || "Could not save booking runtime settings.");
+  }
+  state.runtimeSettings = {
+    checkInTime: row.check_in_time,
+    checkOutTime: row.check_out_time,
+  };
+}
+
 async function roomHasSavedBookings(roomType, roomNumber) {
   const { data, error } = await state.supabase
     .from(CONFIG.SUPABASE_TABLE)
@@ -1115,6 +1204,8 @@ function renderRequestOfferPreview() {
 
 function renderPricingScreen() {
   if (!pricingList || !roomInventoryList) return;
+  if (runtimeCheckInTimeInput) runtimeCheckInTimeInput.value = getRuntimeCheckInTime();
+  if (runtimeCheckOutTimeInput) runtimeCheckOutTimeInput.value = getRuntimeCheckOutTime();
   if (!canManagePricing()) {
     setHTML(roomInventoryList, "");
     setHTML(pricingList, `<p class="inline-note">You do not have room pricing access yet.</p>`);
@@ -1481,8 +1572,17 @@ async function toggleGroupServiceDirect(groupKey, serviceName) {
   if (!group?.bookings?.length) throw new Error("Booking group not found.");
   const parsed = parseBookingNotes(group.bookings[0].notes);
   const next = new Set(parsed.services);
-  if (next.has(serviceName)) next.delete(serviceName);
-  else next.add(serviceName);
+  if (getGroupLifecycleStatus(group) === "checked_in" && !canManageBookings()) {
+    if (next.has(serviceName)) {
+      showToast("Checked-in bookings can add new services, but existing services cannot be removed.", true);
+      return;
+    }
+    next.add(serviceName);
+  } else if (next.has(serviceName)) {
+    next.delete(serviceName);
+  } else {
+    next.add(serviceName);
+  }
   const nextServices = Array.from(next);
 
   for (const booking of group.bookings) {
@@ -1529,6 +1629,95 @@ function getBookingBalanceAmount(group) {
   const total = roundCurrency(Number(group?.totalPrice || 0));
   const advanceAmount = roundCurrency(Number(getAdvancePaymentInfo(group?.bookings || []).amount || 0));
   return roundCurrency(Math.max(0, total - advanceAmount));
+}
+
+function getRuntimeCheckInTime() {
+  return String(state.runtimeSettings?.checkInTime || "14:00");
+}
+
+function getRuntimeCheckOutTime() {
+  return String(state.runtimeSettings?.checkOutTime || "11:00");
+}
+
+function getDateTimeFromBooking(dateKey, timeValue) {
+  if (!dateKey) return null;
+  const [hours, minutes] = String(timeValue || "00:00").split(":").map((value) => Number(value || 0));
+  const date = parseDate(dateKey);
+  if (!date) return null;
+  date.setHours(hours || 0, minutes || 0, 0, 0);
+  return date;
+}
+
+function getBookingLifecycleStatus(booking) {
+  return String(booking?.lifecycleStatus || "booked").toLowerCase();
+}
+
+function isBookingCheckedIn(booking) {
+  return getBookingLifecycleStatus(booking) === "checked_in";
+}
+
+function isBookingCheckedOut(booking) {
+  return getBookingLifecycleStatus(booking) === "checked_out";
+}
+
+function isBookingHold(booking) {
+  return getBookingLifecycleStatus(booking) === "hold";
+}
+
+function getLifecycleStatusLabel(value) {
+  switch (String(value || "").toLowerCase()) {
+    case "checked_in":
+      return "Checked In";
+    case "checked_out":
+      return "Checked Out";
+    case "hold":
+      return "Hold";
+    default:
+      return "Booked";
+  }
+}
+
+function getGroupLifecycleStatus(group) {
+  const statuses = Array.from(new Set((group?.bookings || []).map((booking) => getBookingLifecycleStatus(booking))));
+  if (!statuses.length) return "booked";
+  if (statuses.length === 1) return statuses[0];
+  if (statuses.includes("checked_out")) return "checked_out";
+  if (statuses.includes("checked_in")) return "checked_in";
+  if (statuses.includes("hold")) return "hold";
+  return statuses[0];
+}
+
+function hasCheckInWindowStarted(bookingOrGroup) {
+  const booking = bookingOrGroup?.bookings?.[0] || bookingOrGroup;
+  if (!booking?.checkIn) return false;
+  const checkInMoment = getDateTimeFromBooking(booking.checkIn, getRuntimeCheckInTime());
+  if (!checkInMoment) return false;
+  return new Date() >= checkInMoment;
+}
+
+function hasCheckOutWindowStarted(bookingOrGroup) {
+  const booking = bookingOrGroup?.bookings?.[0] || bookingOrGroup;
+  if (!booking?.checkOut) return false;
+  const checkOutMoment = getDateTimeFromBooking(booking.checkOut, getRuntimeCheckOutTime());
+  if (!checkOutMoment) return false;
+  return new Date() >= checkOutMoment;
+}
+
+function canEditBookingGroupDirect(group) {
+  if (canManageBookings()) return true;
+  const lifecycle = getGroupLifecycleStatus(group);
+  if (lifecycle === "checked_in" || lifecycle === "checked_out" || lifecycle === "hold") return false;
+  if (hasCheckInWindowStarted(group)) return false;
+  return true;
+}
+
+function getBookingStayedHours(group) {
+  const sample = group?.bookings?.find((booking) => booking.checkedInAt && booking.checkedOutAt) || group?.bookings?.[0];
+  if (!sample?.checkedInAt || !sample?.checkedOutAt) return "-";
+  const start = new Date(sample.checkedInAt);
+  const end = new Date(sample.checkedOutAt);
+  const diffHours = Math.max(0, (end - start) / 3600000);
+  return `${diffHours.toFixed(1)} h`;
 }
 
 async function updateGroupAdvancePayment(groupKey, advanceAmount) {
@@ -2251,7 +2440,9 @@ function getRoomTypeDisplay(type) {
 }
 
 function isBlockingBooking(booking) {
-  return String(booking.status || "").toLowerCase() !== "cancelled";
+  const status = String(booking.status || "").toLowerCase();
+  const lifecycle = getBookingLifecycleStatus(booking);
+  return status !== "cancelled" && lifecycle !== "hold" && lifecycle !== "checked_out";
 }
 
 function mapBooking(row) {
@@ -2281,6 +2472,10 @@ function mapBooking(row) {
     advanceAmount: Number(row.advance_amount || 0),
     customPayments: normalizeCustomPayments(row.custom_payments),
     roomTotal: Number(row.room_total || 0),
+    lifecycleStatus: row.lifecycle_status || "booked",
+    checkedInAt: row.checked_in_at || "",
+    checkedOutAt: row.checked_out_at || "",
+    closeDetails: row.close_details || {},
     createdAt: row.created_at,
   };
 }
@@ -2297,7 +2492,11 @@ function shouldRetryWithoutPricingColumns(message) {
     || text.includes("offer_percentage")
     || text.includes("advance_paid")
     || text.includes("advance_amount")
-    || text.includes("custom_payments");
+    || text.includes("custom_payments")
+    || text.includes("lifecycle_status")
+    || text.includes("checked_in_at")
+    || text.includes("checked_out_at")
+    || text.includes("close_details");
 }
 
 function shouldRetryWithoutRequestPricingColumns(message) {
@@ -2329,6 +2528,10 @@ function applyPricingToBookingRow(row, values) {
   row.advance_amount = roundCurrency(Number(values.advanceAmount || 0));
   row.custom_payments = customPayments;
   row.room_total = applyOfferPercentage(pricing.roomTotal, row.offer_percentage);
+  row.lifecycle_status = values.lifecycleStatus || row.lifecycle_status || "booked";
+  row.checked_in_at = values.checkedInAt ?? row.checked_in_at ?? null;
+  row.checked_out_at = values.checkedOutAt ?? row.checked_out_at ?? null;
+  row.close_details = values.closeDetails ?? row.close_details ?? {};
 }
 
 function stripPricingColumns(row) {
@@ -2343,6 +2546,10 @@ function stripPricingColumns(row) {
   delete row.advance_amount;
   delete row.custom_payments;
   delete row.room_total;
+  delete row.lifecycle_status;
+  delete row.checked_in_at;
+  delete row.checked_out_at;
+  delete row.close_details;
 }
 
 function ensureSupabase() {
@@ -2399,17 +2606,22 @@ function updateHeaderProfile() {
 
 function updateNavVisibility() {
   const showPlanner = Boolean(state.currentProfile?.approved);
+  const showHold = Boolean(state.currentProfile?.approved);
   const showAccounts = canManageAccounts();
   const showRequests = Boolean(state.currentProfile?.approved);
   const showPricing = canManagePricing();
   navButtons.planner.classList.toggle("hidden", !showPlanner);
+  navButtons.hold.classList.toggle("hidden", !showHold);
   navButtons.requests.classList.toggle("hidden", !showRequests);
   navButtons.accounts.classList.toggle("hidden", !showAccounts);
   navButtons.pricing.classList.toggle("hidden", !showPricing);
-  const visibleTabs = 2 + Number(showPlanner) + Number(showRequests) + Number(showAccounts) + Number(showPricing);
+  const visibleTabs = 2 + Number(showPlanner) + Number(showHold) + Number(showRequests) + Number(showAccounts) + Number(showPricing);
   const columns = `repeat(${visibleTabs}, 1fr)`;
   qs(".bottom-nav").style.gridTemplateColumns = columns;
   if (!showPlanner && screens.planner.classList.contains("screen-active")) {
+    setScreen("booking");
+  }
+  if (!showHold && screens.hold.classList.contains("screen-active")) {
     setScreen("booking");
   }
   if (!showRequests && screens.requests.classList.contains("screen-active")) {
@@ -2431,6 +2643,9 @@ function setScreen(target) {
   navButtons[target].classList.add("nav-active");
   if (target === "planner") {
     loadReservationPlanner();
+  }
+  if (target === "hold") {
+    loadHoldBookings();
   }
 }
 
@@ -2510,6 +2725,7 @@ async function applySession(session) {
   updateOnlineStatus();
   await loadRoomInventory();
   await loadRoomPricing();
+  await loadRuntimeSettings();
   await setupRealtime();
   await refreshLiveViews();
   await loadRequests();
@@ -2738,6 +2954,10 @@ async function insertBooking(payload) {
       booking_status: payload.status,
       advance_paid: Boolean(payload.advancePaid),
       advance_amount: roundCurrency(Number(payload.advanceAmount || 0)),
+      lifecycle_status: payload.lifecycleStatus || "booked",
+      checked_in_at: payload.checkedInAt || null,
+      checked_out_at: payload.checkedOutAt || null,
+      close_details: payload.closeDetails || {},
     };
     applyPricingToBookingRow(row, payload);
 
@@ -3279,6 +3499,9 @@ function renderBookingGroupOverview(group, groupStatus) {
   const advanceInfo = getAdvancePaymentInfo(group.bookings);
   const customPriceTotal = getGroupCustomPriceTotal(group.bookings);
   const balanceAmount = getBookingBalanceAmount(group);
+  const lifecycleLabel = getLifecycleStatusLabel(getGroupLifecycleStatus(group));
+  const checkedInAt = group.bookings[0]?.checkedInAt ? new Date(group.bookings[0].checkedInAt).toLocaleString("en-GB") : "-";
+  const checkedOutAt = group.bookings[0]?.checkedOutAt ? new Date(group.bookings[0].checkedOutAt).toLocaleString("en-GB") : "-";
   return `
     <div class="booking-group-overview">
       <section class="booking-overview-panel booking-overview-panel-reservation">
@@ -3318,8 +3541,20 @@ function renderBookingGroupOverview(group, groupStatus) {
             <strong>${groupStatus}</strong>
           </div>
           <div class="booking-overview-row">
+            <span>Lifecycle</span>
+            <strong>${lifecycleLabel}</strong>
+          </div>
+          <div class="booking-overview-row">
             <span>Rooms / Pax</span>
             <strong>${group.bookings.length} room(s) · ${group.totalGuests} pax</strong>
+          </div>
+          <div class="booking-overview-row">
+            <span>Check In At</span>
+            <strong>${checkedInAt}</strong>
+          </div>
+          <div class="booking-overview-row">
+            <span>Check Out At</span>
+            <strong>${checkedOutAt}</strong>
           </div>
         </div>
       </section>
@@ -3367,6 +3602,10 @@ function renderBookingHeaderSummary(group) {
         <span>Total Pax</span>
         <strong>${group.totalGuests}</strong>
       </div>
+      <div class="booking-summary-chip">
+        <span>Lifecycle</span>
+        <strong>${getLifecycleStatusLabel(getGroupLifecycleStatus(group))}</strong>
+      </div>
       <div class="booking-summary-chip booking-summary-chip-strong">
         <span>Balance</span>
         <strong>${formatMoney(getBookingBalanceAmount(group))}</strong>
@@ -3400,7 +3639,9 @@ function buildBookingPdfMarkup(group) {
   const customPriceItems = getGroupCustomPriceEntries(group.bookings);
   const customPriceTotal = getGroupCustomPriceTotal(group.bookings);
   const balanceAmount = getBookingBalanceAmount(group);
-  const allServices = Array.from(new Set(group.bookings.flatMap((booking) => parseBookingNotes(booking.notes).services)));
+  const allServices = getGroupServices(group.bookings);
+  const servicePricingRows = getServicePricingRows(group.bookings);
+  const lifecycleLabel = getLifecycleStatusLabel(getGroupLifecycleStatus(group));
   const roomCards = group.bookings.map((booking) => {
     const noteMeta = parseBookingNotes(booking.notes);
     const details = [
@@ -3491,9 +3732,12 @@ function buildBookingPdfMarkup(group) {
               <div><strong>Rooms</strong><span>${escapeHtml(String(group.bookings.length || 0))}</span></div>
               <div><strong>Total Price</strong><span>${escapeHtml(formatMoney(group.totalPrice || 0))}</span></div>
               <div><strong>Custom Price</strong><span>${escapeHtml(formatMoney(customPriceTotal))}</span></div>
+              <div><strong>Lifecycle</strong><span>${escapeHtml(lifecycleLabel)}</span></div>
               <div><strong>Advance</strong><span>${escapeHtml(advanceInfo.label)}</span></div>
               <div><strong>Advance Amount</strong><span>${escapeHtml(formatMoney(advanceInfo.amount || 0))}</span></div>
               <div><strong>Balance</strong><span>${escapeHtml(formatMoney(balanceAmount))}</span></div>
+              <div><strong>Check In At</strong><span>${escapeHtml(group.bookings[0]?.checkedInAt ? new Date(group.bookings[0].checkedInAt).toLocaleString("en-GB") : "-")}</span></div>
+              <div><strong>Check Out At</strong><span>${escapeHtml(group.bookings[0]?.checkedOutAt ? new Date(group.bookings[0].checkedOutAt).toLocaleString("en-GB") : "-")}</span></div>
               <div><strong>Exported At</strong><span>${escapeHtml(new Date().toLocaleString("en-GB"))}</span></div>
             </div>
             ${customPriceItems.length ? `
@@ -3510,6 +3754,14 @@ function buildBookingPdfMarkup(group) {
                 <div class="pdf-chip-list">${allServices.map((service) => `<span class="pdf-chip">${escapeHtml(service)}</span>`).join("")}</div>
               </div>
             ` : ""}
+            <div class="pdf-services">
+              <strong>Service Prices</strong>
+              ${
+                servicePricingRows.length
+                  ? servicePricingRows.map((row) => `<div class="pdf-notes">${escapeHtml(row.service)}: ${escapeHtml(row.amount > 0 ? formatMoney(row.amount) : "-")}</div>`).join("")
+                  : `<div class="pdf-notes">No services added.</div>`
+              }
+            </div>
             <div class="pdf-room-list">${roomCards}</div>
           </div>
         </div>
@@ -3584,6 +3836,7 @@ function buildReservationWhatsappMessage(group) {
   const customPriceItems = getGroupCustomPriceEntries(group.bookings);
   const customPriceTotal = getGroupCustomPriceTotal(group.bookings);
   const balanceAmount = getBookingBalanceAmount(group);
+  const servicePricingRows = getServicePricingRows(group.bookings);
   const roomLines = group.bookings.map((booking) => {
     const noteMeta = parseBookingNotes(booking.notes);
     const extraBits = [];
@@ -3609,10 +3862,16 @@ function buildReservationWhatsappMessage(group) {
     `Total Pax: ${group.totalGuests || 0}`,
     `Rooms: ${group.bookings.length || 0}`,
     `Total Price: ${formatMoney(group.totalPrice || 0)}`,
+    `Lifecycle: ${getLifecycleStatusLabel(getGroupLifecycleStatus(group))}`,
     `Custom Price: ${formatMoney(customPriceTotal)}`,
     `Advance Payment: ${advanceInfo.label}`,
     `Advance Amount: ${formatMoney(advanceInfo.amount || 0)}`,
     `Balance: ${formatMoney(balanceAmount)}`,
+    `Check In At: ${group.bookings[0]?.checkedInAt ? new Date(group.bookings[0].checkedInAt).toLocaleString("en-GB") : "-"}`,
+    `Check Out At: ${group.bookings[0]?.checkedOutAt ? new Date(group.bookings[0].checkedOutAt).toLocaleString("en-GB") : "-"}`,
+    ...(servicePricingRows.length
+      ? ["", "Service Prices:", ...servicePricingRows.map((row) => `${row.service}: ${row.amount > 0 ? formatMoney(row.amount) : "-"}`)]
+      : []),
     ...(customPriceItems.length
       ? ["", "Custom Price Entries:", ...customPriceItems.map((payment, index) => `${index + 1}. ${formatMoney(payment.amount || 0)}${payment.note ? ` | ${payment.note}` : ""}`)]
       : []),
@@ -3633,6 +3892,185 @@ function openReservationWhatsapp(groupKey) {
   const message = encodeURIComponent(buildReservationWhatsappMessage(group));
   const url = `https://wa.me/${phone}?text=${message}`;
   window.open(url, "_blank", "noopener,noreferrer");
+}
+
+function openReservationEmail(groupKey) {
+  const group = getBookingGroupByKey(groupKey);
+  if (!group) {
+    showToast("Booking details not found.", true);
+    return;
+  }
+  const email = window.prompt("Enter customer email address.", "");
+  if (!email) return;
+  const subject = encodeURIComponent(`${group.trackCode || "Booking"} payment slip`);
+  const body = encodeURIComponent(buildReservationWhatsappMessage(group));
+  window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
+}
+
+function buildCloseDetailsPayload(group, serviceRows = []) {
+  return {
+    servicePrices: serviceRows.map((row) => ({
+      service: row.service,
+      amount: roundCurrency(Number(row.amount || 0)),
+    })),
+    closedAt: new Date().toISOString(),
+    stayedHours: getBookingStayedHours(group),
+  };
+}
+
+function mergeServicePricesIntoCustomPayments(bookings, serviceRows = []) {
+  const serviceNames = new Set(serviceRows.map((row) => row.service.toLowerCase()));
+  const preserved = getGroupCustomPriceEntries(bookings)
+    .filter((item) => !serviceNames.has(String(item.note || "").trim().toLowerCase()));
+  const pricedServices = serviceRows
+    .filter((row) => Number(row.amount || 0) > 0)
+    .map((row) => ({
+      amount: roundCurrency(Number(row.amount || 0)),
+      note: row.service,
+    }));
+  return [...pricedServices, ...preserved];
+}
+
+async function updateGroupLifecycle(groupKey, values = {}) {
+  const group = getBookingGroupByKey(groupKey);
+  if (!group?.bookings?.length) throw new Error("Booking group not found.");
+  for (const booking of group.bookings) {
+    await updateBooking(booking.id, {
+      guestName: booking.guestName,
+      phone: booking.phone,
+      checkIn: booking.checkIn,
+      checkOut: booking.checkOut,
+      guests: booking.guests,
+      roomType: booking.roomType,
+      roomTypeLabel: booking.roomTypeLabel,
+      roomNumber: booking.roomNumber,
+      notes: "notes" in values ? values.notes : booking.notes,
+      status: booking.status,
+      roomsNeeded: booking.roomsNeeded,
+      offerPercentage: booking.offerPercentage,
+      advancePaid: booking.advancePaid,
+      advanceAmount: booking.advanceAmount,
+      customPayments: "customPayments" in values ? values.customPayments : booking.customPayments,
+      lifecycleStatus: values.lifecycleStatus ?? booking.lifecycleStatus ?? "booked",
+      checkedInAt: "checkedInAt" in values ? values.checkedInAt : booking.checkedInAt,
+      checkedOutAt: "checkedOutAt" in values ? values.checkedOutAt : booking.checkedOutAt,
+      closeDetails: "closeDetails" in values ? values.closeDetails : booking.closeDetails,
+    });
+  }
+}
+
+async function performGroupCheckIn(groupKey) {
+  const group = getBookingGroupByKey(groupKey);
+  if (!group) throw new Error("Booking group not found.");
+  const confirmed = window.confirm(`Mark ${group.trackCode || "this booking"} as checked in?`);
+  if (!confirmed) return false;
+  await updateGroupLifecycle(groupKey, {
+    lifecycleStatus: "checked_in",
+    checkedInAt: new Date().toISOString(),
+    checkedOutAt: null,
+  });
+  return true;
+}
+
+async function performGroupHold(groupKey, note = "") {
+  const group = getBookingGroupByKey(groupKey);
+  if (!group) throw new Error("Booking group not found.");
+  const holdNote = note || "Customer did not arrive. Booking moved to hold.";
+  const mergedNotes = mergeNotesAndServices(holdNote, getGroupServices(group.bookings));
+  await updateGroupLifecycle(groupKey, {
+    lifecycleStatus: "hold",
+    notes: mergedNotes,
+  });
+}
+
+async function performGroupDeleteFlow(groupKey) {
+  const group = getBookingGroupByKey(groupKey);
+  if (!group) throw new Error("Booking group not found.");
+  const hasPayment = Number(getAdvancePaymentInfo(group.bookings).amount || 0) > 0 || Number(getGroupCustomPriceTotal(group.bookings) || 0) > 0;
+  if (canEditBookingGroupDirect(group) || canManageBookings()) {
+    if (!hasPayment) {
+      if (!window.confirm("Delete this booking?")) return false;
+      await updateGroupLifecycle(groupKey, { lifecycleStatus: "booked" });
+      for (const booking of group.bookings) {
+        await updateBooking(booking.id, { status: "Cancelled" });
+      }
+      return true;
+    }
+    const refundPayment = window.confirm("Payments found. Press OK to refund and delete. Press Cancel to move this booking to hold without refund.");
+    if (refundPayment) {
+      await updateGroupLifecycle(groupKey, { lifecycleStatus: "booked" });
+      for (const booking of group.bookings) {
+        await updateBooking(booking.id, { status: "Cancelled" });
+      }
+      return true;
+    }
+    await performGroupHold(groupKey, "Customer requested cancellation, but payment is not being refunded.");
+    return true;
+  }
+
+  if (!hasPayment) {
+    await insertChangeRequest({
+      bookingId: group.bookings[0].id,
+      reason: "delete_booking",
+      requestScope: "group",
+      requestNote: "Customer requested booking deletion after check-in lock window.",
+    });
+    return true;
+  }
+
+  const refundPayment = window.confirm("Payments found. Press OK to request refund and delete. Press Cancel to move booking to hold without refund.");
+  if (refundPayment) {
+    await insertChangeRequest({
+      bookingId: group.bookings[0].id,
+      reason: "delete_booking",
+      requestScope: "group",
+      requestNote: "Customer requested cancellation and refund.",
+    });
+    return true;
+  }
+
+  await performGroupHold(groupKey, "Customer requested cancellation, but payment is not being refunded.");
+  return true;
+}
+
+async function performGroupCheckOut(groupKey) {
+  const group = getBookingGroupByKey(groupKey);
+  if (!group) throw new Error("Booking group not found.");
+  const services = getGroupServices(group.bookings);
+  const serviceRows = services.map((service) => {
+    const existing = getServicePricingRows(group.bookings).find((row) => row.service === service);
+    const input = window.prompt(`Enter price for ${service}. Leave empty or 0 if not charged.`, existing?.amount ? String(existing.amount) : "");
+    return {
+      service,
+      amount: roundCurrency(Number(input || 0)),
+    };
+  });
+  const additionalServicesInput = window.prompt("Additional services to add before check out? Use comma-separated names or leave empty.", "");
+  const additionalServices = String(additionalServicesInput || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  for (const service of additionalServices) {
+    const amountInput = window.prompt(`Enter price for ${service}. Leave empty or 0 if not charged.`, "");
+    serviceRows.push({
+      service,
+      amount: roundCurrency(Number(amountInput || 0)),
+    });
+  }
+  const uniqueServices = Array.from(new Set([...services, ...additionalServices]));
+  const mergedCustomPayments = mergeServicePricesIntoCustomPayments(group.bookings, serviceRows);
+  const notesValue = mergeNotesAndServices(
+    parseBookingNotes(group.bookings[0]?.notes || "").otherNotes.join(" | "),
+    uniqueServices,
+  );
+  await updateGroupLifecycle(groupKey, {
+    lifecycleStatus: "checked_out",
+    checkedOutAt: new Date().toISOString(),
+    customPayments: mergedCustomPayments,
+    notes: notesValue,
+    closeDetails: buildCloseDetailsPayload(group, serviceRows),
+  });
+  return true;
 }
 
 function isPendingRoomRemovalRequest(request, bookingId) {
@@ -3684,13 +4122,16 @@ function openBookingDetailsModal(groupKey) {
   const pendingCollections = getLatestPendingRequestCollections();
   const requestHistory = getRequestsForTrack(group.trackCode || group.key);
   const groupRequest = pendingCollections.byTrack.get(group.trackCode || group.key);
-
-  bookingDetailsTitle.textContent = `${group.trackCode || "-"} · ${group.guestName || "Guest"}`;
+  const lifecycleStatus = getGroupLifecycleStatus(group);
+  const lifecycleLabel = getLifecycleStatusLabel(lifecycleStatus);
+  const directEditAllowed = canEditBookingGroupDirect(group);
+    bookingDetailsTitle.textContent = `${group.trackCode || "-"} · ${group.guestName || "Guest"}`;
   const advanceInfo = getAdvancePaymentInfo(group.bookings);
   const customPriceItems = getGroupCustomPriceEntries(group.bookings);
   const customPriceTotal = getGroupCustomPriceTotal(group.bookings);
   const balanceAmount = getBookingBalanceAmount(group);
-  const groupServices = Array.from(new Set(group.bookings.flatMap((booking) => parseBookingNotes(booking.notes).services)));
+  const groupServices = getGroupServices(group.bookings);
+  const servicePricingMarkup = getServicePricingMarkup(group.bookings);
   const roomRows = group.bookings
     .map((booking) => {
       const bookingRequest = pendingCollections.byBooking.get(booking.id);
@@ -3706,7 +4147,9 @@ function openBookingDetailsModal(groupKey) {
       if (noteMeta.drivers) metaBits.push(`Drivers: ${noteMeta.drivers}`);
       const removeControl = isPendingRoomRemovalRequest(bookingRequest, booking.id)
         ? `<span class="booking-tag tag-pending">Pending Remove</span>`
-        : `<button class="action-btn subtle-btn" type="button" data-booking-remove="${booking.id}">Remove</button>`;
+        : (directEditAllowed || canManageBookings())
+          ? `<button class="action-btn subtle-btn" type="button" data-booking-remove="${booking.id}">Remove</button>`
+          : "";
       return `
         <div class="booking-room-row booking-details-room-row">
           <div class="booking-room-row-main">
@@ -3717,9 +4160,11 @@ function openBookingDetailsModal(groupKey) {
           </div>
           <div class="booking-room-row-actions">
             ${removeControl}
-            <button class="action-btn action-btn-icon action-btn-icon-edit" type="button" data-booking-detail-action="edit" data-booking-id="${booking.id}">
-              Update
-            </button>
+            ${(directEditAllowed || canManageBookings()) ? `
+              <button class="action-btn action-btn-icon action-btn-icon-edit" type="button" data-booking-detail-action="edit" data-booking-id="${booking.id}">
+                Update
+              </button>
+            ` : ""}
           </div>
         </div>
       `;
@@ -3754,6 +4199,10 @@ function openBookingDetailsModal(groupKey) {
       <div><strong>Guests:</strong> ${group.totalGuests}</div>
       <div><strong>Dates:</strong> ${group.checkIn} -> ${group.checkOut}</div>
       <div><strong>Status:</strong> ${group.statuses.size === 1 ? Array.from(group.statuses)[0] : "Mixed"}</div>
+      <div><strong>Lifecycle:</strong> ${lifecycleLabel}</div>
+      <div><strong>Checked In At:</strong> ${group.bookings[0]?.checkedInAt ? new Date(group.bookings[0].checkedInAt).toLocaleString("en-GB") : "-"}</div>
+      <div><strong>Checked Out At:</strong> ${group.bookings[0]?.checkedOutAt ? new Date(group.bookings[0].checkedOutAt).toLocaleString("en-GB") : "-"}</div>
+      <div><strong>Stayed Hours:</strong> ${getBookingStayedHours(group)}</div>
       <div><strong>Custom Price:</strong> ${formatMoney(customPriceTotal)}</div>
       <div><strong>Advance:</strong> ${advanceInfo.label}</div>
       <div><strong>Advance Amount:</strong> ${formatMoney(advanceInfo.amount || 0)}</div>
@@ -3763,15 +4212,24 @@ function openBookingDetailsModal(groupKey) {
     ${groupRequest ? `<div class="booking-details-request-banner">${getRequestStatusMarkup(groupRequest, "Latest request")}<span class="booking-history-meta">${formatRequestReason(groupRequest.reason)} · ${getRequestRequestedDate(groupRequest) || "-"}</span></div>` : `<div class="booking-details-request-banner">${getActiveStatusMarkup("Active")}<span class="booking-history-meta">No pending request.</span></div>`}
     ${customPriceItems.length ? `<div class="booking-details-services-panel"><div class="booking-details-panel-title">Custom Price</div>${getCustomPriceListMarkup(customPriceItems)}</div>` : ""}
     ${groupServices.length ? `<div class="booking-details-services-panel"><div class="booking-details-panel-title">Services</div>${renderServiceChips(groupServices)}</div>` : ""}
+    <div class="booking-details-services-panel"><div class="booking-details-panel-title">Service Prices</div>${servicePricingMarkup}</div>
     ${requestHistoryMarkup}
     <div class="booking-details-actions">
       ${canManageBookings() ? `<button class="action-btn action-btn-icon action-btn-icon-advance" type="button" data-booking-group-action="advance">Update Advance</button>` : ""}
       <button class="action-btn action-btn-icon action-btn-icon-whatsapp" type="button" data-booking-group-action="whatsapp">WhatsApp</button>
+      <button class="action-btn" type="button" data-booking-group-action="email">Email Slip</button>
       <button class="action-btn action-btn-icon action-btn-icon-pdf" type="button" data-booking-group-action="pdf">Export PDF</button>
-      <button class="primary-btn" type="button" data-booking-group-action="manage">Edit Booking</button>
+      ${(directEditAllowed || canManageBookings()) ? `<button class="primary-btn" type="button" data-booking-group-action="manage">Edit Booking</button>` : ""}
+      ${lifecycleStatus === "booked" ? `<button class="primary-btn" type="button" data-booking-group-action="checkin">Check In</button>` : ""}
+      ${lifecycleStatus === "checked_in" ? `<button class="primary-btn" type="button" data-booking-group-action="checkout">Check Out</button>` : ""}
+      ${lifecycleStatus === "hold" ? `<span class="booking-tag tag-rejected">Hold Booking</span>` : ""}
+      ${lifecycleStatus === "checked_out" ? `<span class="booking-tag tag-rejected">Checked Out</span>` : ""}
+      ${(hasCheckInWindowStarted(group) && lifecycleStatus === "booked") ? `<button class="action-btn" type="button" data-booking-group-action="hold">Hold Room</button>` : ""}
       ${isPendingGroupRemovalRequest(groupRequest)
         ? `<span class="booking-tag tag-pending">Pending Remove</span>`
-        : `<button class="action-btn subtle-btn" type="button" data-booking-group-action="remove">Remove Full Booking</button>`}
+        : ((directEditAllowed || canManageBookings()) || (hasCheckInWindowStarted(group) && lifecycleStatus === "booked"))
+          ? `<button class="action-btn subtle-btn" type="button" data-booking-group-action="remove">${hasCheckInWindowStarted(group) && !directEditAllowed && !canManageBookings() ? "Delete Booking" : "Remove Full Booking"}</button>`
+          : ""}
     </div>
     <div class="booking-room-list booking-details-room-list">${roomRows}</div>
   `;
@@ -3781,7 +4239,7 @@ function openBookingDetailsModal(groupKey) {
     manageBtn.addEventListener('click', async () => {
       try {
         closeBookingDetailsModal();
-        await openRequestModal(group.bookings[0].id, canManageBookings() ? "edit" : "request", "group");
+        await openRequestModal(group.bookings[0].id, (directEditAllowed || canManageBookings()) ? "edit" : "request", "group");
       } catch (error) {
         showToast(error.message || "Unable to open full booking editor.", true);
       }
@@ -3790,12 +4248,16 @@ function openBookingDetailsModal(groupKey) {
   const removeGroupBtn = bookingDetailsBody.querySelector('[data-booking-group-action="remove"]');
   if (removeGroupBtn) {
     removeGroupBtn.addEventListener("click", async () => {
-      closeBookingDetailsModal();
-      await launchBookingAction(group.bookings[0].id, {
-        scope: "group",
-        reason: "delete_booking",
-        mode: canManageBookings() ? "edit" : "request",
-      });
+      try {
+        const changed = await performGroupDeleteFlow(group.key);
+        if (!changed) return;
+        closeBookingDetailsModal();
+        showToast("Booking action completed.");
+        await refreshLiveViews();
+        await loadRequests();
+      } catch (error) {
+        showToast(error.message, true);
+      }
     });
   }
   const pdfBtn = bookingDetailsBody.querySelector('[data-booking-group-action="pdf"]');
@@ -3808,6 +4270,12 @@ function openBookingDetailsModal(groupKey) {
   if (whatsappBtn) {
     whatsappBtn.addEventListener("click", () => {
       openReservationWhatsapp(group.key);
+    });
+  }
+  const emailBtn = bookingDetailsBody.querySelector('[data-booking-group-action="email"]');
+  if (emailBtn) {
+    emailBtn.addEventListener("click", () => {
+      openReservationEmail(group.key);
     });
   }
   const advanceBtn = bookingDetailsBody.querySelector('[data-booking-group-action="advance"]');
@@ -3824,12 +4292,53 @@ function openBookingDetailsModal(groupKey) {
       }
     });
   }
+  const checkInBtn = bookingDetailsBody.querySelector('[data-booking-group-action="checkin"]');
+  if (checkInBtn) {
+    checkInBtn.addEventListener("click", async () => {
+      try {
+        const changed = await performGroupCheckIn(group.key);
+        if (!changed) return;
+        showToast("Booking checked in.");
+        await refreshLiveViews();
+        openBookingDetailsModal(group.key);
+      } catch (error) {
+        showToast(error.message, true);
+      }
+    });
+  }
+  const checkOutBtn = bookingDetailsBody.querySelector('[data-booking-group-action="checkout"]');
+  if (checkOutBtn) {
+    checkOutBtn.addEventListener("click", async () => {
+      try {
+        const changed = await performGroupCheckOut(group.key);
+        if (!changed) return;
+        showToast("Booking checked out.");
+        await refreshLiveViews();
+        openBookingDetailsModal(group.key);
+      } catch (error) {
+        showToast(error.message, true);
+      }
+    });
+  }
+  const holdBtn = bookingDetailsBody.querySelector('[data-booking-group-action="hold"]');
+  if (holdBtn) {
+    holdBtn.addEventListener("click", async () => {
+      try {
+        await performGroupHold(group.key);
+        showToast("Booking moved to hold.");
+        await refreshLiveViews();
+        openBookingDetailsModal(group.key);
+      } catch (error) {
+        showToast(error.message, true);
+      }
+    });
+  }
 
   bookingDetailsBody.querySelectorAll("[data-booking-detail-action]").forEach((button) => {
     button.addEventListener("click", async () => {
       try {
         closeBookingDetailsModal();
-        await openRequestModal(button.dataset.bookingId, canManageBookings() ? "edit" : "request");
+        await openRequestModal(button.dataset.bookingId, (directEditAllowed || canManageBookings()) ? "edit" : "request");
       } catch (error) {
         showToast(error.message || "Unable to open booking update.", true);
       }
@@ -3848,7 +4357,7 @@ function openBookingDetailsModal(groupKey) {
   bookingDetailsBody.querySelectorAll("[data-request-focus]").forEach((button) => {
     button.addEventListener("click", () => {
       closeBookingDetailsModal();
-      activateScreen("requests");
+      setScreen("requests");
       state.requestsFilterStatus = "all";
       const request = state.requestMap.get(button.dataset.requestFocus);
       requestsTrackFilter.value = request?.booking?.trackCode || "";
@@ -3864,7 +4373,7 @@ function renderBookings(bookings) {
   state.bookingMap = new Map(bookings.map((booking) => [booking.id, booking]));
   const filteredBookings = bookings.filter((booking) => {
     if (state.bookingListFilter === "cancelled") return booking.status === "Cancelled";
-    if (state.bookingListFilter === "active") return booking.status !== "Cancelled";
+    if (state.bookingListFilter === "active") return booking.status !== "Cancelled" && getBookingLifecycleStatus(booking) !== "hold";
     return true;
   });
 
@@ -3903,8 +4412,13 @@ function renderBookings(bookings) {
     const card = document.createElement("div");
     card.className = "booking-card booking-group-card";
     const groupStatus = group.statuses.size === 1 ? Array.from(group.statuses)[0] : "Mixed";
+    const lifecycleStatus = getGroupLifecycleStatus(group);
+    const lifecycleLabel = getLifecycleStatusLabel(lifecycleStatus);
+    const directEditAllowed = canEditBookingGroupDirect(group);
+    const checkInWindowStarted = hasCheckInWindowStarted(group);
     const advanceInfo = getAdvancePaymentInfo(group.bookings);
     const groupRequest = pendingCollections.byTrack.get(group.trackCode || group.key);
+    const groupServices = getGroupServices(group.bookings);
     const roomRows = group.bookings
       .map((booking) => {
         const bookingRequest = pendingCollections.byBooking.get(booking.id);
@@ -3917,7 +4431,9 @@ function renderBookings(bookings) {
         if (noteMeta.otherNotes.length) roomNotes.push(...noteMeta.otherNotes);
         const removeControl = isPendingRoomRemovalRequest(bookingRequest, booking.id)
           ? `<span class="booking-tag tag-pending">Pending Remove</span>`
-          : `<button class="action-btn subtle-btn action-btn-icon action-btn-icon-remove compact-control" type="button" data-booking-remove="${booking.id}" aria-label="Remove Room" title="Remove Room"><span class="compact-label">Remove Room</span></button>`;
+          : (directEditAllowed || canManageBookings())
+            ? `<button class="action-btn subtle-btn action-btn-icon action-btn-icon-remove compact-control" type="button" data-booking-remove="${booking.id}" aria-label="Remove Room" title="Remove Room"><span class="compact-label">Remove Room</span></button>`
+            : "";
         return `
           <div class="booking-room-row">
             <div class="booking-room-row-main">
@@ -3936,12 +4452,16 @@ function renderBookings(bookings) {
               <button class="action-btn action-btn-icon action-btn-icon-view compact-control" type="button" data-booking-updates="${group.key}" aria-label="View Updates" title="View Updates">
                 <span class="compact-label">View Updates</span>
               </button>
-              <button class="action-btn action-btn-icon action-btn-icon-price compact-control" type="button" data-booking-price-action="${booking.id}" aria-label="Change Price" title="Change Price">
-                <span class="compact-label">Change Price</span>
-              </button>
-              <button class="action-btn action-btn-icon action-btn-icon-edit compact-control" type="button" data-booking-action="edit" data-booking-id="${booking.id}" aria-label="Update" title="Update">
-                <span class="compact-label">Update</span>
-              </button>
+              ${(directEditAllowed || canManageBookings()) ? `
+                <button class="action-btn action-btn-icon action-btn-icon-price compact-control" type="button" data-booking-price-action="${booking.id}" aria-label="Change Price" title="Change Price">
+                  <span class="compact-label">Change Price</span>
+                </button>
+              ` : ""}
+              ${(directEditAllowed || canManageBookings()) ? `
+                <button class="action-btn action-btn-icon action-btn-icon-edit compact-control" type="button" data-booking-action="edit" data-booking-id="${booking.id}" aria-label="Update" title="Update">
+                  <span class="compact-label">Update</span>
+                </button>
+              ` : ""}
             </div>
           </div>
         `;
@@ -3972,6 +4492,7 @@ function renderBookings(bookings) {
         <div class="booking-group-statuses booking-group-controls booking-group-controls-stack">
           ${requestButton}
           ${requestActions}
+          <span class="booking-tag ${lifecycleStatus === "checked_out" ? "tag-rejected" : lifecycleStatus === "checked_in" ? "tag-success" : lifecycleStatus === "hold" ? "tag-pending" : "tag-success"}">${lifecycleLabel}</span>
           <div class="booking-quick-actions">
             ${canManageBookings() ? `
               <button class="secondary-btn action-btn-icon action-btn-icon-advance compact-control" type="button" data-booking-group-advance="${group.key}" aria-label="Update Advance" title="Update Advance">
@@ -3981,15 +4502,37 @@ function renderBookings(bookings) {
             <button class="secondary-btn action-btn-icon action-btn-icon-whatsapp compact-control" type="button" data-booking-group-whatsapp="${group.key}" aria-label="WhatsApp" title="WhatsApp">
               <span class="compact-label">WhatsApp</span>
             </button>
+            <button class="secondary-btn compact-control" type="button" data-booking-group-email="${group.key}" aria-label="Email Slip" title="Email Slip">
+              <span class="compact-label">Email Slip</span>
+            </button>
             <button class="secondary-btn action-btn-icon action-btn-icon-pdf compact-control" type="button" data-booking-group-pdf="${group.key}" aria-label="Export PDF" title="Export PDF">
               <span class="compact-label">Export PDF</span>
             </button>
-            <button class="secondary-btn booking-type-trigger action-btn-icon action-btn-icon-edit compact-control" type="button" data-booking-group-manage="${group.bookings[0].id}" aria-label="Edit Booking" title="Edit Booking">
-              <span class="compact-label">Edit Booking</span>
-            </button>
-            <button class="secondary-btn remove-reservation-trigger action-btn-icon action-btn-icon-remove compact-control" type="button" data-booking-group-remove="${group.bookings[0].id}" aria-label="Remove Reservation" title="Remove Reservation">
-              <span class="compact-label">Remove Reservation</span>
-            </button>
+            ${(directEditAllowed || canManageBookings()) ? `
+              <button class="secondary-btn booking-type-trigger action-btn-icon action-btn-icon-edit compact-control" type="button" data-booking-group-manage="${group.bookings[0].id}" aria-label="Edit Booking" title="Edit Booking">
+                <span class="compact-label">Edit Booking</span>
+              </button>
+            ` : ""}
+            ${lifecycleStatus === "booked" ? `
+              <button class="secondary-btn compact-control" type="button" data-booking-group-checkin="${group.key}" aria-label="Check In" title="Check In">
+                <span class="compact-label">Check In</span>
+              </button>
+            ` : ""}
+            ${lifecycleStatus === "checked_in" ? `
+              <button class="secondary-btn compact-control" type="button" data-booking-group-checkout="${group.key}" aria-label="Check Out" title="Check Out">
+                <span class="compact-label">Check Out</span>
+              </button>
+            ` : ""}
+            ${checkInWindowStarted && lifecycleStatus === "booked" ? `
+              <button class="secondary-btn compact-control" type="button" data-booking-group-hold="${group.key}" aria-label="Hold Room" title="Hold Room">
+                <span class="compact-label">Hold Room</span>
+              </button>
+            ` : ""}
+            ${((directEditAllowed || canManageBookings()) || (checkInWindowStarted && lifecycleStatus === "booked")) ? `
+              <button class="secondary-btn remove-reservation-trigger action-btn-icon action-btn-icon-remove compact-control" type="button" data-booking-group-remove="${group.bookings[0].id}" aria-label="${checkInWindowStarted && !directEditAllowed && !canManageBookings() ? "Delete Booking" : "Remove Reservation"}" title="${checkInWindowStarted && !directEditAllowed && !canManageBookings() ? "Delete Booking" : "Remove Reservation"}">
+                <span class="compact-label">${checkInWindowStarted && !directEditAllowed && !canManageBookings() ? "Delete Booking" : "Remove Reservation"}</span>
+              </button>
+            ` : ""}
           </div>
         </div>
       </div>
@@ -4000,17 +4543,24 @@ function renderBookings(bookings) {
         </div>
       </div>
       ${requestBrief}
-      ${group.bookings.length ? `<div class="booking-room-row-services booking-group-services"><span class="booking-room-row-label">Services</span>${renderGroupServiceToggleButtons(group)}</div>` : ""}
+      ${group.bookings.length ? `
+        <div class="booking-room-row-services booking-group-services">
+          <span class="booking-room-row-label">Services</span>
+          ${lifecycleStatus === "checked_out" || lifecycleStatus === "hold" ? renderServiceChips(groupServices) : renderGroupServiceToggleButtons(group)}
+        </div>
+      ` : ""}
       <div class="booking-room-list">${roomRows}</div>
-      <div class="booking-group-footer-actions">
-        <button class="booking-add-room-btn" type="button" data-booking-group-add="${group.bookings[0].id}">+</button>
-      </div>
+      ${(directEditAllowed || canManageBookings()) ? `
+        <div class="booking-group-footer-actions">
+          <button class="booking-add-room-btn" type="button" data-booking-group-add="${group.bookings[0].id}">+</button>
+        </div>
+      ` : ""}
     `;
 
     card.querySelectorAll("[data-booking-action]").forEach((button) => {
       button.addEventListener("click", async () => {
         try {
-          await openRequestModal(button.dataset.bookingId, canManageBookings() ? "edit" : "request");
+          await openRequestModal(button.dataset.bookingId, (directEditAllowed || canManageBookings()) ? "edit" : "request");
         } catch (error) {
           showToast(error.message || "Unable to open booking update.", true);
         }
@@ -4018,15 +4568,15 @@ function renderBookings(bookings) {
     });
     card.querySelectorAll("[data-booking-remove]").forEach((button) => {
       button.addEventListener("click", async () => {
-        if (!window.confirm(canManageBookings() ? "Remove this room from the booking?" : "Send a request to remove this room?")) return;
+        if (!window.confirm((directEditAllowed || canManageBookings()) ? "Remove this room from the booking?" : "Send a request to remove this room?")) return;
         try {
           await launchBookingAction(button.dataset.bookingRemove, {
             scope: "single",
             reason: "remove_rooms",
             removeBookingIds: [button.dataset.bookingRemove],
-            mode: canManageBookings() ? "edit" : "request",
+            mode: (directEditAllowed || canManageBookings()) ? "edit" : "request",
           });
-          showToast(canManageBookings() ? "Room removal updated." : "Removal request submitted.");
+          showToast((directEditAllowed || canManageBookings()) ? "Room removal updated." : "Removal request submitted.");
           await refreshLiveViews();
           await loadRequests();
         } catch (error) {
@@ -4040,7 +4590,7 @@ function renderBookings(bookings) {
           await launchBookingAction(button.dataset.bookingPriceAction, {
             scope: "single",
             reason: "change_room_price",
-            mode: canManageBookings() ? "edit" : "request",
+            mode: (directEditAllowed || canManageBookings()) ? "edit" : "request",
           });
         } catch (error) {
           showToast(error.message || "Unable to open room price change.", true);
@@ -4050,6 +4600,41 @@ function renderBookings(bookings) {
     card.querySelectorAll("[data-booking-updates]").forEach((button) => {
       button.addEventListener("click", () => {
         openBookingDetailsModal(button.dataset.bookingUpdates);
+      });
+    });
+    card.querySelectorAll("[data-booking-group-checkin]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        try {
+          const changed = await performGroupCheckIn(button.dataset.bookingGroupCheckin);
+          if (!changed) return;
+          showToast("Booking checked in.");
+          await refreshLiveViews();
+        } catch (error) {
+          showToast(error.message, true);
+        }
+      });
+    });
+    card.querySelectorAll("[data-booking-group-checkout]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        try {
+          const changed = await performGroupCheckOut(button.dataset.bookingGroupCheckout);
+          if (!changed) return;
+          showToast("Booking checked out.");
+          await refreshLiveViews();
+        } catch (error) {
+          showToast(error.message, true);
+        }
+      });
+    });
+    card.querySelectorAll("[data-booking-group-hold]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        try {
+          await performGroupHold(button.dataset.bookingGroupHold);
+          showToast("Booking moved to hold.");
+          await refreshLiveViews();
+        } catch (error) {
+          showToast(error.message, true);
+        }
       });
     });
     card.querySelectorAll("[data-group-service-toggle]").forEach((button) => {
@@ -4086,7 +4671,7 @@ function renderBookings(bookings) {
     if (bookingTypeBtn) {
       bookingTypeBtn.addEventListener("click", async () => {
         try {
-          await openRequestModal(bookingTypeBtn.dataset.bookingGroupManage, canManageBookings() ? "edit" : "request", "group");
+          await openRequestModal(bookingTypeBtn.dataset.bookingGroupManage, (directEditAllowed || canManageBookings()) ? "edit" : "request", "group");
         } catch (error) {
           showToast(error.message || "Unable to open booking editor.", true);
         }
@@ -4102,6 +4687,12 @@ function renderBookings(bookings) {
     if (whatsappGroupBtn) {
       whatsappGroupBtn.addEventListener("click", () => {
         openReservationWhatsapp(whatsappGroupBtn.dataset.bookingGroupWhatsapp);
+      });
+    }
+    const emailGroupBtn = card.querySelector("[data-booking-group-email]");
+    if (emailGroupBtn) {
+      emailGroupBtn.addEventListener("click", () => {
+        openReservationEmail(emailGroupBtn.dataset.bookingGroupEmail);
       });
     }
     const advanceGroupBtn = card.querySelector("[data-booking-group-advance]");
@@ -4120,14 +4711,10 @@ function renderBookings(bookings) {
     const removeReservationBtn = card.querySelector("[data-booking-group-remove]");
     if (removeReservationBtn) {
       removeReservationBtn.addEventListener("click", async () => {
-        if (!window.confirm(canManageBookings() ? "Remove this full reservation?" : "Send a request to remove this full reservation?")) return;
         try {
-          await launchBookingAction(group.bookings[0].id, {
-            scope: "group",
-            reason: "delete_booking",
-            mode: canManageBookings() ? "edit" : "request",
-          });
-          showToast(canManageBookings() ? "Reservation updated." : "Removal request submitted.");
+          const changed = await performGroupDeleteFlow(group.key);
+          if (!changed) return;
+          showToast("Booking action completed.");
           await loadRequests();
           await refreshLiveViews();
         } catch (error) {
@@ -4138,14 +4725,14 @@ function renderBookings(bookings) {
     const addRoomBtn = card.querySelector("[data-booking-group-add]");
     if (addRoomBtn) {
       addRoomBtn.addEventListener("click", async () => {
-        await openRequestModal(addRoomBtn.dataset.bookingGroupAdd, canManageBookings() ? "edit" : "request", "group");
+        await openRequestModal(addRoomBtn.dataset.bookingGroupAdd, (directEditAllowed || canManageBookings()) ? "edit" : "request", "group");
         requestReasonInput.value = "additional_rooms";
         syncModalReasonDefaults();
       });
     }
     card.querySelectorAll("[data-request-focus]").forEach((button) => {
       button.addEventListener("click", () => {
-        activateScreen("requests");
+        setScreen("requests");
         state.requestsFilterStatus = "all";
         const request = state.requestMap.get(button.dataset.requestFocus);
         requestsTrackFilter.value = request?.booking?.trackCode || "";
@@ -4154,6 +4741,72 @@ function renderBookings(bookings) {
     });
     bookingCards.appendChild(card);
   });
+}
+
+async function fetchHoldBookings() {
+  ensureSupabase();
+  const { data, error } = await state.supabase
+    .from(CONFIG.SUPABASE_TABLE)
+    .select("*")
+    .eq("lifecycle_status", "hold")
+    .order("check_in", { ascending: true })
+    .order("room_number", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data || []).map(mapBooking);
+}
+
+function renderHoldBookings(bookings) {
+  if (!holdBookingCards || !holdBookingEmpty) return;
+  holdBookingCards.innerHTML = "";
+  const groupedBookings = groupBookingsForDisplay(bookings);
+  if (!groupedBookings.length) {
+    holdBookingEmpty.style.display = "block";
+    return;
+  }
+  holdBookingEmpty.style.display = "none";
+  groupedBookings.forEach((group) => {
+    const card = document.createElement("div");
+    card.className = "booking-card booking-group-card";
+    const note = group.bookings.map((booking) => parseBookingNotes(booking.notes).otherNotes.join(" | ")).filter(Boolean).join(" | ");
+    card.innerHTML = `
+      <div class="booking-group-head booking-group-head-dense">
+        <div>
+          <h4>${group.trackCode || "-"} · ${group.guestName || "Guest"}</h4>
+          <div class="booking-group-summary">${renderBookingHeaderSummary(group)}</div>
+        </div>
+        <div class="booking-group-statuses booking-group-controls booking-group-controls-stack">
+          <span class="booking-tag tag-rejected">Hold Booking</span>
+          <div class="booking-quick-actions">
+            <button class="secondary-btn action-btn-icon action-btn-icon-view compact-control" type="button" data-hold-open="${group.key}" aria-label="Open Booking" title="Open Booking">
+              <span class="compact-label">Open Booking</span>
+            </button>
+          </div>
+        </div>
+      </div>
+      ${renderBookingGroupOverview(group, "Hold")}
+      ${note ? `<div class="booking-request-brief">${escapeHtml(note)}</div>` : ""}
+    `;
+    card.querySelector('[data-hold-open]')?.addEventListener("click", () => {
+      openBookingDetailsModal(group.key);
+    });
+    holdBookingCards.appendChild(card);
+  });
+}
+
+async function loadHoldBookings() {
+  if (!state.currentProfile?.approved) return;
+  try {
+    const bookings = await fetchHoldBookings();
+    mergeBookingsIntoStateMap(bookings);
+    const grouped = groupBookingsForDisplay(bookings);
+    grouped.forEach((group) => state.bookingGroups.set(group.key, group));
+    renderHoldBookings(bookings);
+  } catch (error) {
+    if (holdBookingEmpty) {
+      holdBookingEmpty.textContent = error.message;
+      holdBookingEmpty.style.display = "block";
+    }
+  }
 }
 
 function getDefaultRequestStatus(reason, currentStatus) {
@@ -4194,10 +4847,17 @@ async function openRequestModal(bookingId, mode, scope = "single") {
     return;
   }
 
-  state.activeBooking = booking;
-  state.activeBookingGroup = getBookingGroupByKey(getBookingGroupKey(booking))?.bookings || [booking];
-  const groupBookings = state.activeBookingGroup.length ? state.activeBookingGroup : [booking];
   const groupView = getBookingGroupByKey(getBookingGroupKey(booking));
+  if (!canManageBookings() && mode === "edit") {
+    if (groupView && !canEditBookingGroupDirect(groupView)) {
+      showToast("This booking is locked after check-in time. Use Check In / Check Out or ask owner/admin access.", true);
+      return;
+    }
+  }
+
+  state.activeBooking = booking;
+  state.activeBookingGroup = groupView?.bookings || [booking];
+  const groupBookings = state.activeBookingGroup.length ? state.activeBookingGroup : [booking];
   const advanceInfo = getAdvancePaymentInfo(groupBookings);
   const customPriceEntries = (scope === "group" ? getGroupCustomPriceEntries(groupBookings) : getBookingCustomPriceEntries(booking))
     .map((item) => ({ amount: item.amount, note: item.note }));
@@ -4505,6 +5165,10 @@ async function updateBooking(bookingId, values) {
     advancePaid: "advancePaid" in values ? Boolean(values.advancePaid) : Boolean(currentBooking.advancePaid),
     advanceAmount: "advanceAmount" in values ? roundCurrency(Number(values.advanceAmount || 0)) : Number(currentBooking.advanceAmount || 0),
     customPayments: "customPayments" in values ? normalizeCustomPayments(values.customPayments) : normalizeCustomPayments(currentBooking.customPayments),
+    lifecycleStatus: "lifecycleStatus" in values ? values.lifecycleStatus : (currentBooking.lifecycleStatus || "booked"),
+    checkedInAt: "checkedInAt" in values ? values.checkedInAt : (currentBooking.checkedInAt || null),
+    checkedOutAt: "checkedOutAt" in values ? values.checkedOutAt : (currentBooking.checkedOutAt || null),
+    closeDetails: "closeDetails" in values ? (values.closeDetails || {}) : (currentBooking.closeDetails || {}),
   };
 
   const row = {
@@ -4522,6 +5186,10 @@ async function updateBooking(bookingId, values) {
     advance_paid: merged.advancePaid,
     advance_amount: merged.advanceAmount,
     custom_payments: merged.customPayments,
+    lifecycle_status: merged.lifecycleStatus,
+    checked_in_at: merged.checkedInAt,
+    checked_out_at: merged.checkedOutAt,
+    close_details: merged.closeDetails,
   };
   applyPricingToBookingRow(row, merged);
 
@@ -5420,7 +6088,7 @@ async function loadReservationPlanner() {
     }
     const endDate = formatDateKey(addDays(parsedStart, rangeDays));
     const bookings = (await fetchBookingsForPeriod(startDate, endDate))
-      .filter((booking) => String(booking.status || "").toLowerCase() !== "cancelled");
+      .filter((booking) => isBlockingBooking(booking));
     renderReservationPlanner(bookings, startDate, rangeDays);
   } catch (error) {
     showToast(error.message, true);
@@ -5566,6 +6234,7 @@ async function refreshLiveViews() {
   if (plannerStartDateInput?.value) {
     await loadReservationPlanner();
   }
+  await loadHoldBookings();
 }
 
 async function setupRealtime() {
@@ -6261,6 +6930,7 @@ refreshRequestsBtn.addEventListener("click", () => loadRequests());
 refreshPricingBtn?.addEventListener("click", async () => {
   await loadRoomInventory();
   await loadRoomPricing();
+  await loadRuntimeSettings();
 });
 savePricingBtn?.addEventListener("click", async () => {
   try {
@@ -6268,6 +6938,7 @@ savePricingBtn?.addEventListener("click", async () => {
     savePricingBtn.textContent = "Saving...";
     await saveRoomInventory();
     await saveRoomPricing();
+    await saveRuntimeSettings();
     await refreshLiveViews();
   } catch (error) {
     showToast(error.message, true);
@@ -6425,6 +7096,7 @@ checkAvailabilityBtn.addEventListener("click", refreshAvailability);
 navButtons.booking.addEventListener("click", () => setScreen("booking"));
 navButtons.view.addEventListener("click", () => setScreen("view"));
 navButtons.planner.addEventListener("click", () => setScreen("planner"));
+navButtons.hold.addEventListener("click", () => setScreen("hold"));
 navButtons.requests.addEventListener("click", () => setScreen("requests"));
 navButtons.accounts.addEventListener("click", () => setScreen("accounts"));
 navButtons.pricing.addEventListener("click", () => setScreen("pricing"));

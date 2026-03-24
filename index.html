@@ -407,6 +407,17 @@
           </div>
         </section>
 
+        <section class="screen" id="screen-hold" aria-labelledby="tab-hold">
+          <div class="card">
+            <div class="booking-list-head">
+              <h3>Hold Bookings</h3>
+              <p class="inline-note">Bookings moved to hold appear here for follow-up, move-date requests, or owner/admin review.</p>
+            </div>
+            <div id="hold-booking-cards" class="booking-cards"></div>
+            <p id="hold-booking-empty" class="empty-state">No hold bookings right now.</p>
+          </div>
+        </section>
+
         <section class="screen" id="screen-requests" aria-labelledby="tab-requests">
           <div class="card">
             <div class="accounts-header">
@@ -480,6 +491,16 @@
               </div>
             </div>
             <p class="inline-note">Users with pricing access can manage room prices, switch rooms on or off, add more rooms, and remove unused rooms here.</p>
+            <div class="room-fix-settings-grid">
+              <label class="field compact-field">
+                <span>Manual Check-In Time</span>
+                <input id="runtime-checkin-time" type="time" value="14:00" />
+              </label>
+              <label class="field compact-field">
+                <span>Manual Check-Out Time</span>
+                <input id="runtime-checkout-time" type="time" value="11:00" />
+              </label>
+            </div>
             <div id="room-inventory-list" class="room-inventory-list"></div>
             <div id="pricing-list" class="pricing-list"></div>
           </div>
@@ -490,6 +511,7 @@
         <button id="tab-booking" class="nav-btn nav-active" type="button">New Booking</button>
         <button id="tab-view" class="nav-btn" type="button">View By Date</button>
         <button id="tab-planner" class="nav-btn" type="button">Booking Planner</button>
+        <button id="tab-hold" class="nav-btn" type="button">Hold Bookings</button>
         <button id="tab-requests" class="nav-btn" type="button">Requests</button>
         <button id="tab-accounts" class="nav-btn hidden" type="button">Accounts</button>
         <button id="tab-pricing" class="nav-btn hidden" type="button">Room Fix</button>
