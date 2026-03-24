@@ -5218,16 +5218,15 @@ function renderReservationPlannerMobile(bookings, plannerRooms, startDate, days,
       <span>${date.toLocaleDateString("en-GB", { weekday: "short" })}</span>
     </div>
   `).join("");
-  const cells = dateList.map((_, rowIndex) => plannerRooms.map((_, columnIndex) => `
-    <div class="reservation-planner-mobile-cell" style="grid-column:${columnIndex + 2}; grid-row:${rowIndex + 2};"></div>
-  `).join("")).join("");
-  const markers = bookings.flatMap((booking) => {
+  const bookingCells = new Map();
+
+  bookings.forEach((booking) => {
     const roomKey = `${normalizeRoomGroup(booking.roomType)}-${Number(booking.roomNumber)}`;
     const roomIndex = roomIndexMap.get(roomKey);
-    if (roomIndex == null) return [];
+    if (roomIndex == null) return;
     const bookingStart = parseDate(booking.checkIn);
     const bookingEnd = parseDate(booking.checkOut);
-    if (!bookingStart || !bookingEnd) return [];
+    if (!bookingStart || !bookingEnd) return;
 
     const colors = getPlannerBookingColors(booking, pendingCollections);
     const pendingLabel = getPlannerPendingLabel(booking, pendingCollections);
@@ -5238,33 +5237,48 @@ function renderReservationPlannerMobile(bookings, plannerRooms, startDate, days,
       pendingLabel || booking.guestName || "Booking",
     ].filter(Boolean);
 
-    return dateList
-      .map((date, rowIndex) => {
-        if (!(bookingStart <= date && bookingEnd > date)) return "";
-        return `
-          <button
-            class="reservation-planner-mobile-marker${pendingLabel ? " reservation-planner-mobile-marker-pending" : ""}"
-            type="button"
-            data-planner-group="${escapeHtml(getBookingGroupKey(booking))}"
-            aria-label="${escapeHtml(labelParts.join(" | "))}"
-            title="${escapeHtml(labelParts.join(" | "))}"
-            style="grid-column:${roomIndex + 2}; grid-row:${rowIndex + 2}; --planner-bg:${colors.bg}; --planner-border:${colors.border}; --planner-text:${colors.text};"
-          ></button>
-        `;
-      })
-      .filter(Boolean);
-  }).join("");
+    dateList.forEach((date, rowIndex) => {
+      if (!(bookingStart <= date && bookingEnd > date)) return;
+      bookingCells.set(`${rowIndex}:${roomIndex}`, {
+        groupKey: getBookingGroupKey(booking),
+        label: labelParts.join(" | "),
+        colors,
+        pending: Boolean(pendingLabel),
+      });
+    });
+  });
+
+  const cells = dateList.map((_, rowIndex) => plannerRooms.map((_, columnIndex) => {
+    const marker = bookingCells.get(`${rowIndex}:${columnIndex}`);
+    return `
+      <div class="reservation-planner-mobile-cell" style="grid-column:${columnIndex + 2}; grid-row:${rowIndex + 2};">
+        ${
+          marker
+            ? `
+              <button
+                class="reservation-planner-mobile-marker${marker.pending ? " reservation-planner-mobile-marker-pending" : ""}"
+                type="button"
+                data-planner-group="${escapeHtml(marker.groupKey)}"
+                aria-label="${escapeHtml(marker.label)}"
+                title="${escapeHtml(marker.label)}"
+                style="--planner-bg:${marker.colors.bg}; --planner-border:${marker.colors.border}; --planner-text:${marker.colors.text};"
+              ></button>
+            `
+            : ""
+        }
+      </div>
+    `;
+  }).join("")).join("");
 
   reservationPlannerBoard.innerHTML = `
     <div
       class="reservation-planner-mobile-grid"
-      style="grid-template-columns: 74px repeat(${plannerRooms.length}, 46px); grid-template-rows: 44px repeat(${safeDays}, 42px);"
+      style="grid-template-columns: 54px repeat(${plannerRooms.length}, 34px); grid-template-rows: 38px repeat(${safeDays}, 34px);"
     >
       <div class="reservation-planner-mobile-corner" style="grid-column:1; grid-row:1;">Dates</div>
       ${roomHeaders}
       ${dateLabels}
       ${cells}
-      ${markers}
     </div>
   `;
 

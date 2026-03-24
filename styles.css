@@ -2217,9 +2217,9 @@ h4 {
   left: 0;
   z-index: 7;
   justify-content: flex-start;
-  padding-left: 8px;
+  padding-left: 6px;
   border-right: 1px solid #e7dccd;
-  font-size: 9px;
+  font-size: 7px;
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -2227,14 +2227,15 @@ h4 {
 }
 
 .reservation-planner-mobile-room-head {
-  min-width: 46px;
+  min-width: 34px;
   border-right: 1px solid #eee4d7;
-  padding: 4px 2px;
+  padding: 3px 1px;
 }
 
 .reservation-planner-mobile-room-head strong {
-  font-size: 8px;
+  font-size: 6.5px;
   line-height: 1.05;
+  font-weight: 800;
   letter-spacing: -0.01em;
   color: #201b17;
   word-break: break-word;
@@ -2247,49 +2248,55 @@ h4 {
   display: grid;
   gap: 1px;
   align-content: center;
-  padding: 4px 8px;
+  padding: 3px 6px;
   background: linear-gradient(180deg, #fffefb 0%, #faf7f2 100%);
   border-right: 1px solid #e7dccd;
   border-bottom: 1px solid #f0e8dc;
 }
 
 .reservation-planner-mobile-date strong {
-  font-size: 8px;
+  font-size: 6.5px;
   line-height: 1.1;
   color: #1d1916;
 }
 
 .reservation-planner-mobile-date span {
-  font-size: 8px;
+  font-size: 6px;
   color: #776b60;
 }
 
 .reservation-planner-mobile-cell {
   position: relative;
+  display: grid;
+  place-items: center;
   background: #fffdf9;
   border-right: 1px solid #f0e7da;
   border-bottom: 1px solid #f0e7da;
 }
 
 .reservation-planner-mobile-marker {
-  place-self: center;
-  width: 14px;
-  height: 14px;
-  border-radius: 4px;
+  position: relative;
+  z-index: 2;
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
   border: 1px solid var(--planner-border);
   background: var(--planner-bg);
-  box-shadow: 0 6px 16px rgba(50, 40, 20, 0.08);
+  box-shadow: 0 4px 10px rgba(50, 40, 20, 0.12);
   appearance: none;
   -webkit-appearance: none;
   padding: 0;
   min-width: 0;
   min-height: 0;
+  margin: 0;
+  cursor: pointer;
 }
 
 .reservation-planner-mobile-marker-pending {
-  width: 16px;
-  height: 16px;
-  box-shadow: 0 8px 18px rgba(107, 56, 151, 0.18);
+  width: 12px;
+  height: 12px;
+  box-shadow: 0 6px 12px rgba(107, 56, 151, 0.2);
 }
 
 #app-shell.view-desktop .app-header {
@@ -2882,11 +2889,11 @@ h4 {
   }
 
   .reservation-planner-card {
-    padding: 14px 14px 110px;
+    padding: 12px 12px 148px;
   }
 
   .reservation-planner-scroll {
-    padding-bottom: 104px;
+    padding-bottom: 156px;
   }
 
   .booking-list-head {
