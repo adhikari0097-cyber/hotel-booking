@@ -2268,9 +2268,15 @@ function renderGroupServiceToggleButtons(group) {
 function syncGroupCustomPaymentsWithServices(bookings = [], nextServices = []) {
   const selectedServices = new Set((nextServices || []).map((service) => String(service || "").trim().toLowerCase()));
   const existingEntries = getGroupCustomPriceEntries(bookings);
+  const knownServiceNames = new Set(
+    getServiceOptionNames(getGroupServices(bookings))
+      .map((service) => String(service || "").trim().toLowerCase())
+      .filter(Boolean),
+  );
   const preserved = existingEntries.filter((item) => {
     const noteKey = String(item.note || "").trim().toLowerCase();
-    return noteKey && !selectedServices.has(noteKey);
+    if (!noteKey) return false;
+    return !knownServiceNames.has(noteKey);
   });
   const linked = nextServices.map((service) => {
     const existing = existingEntries.find((item) => String(item.note || "").trim().toLowerCase() === String(service || "").trim().toLowerCase());
