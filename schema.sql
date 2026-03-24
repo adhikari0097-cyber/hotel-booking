@@ -332,19 +332,21 @@ to authenticated
 using (user_id = auth.uid());
 
 drop policy if exists "owner admin can read all profiles" on public.profiles;
-create policy "owner admin can read all profiles"
+drop policy if exists "account managers can read all profiles" on public.profiles;
+create policy "account managers can read all profiles"
 on public.profiles
 for select
 to authenticated
-using (public.is_owner_or_admin());
+using (public.has_profile_permission('manage_accounts'));
 
 drop policy if exists "owner admin can update profiles" on public.profiles;
-create policy "owner admin can update profiles"
+drop policy if exists "account managers can update profiles" on public.profiles;
+create policy "account managers can update profiles"
 on public.profiles
 for update
 to authenticated
-using (public.is_owner_or_admin())
-with check (public.is_owner_or_admin());
+using (public.has_profile_permission('manage_accounts'))
+with check (public.has_profile_permission('manage_accounts'));
 
 drop policy if exists "approved users can read room pricing" on public.room_pricing;
 create policy "approved users can read room pricing"

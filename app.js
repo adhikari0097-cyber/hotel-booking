@@ -45,7 +45,14 @@ const EXTRA_PERMISSION_DEFS = [
     label: "Room Pricing",
     note: "Open Room Fix and save room prices.",
   },
+  {
+    key: "manage_accounts",
+    label: "Accounts Access",
+    note: "Open Accounts and approve or block staff accounts.",
+  },
 ];
+
+const ADMIN_ACCESS_PERMISSION_KEYS = ["manage_bookings", "manage_requests", "manage_pricing", "manage_accounts"];
 
 const state = {
   supabase: null,
@@ -139,6 +146,11 @@ function profileHasPermission(profile, permissionKey) {
   if (!profile?.approved) return false;
   if (["owner", "admin"].includes(profile.role)) return true;
   return normalizePermissionList(profile.extra_permissions).includes(permissionKey);
+}
+
+function permissionListHasAll(permissionList, requiredKeys) {
+  const normalized = normalizePermissionList(permissionList);
+  return requiredKeys.every((key) => normalized.includes(key));
 }
 
 function getStoredBookingViewMode() {
@@ -2595,7 +2607,7 @@ function renderShell(mode) {
 }
 
 function canManageAccounts() {
-  return Boolean(state.currentProfile?.approved && ["owner", "admin"].includes(state.currentProfile.role));
+  return profileHasPermission(state.currentProfile, "manage_accounts");
 }
 
 function canManageRequests() {
@@ -6322,7 +6334,10 @@ function renderAccounts(profiles) {
 
   profiles.forEach((profile) => {
     const isSelf = profile.user_id === state.currentSession?.user?.id;
+    const ownerCanEditPermissions = state.currentProfile.role === "owner" && !isSelf;
+    const accountManagerCanApprove = canManageAccounts() && !isSelf;
     const extraPermissions = normalizePermissionList(profile.extra_permissions);
+    const hasAdminAccess = permissionListHasAll(extraPermissions, ADMIN_ACCESS_PERMISSION_KEYS);
     const permissionChips = extraPermissions.length
       ? extraPermissions
         .map((permissionKey) => EXTRA_PERMISSION_DEFS.find((item) => item.key === permissionKey)?.label || permissionKey)
@@ -6358,14 +6373,26 @@ function renderAccounts(profiles) {
       <div class="account-actions">
         <label>
           Role
-          <select data-role-select ${state.currentProfile.role !== "owner" || isSelf ? "disabled" : ""}>${roleOptions}</select>
+          <select data-role-select ${ownerCanEditPermissions ? "" : "disabled"}>${roleOptions}</select>
         </label>
         <label>
           Access
-          <select data-approved-select ${isSelf ? "disabled" : ""}>
+          <select data-approved-select ${accountManagerCanApprove ? "" : "disabled"}>
             <option value="true"${profile.approved ? " selected" : ""}>Approved</option>
             <option value="false"${!profile.approved ? " selected" : ""}>Blocked</option>
           </select>
+        </label>
+        <label class="permission-option permission-option-master">
+          <input
+            type="checkbox"
+            data-admin-access-toggle
+            ${hasAdminAccess ? "checked" : ""}
+            ${ownerCanEditPermissions ? "" : "disabled"}
+          />
+          <span>
+            <strong>Admin Access</strong>
+            <small>Grant or remove the main admin work access with one tick.</small>
+          </span>
         </label>
         <div class="account-permission-grid">
           ${EXTRA_PERMISSION_DEFS.map((permission) => `
@@ -6374,7 +6401,7 @@ function renderAccounts(profiles) {
                 type="checkbox"
                 data-permission-key="${permission.key}"
                 ${extraPermissions.includes(permission.key) ? "checked" : ""}
-                ${state.currentProfile.role !== "owner" || isSelf ? "disabled" : ""}
+                ${ownerCanEditPermissions ? "" : "disabled"}
               />
               <span>
                 <strong>${permission.label}</strong>
@@ -6383,14 +6410,36 @@ function renderAccounts(profiles) {
             </label>
           `).join("")}
         </div>
-        <button type="button" class="secondary-btn small-btn" data-save-account ${isSelf ? "disabled" : ""}>Save</button>
+        <button type="button" class="secondary-btn small-btn" data-save-account ${ownerCanEditPermissions || accountManagerCanApprove ? "" : "disabled"}>Save</button>
       </div>
     `;
 
     const saveBtn = card.querySelector("[data-save-account]");
     const roleSelect = card.querySelector("[data-role-select]");
     const approvedSelect = card.querySelector("[data-approved-select]");
+    const adminAccessToggle = card.querySelector("[data-admin-access-toggle]");
     const permissionInputs = Array.from(card.querySelectorAll("[data-permission-key]"));
+
+    const syncAdminAccessToggle = () => {
+      if (!adminAccessToggle) return;
+      const selectedPermissions = permissionInputs
+        .filter((input) => input.checked)
+        .map((input) => input.dataset.permissionKey);
+      adminAccessToggle.checked = permissionListHasAll(selectedPermissions, ADMIN_ACCESS_PERMISSION_KEYS);
+    };
+
+    adminAccessToggle?.addEventListener("change", () => {
+      const shouldEnableAdminAccess = adminAccessToggle.checked;
+      permissionInputs.forEach((input) => {
+        if (ADMIN_ACCESS_PERMISSION_KEYS.includes(input.dataset.permissionKey)) {
+          input.checked = shouldEnableAdminAccess;
+        }
+      });
+    });
+
+    permissionInputs.forEach((input) => {
+      input.addEventListener("change", syncAdminAccessToggle);
+    });
 
     saveBtn.addEventListener("click", async () => {
       try {
