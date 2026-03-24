@@ -41,6 +41,28 @@ body {
   min-width: 0;
 }
 
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.app-brand-logo {
+  width: 62px;
+  height: 62px;
+  object-fit: contain;
+  border-radius: 18px;
+  background: #fff;
+  border: 1px solid rgba(199, 164, 91, 0.28);
+  box-shadow: 0 10px 24px rgba(20, 26, 36, 0.08);
+  padding: 4px;
+}
+
+.app-brand-copy {
+  min-width: 0;
+}
+
 .eyebrow {
   font-size: 12px;
   text-transform: uppercase;
@@ -2377,6 +2399,11 @@ h4 {
   letter-spacing: -0.04em;
 }
 
+#app-shell.view-desktop .app-brand-logo {
+  width: 74px;
+  height: 74px;
+}
+
 #app-shell.view-desktop .header-actions {
   flex-direction: row;
   align-items: center;
@@ -3155,6 +3182,16 @@ h4 {
   .app-header {
     max-width: 520px;
     width: 100%;
+  }
+
+  .app-brand {
+    gap: 10px;
+  }
+
+  .app-brand-logo {
+    width: 50px;
+    height: 50px;
+    border-radius: 14px;
   }
 
   .bottom-nav {
