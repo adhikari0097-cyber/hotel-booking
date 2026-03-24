@@ -14,13 +14,13 @@ const CONFIG = {
 const RESERVATION_WHATSAPP_NUMBER = "+94719707597";
 
 const DEFAULT_SERVICE_DEFS = [
-  { name: "Breakfast", defaultPrice: 0, isActive: true },
-  { name: "Lunch", defaultPrice: 0, isActive: true },
-  { name: "Dinner", defaultPrice: 0, isActive: true },
-  { name: "Liquor", defaultPrice: 0, isActive: true },
-  { name: "Kitchen", defaultPrice: 0, isActive: true },
-  { name: "Car", defaultPrice: 0, isActive: true },
-  { name: "Van", defaultPrice: 0, isActive: true },
+  { name: "Breakfast", defaultPrice: 0, isActive: true, sortOrder: 1 },
+  { name: "Lunch", defaultPrice: 0, isActive: true, sortOrder: 2 },
+  { name: "Dinner", defaultPrice: 0, isActive: true, sortOrder: 3 },
+  { name: "Liquor", defaultPrice: 0, isActive: true, sortOrder: 4 },
+  { name: "Kitchen", defaultPrice: 0, isActive: true, sortOrder: 5 },
+  { name: "Car", defaultPrice: 0, isActive: true, sortOrder: 6 },
+  { name: "Van", defaultPrice: 0, isActive: true, sortOrder: 7 },
 ];
 
 const EXPORT_FIELD_DEFS = [
@@ -846,6 +846,7 @@ function normalizeServiceCatalogRow(row = {}) {
     name: String(row.name || row.service_name || "").trim(),
     defaultPrice: roundCurrency(Math.max(0, Number(row.defaultPrice ?? row.default_price ?? 0))),
     isActive: row.isActive == null ? row.is_active !== false : Boolean(row.isActive),
+    sortOrder: Number(row.sortOrder ?? row.sort_order ?? 0) || 0,
   };
 }
 
@@ -925,7 +926,9 @@ function toggleRuntimeBookingViewField(fieldKey, enabled) {
 }
 
 function setDefaultServiceCatalogState() {
-  state.serviceCatalog = DEFAULT_SERVICE_DEFS.map((item) => normalizeServiceCatalogRow(item));
+  state.serviceCatalog = DEFAULT_SERVICE_DEFS
+    .map((item, index) => normalizeServiceCatalogRow({ ...item, sortOrder: item.sortOrder || index + 1 }))
+    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
 }
 
 function getServiceCatalogRows({ includeInactive = false } = {}) {
@@ -1324,6 +1327,7 @@ async function loadServiceCatalog() {
     const { data, error } = await state.supabase
       .from(CONFIG.SUPABASE_SERVICES_TABLE)
       .select("*")
+      .order("sort_order", { ascending: true })
       .order("service_name", { ascending: true });
 
     if (error) throw error;
@@ -1368,7 +1372,10 @@ async function loadRoomPricing() {
 
 async function saveServiceCatalog() {
   if (!canManagePricing()) return;
-  const rows = getEditableServiceCatalogRows();
+  const rows = getEditableServiceCatalogRows().map((row, index) => ({
+    ...row,
+    sortOrder: index + 1,
+  }));
   const names = rows.map((row) => String(row.name || "").trim()).filter(Boolean);
   if (names.length !== rows.length) {
     throw new Error("Every service needs a name before saving.");
@@ -1395,6 +1402,7 @@ async function saveServiceCatalog() {
         service_name: row.name,
         default_price: roundCurrency(row.defaultPrice),
         is_active: row.isActive,
+        sort_order: row.sortOrder,
       })
       .eq("id", row.id);
     if (updateError) {
@@ -1410,6 +1418,7 @@ async function saveServiceCatalog() {
         service_name: row.name,
         default_price: roundCurrency(row.defaultPrice),
         is_active: row.isActive,
+        sort_order: row.sortOrder,
       })));
     if (insertError) {
       throw new Error(insertError.message || "Could not add new services.");
@@ -1428,6 +1437,28 @@ async function saveServiceCatalog() {
   }
 
   await loadServiceCatalog();
+}
+
+function moveServiceCatalogItem(fromIndex, toIndex) {
+  const rows = getEditableServiceCatalogRows();
+  if (
+    !Number.isInteger(fromIndex)
+    || !Number.isInteger(toIndex)
+    || fromIndex < 0
+    || toIndex < 0
+    || fromIndex >= rows.length
+    || toIndex >= rows.length
+    || fromIndex === toIndex
+  ) {
+    return;
+  }
+  const next = [...rows];
+  const [moved] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, moved);
+  state.serviceCatalog = next.map((row, index) => normalizeServiceCatalogRow({
+    ...row,
+    sortOrder: index + 1,
+  }));
 }
 
 async function loadRuntimeSettings() {
@@ -1890,7 +1921,8 @@ function renderPricingScreen() {
       ${
         serviceRows.length
           ? serviceRows.map((service, index) => `
-              <div class="service-config-row${service.isActive ? "" : " room-config-row-off"}" data-service-index="${index}">
+              <div class="service-config-row${service.isActive ? "" : " room-config-row-off"}" data-service-index="${index}" draggable="true">
+                <button class="service-drag-handle" type="button" aria-label="Drag service to reorder" title="Drag service to reorder">⋮⋮</button>
                 <div class="service-config-main">
                   <label class="field compact-field">
                     <span>Service Name</span>
@@ -1954,6 +1986,37 @@ function renderPricingScreen() {
 
     deleteBtn?.addEventListener("click", () => {
       state.serviceCatalog = getEditableServiceCatalogRows().filter((_, itemIndex) => itemIndex !== index);
+      renderPricingScreen();
+    });
+
+    row.addEventListener("dragstart", (event) => {
+      row.classList.add("service-config-row-dragging");
+      event.dataTransfer?.setData("text/plain", String(index));
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+    });
+
+    row.addEventListener("dragend", () => {
+      row.classList.remove("service-config-row-dragging");
+      serviceCard.querySelectorAll(".service-config-row-drop-target").forEach((item) => {
+        item.classList.remove("service-config-row-drop-target");
+      });
+    });
+
+    row.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      row.classList.add("service-config-row-drop-target");
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+    });
+
+    row.addEventListener("dragleave", () => {
+      row.classList.remove("service-config-row-drop-target");
+    });
+
+    row.addEventListener("drop", (event) => {
+      event.preventDefault();
+      row.classList.remove("service-config-row-drop-target");
+      const fromIndex = Number(event.dataTransfer?.getData("text/plain"));
+      moveServiceCatalogItem(fromIndex, index);
       renderPricingScreen();
     });
   });

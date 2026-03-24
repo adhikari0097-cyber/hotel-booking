@@ -123,20 +123,37 @@ create table if not exists public.service_catalog (
   service_name text not null unique,
   default_price numeric(12,2) not null default 0 check (default_price >= 0),
   is_active boolean not null default true,
+  sort_order integer not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
-insert into public.service_catalog (service_name, default_price, is_active)
+insert into public.service_catalog (service_name, default_price, is_active, sort_order)
 values
-  ('Breakfast', 0, true),
-  ('Lunch', 0, true),
-  ('Dinner', 0, true),
-  ('Liquor', 0, true),
-  ('Kitchen', 0, true),
-  ('Car', 0, true),
-  ('Van', 0, true)
+  ('Breakfast', 0, true, 1),
+  ('Lunch', 0, true, 2),
+  ('Dinner', 0, true, 3),
+  ('Liquor', 0, true, 4),
+  ('Kitchen', 0, true, 5),
+  ('Car', 0, true, 6),
+  ('Van', 0, true, 7)
 on conflict (service_name) do nothing;
+
+alter table public.service_catalog add column if not exists sort_order integer not null default 0;
+update public.service_catalog
+set sort_order = source.sort_order
+from (
+  values
+    ('Breakfast', 1),
+    ('Lunch', 2),
+    ('Dinner', 3),
+    ('Liquor', 4),
+    ('Kitchen', 5),
+    ('Car', 6),
+    ('Van', 7)
+) as source(service_name, sort_order)
+where public.service_catalog.service_name = source.service_name
+  and coalesce(public.service_catalog.sort_order, 0) = 0;
 
 insert into public.room_inventory (room_type, room_number, max_pax, is_active)
 values
