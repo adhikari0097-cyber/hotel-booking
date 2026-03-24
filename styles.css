@@ -889,6 +889,11 @@ h4 {
   font-size: 13px;
 }
 
+.pricing-summary-row-highlight {
+  background: #fff8e9;
+  border-color: #ead9a3;
+}
+
 .offer-panel {
   border: 1px solid #ebdfca;
   background: #fffdf9;
@@ -898,6 +903,14 @@ h4 {
 }
 
 .payment-panel {
+  border: 1px solid #ebdfca;
+  background: #fffdf9;
+  border-radius: 16px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.custom-price-panel {
   border: 1px solid #ebdfca;
   background: #fffdf9;
   border-radius: 16px;
@@ -2050,6 +2063,7 @@ h4 {
 #app-shell.view-desktop #booking-form > .availability-panel,
 #app-shell.view-desktop #booking-form > .totals-grid,
 #app-shell.view-desktop #booking-form > .pricing-summary-panel,
+#app-shell.view-desktop #booking-form > .custom-price-panel,
 #app-shell.view-desktop #booking-form > .offer-panel,
 #app-shell.view-desktop #booking-form > .payment-panel,
 #app-shell.view-desktop #booking-form > .services-panel,
@@ -2063,6 +2077,7 @@ h4 {
 #app-shell.view-desktop #booking-form > .availability-panel,
 #app-shell.view-desktop #booking-form > .totals-grid,
 #app-shell.view-desktop #booking-form > .pricing-summary-panel,
+#app-shell.view-desktop #booking-form > .custom-price-panel,
 #app-shell.view-desktop #booking-form > .services-panel,
 #app-shell.view-desktop #booking-form > .inline-note,
 #app-shell.view-desktop #booking-form > .primary-btn {
@@ -2081,6 +2096,7 @@ h4 {
 
 #app-shell.view-desktop .availability-panel,
 #app-shell.view-desktop .pricing-summary-panel,
+#app-shell.view-desktop .custom-price-panel,
 #app-shell.view-desktop .offer-panel,
 #app-shell.view-desktop .payment-panel,
 #app-shell.view-desktop .services-panel {
