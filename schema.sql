@@ -128,6 +128,8 @@ create table if not exists public.service_catalog (
   updated_at timestamptz not null default now()
 );
 
+alter table public.service_catalog add column if not exists sort_order integer not null default 0;
+
 insert into public.service_catalog (service_name, default_price, is_active, sort_order)
 values
   ('Breakfast', 0, true, 1),
@@ -139,7 +141,6 @@ values
   ('Van', 0, true, 7)
 on conflict (service_name) do nothing;
 
-alter table public.service_catalog add column if not exists sort_order integer not null default 0;
 update public.service_catalog
 set sort_order = source.sort_order
 from (
@@ -173,6 +174,7 @@ create table if not exists public.booking_runtime_settings (
   pdf_fields jsonb not null default '["trackCode","customer","phone","bookedBy","stay","notes","totalPax","rooms","totalPrice","customPrice","lifecycle","advance","advanceAmount","balance","checkInAt","checkOutAt","exportedAt","services","servicePrices","customPriceEntries","roomDetails"]'::jsonb,
   whatsapp_fields jsonb not null default '["trackCode","customer","phone","bookedBy","stay","notes","totalPax","rooms","totalPrice","customPrice","lifecycle","advance","advanceAmount","balance","checkInAt","checkOutAt","exportedAt","services","servicePrices","customPriceEntries","roomDetails"]'::jsonb,
   booking_view_fields jsonb not null default '["stay","rooms","totalPax","lifecycle","balance","trackCode","customer","bookedBy","phone","checkIn","checkOut","status","statusNote","checkInAt","checkOutAt","totalPrice","advance","customPrice","advanceAmount"]'::jsonb,
+  room_fix_section_order jsonb not null default '["pdf","whatsapp","bookingView"]'::jsonb,
   updated_at timestamptz not null default now(),
   constraint booking_runtime_settings_singleton check (id = true)
 );
@@ -185,6 +187,9 @@ alter table public.booking_runtime_settings
 
 alter table public.booking_runtime_settings
   add column if not exists booking_view_fields jsonb not null default '["stay","rooms","totalPax","lifecycle","balance","trackCode","customer","bookedBy","phone","checkIn","checkOut","status","statusNote","checkInAt","checkOutAt","totalPrice","advance","customPrice","advanceAmount"]'::jsonb;
+
+alter table public.booking_runtime_settings
+  add column if not exists room_fix_section_order jsonb not null default '["pdf","whatsapp","bookingView"]'::jsonb;
 
 insert into public.booking_runtime_settings (id, check_in_time, check_out_time, pdf_fields, whatsapp_fields)
 values (

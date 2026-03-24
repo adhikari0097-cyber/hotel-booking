@@ -69,6 +69,12 @@ const BOOKING_VIEW_FIELD_DEFS = [
   { key: "advanceAmount", label: "Advance Amount", note: "Show advance payment amount." },
 ];
 
+const ROOM_FIX_SECTION_DEFS = [
+  { key: "pdf", label: "PDF Export" },
+  { key: "whatsapp", label: "WhatsApp Message" },
+  { key: "bookingView", label: "View By Date Booking Group" },
+];
+
 const ROOM_DEFS = [
   { type: "kitchen", label: "Kitchen Room", count: 2, maxPax: 6 },
   { type: "normal", label: "Normal Room", count: 4, maxPax: 4 },
@@ -892,6 +898,29 @@ function normalizeBookingViewFieldList(value, fallbackToAll = true) {
   return Array.from(new Set(source.map((item) => String(item || "").trim()).filter((item) => validKeys.has(item))));
 }
 
+function normalizeRoomFixSectionOrder(value, fallbackToAll = true) {
+  const validKeys = new Set(ROOM_FIX_SECTION_DEFS.map((item) => item.key));
+  const source = Array.isArray(value)
+    ? value
+    : (value == null
+        ? null
+        : typeof value === "string"
+          ? (() => {
+              try {
+                return JSON.parse(value);
+              } catch (error) {
+                return value.split(",").map((item) => item.trim());
+              }
+            })()
+          : []);
+  if (source == null) {
+    return fallbackToAll ? ROOM_FIX_SECTION_DEFS.map((item) => item.key) : [];
+  }
+  const ordered = Array.from(new Set(source.map((item) => String(item || "").trim()).filter((item) => validKeys.has(item))));
+  const missing = ROOM_FIX_SECTION_DEFS.map((item) => item.key).filter((key) => !ordered.includes(key));
+  return [...ordered, ...missing];
+}
+
 function getEditableServiceCatalogRows() {
   const source = (state.serviceCatalog?.length ? state.serviceCatalog : DEFAULT_SERVICE_DEFS);
   return source.map((item) => normalizeServiceCatalogRow(item));
@@ -1476,6 +1505,7 @@ async function loadRuntimeSettings() {
       pdfFields: normalizeExportFieldList(data?.pdf_fields),
       whatsappFields: normalizeExportFieldList(data?.whatsapp_fields),
       bookingViewFields: normalizeBookingViewFieldList(data?.booking_view_fields),
+      roomFixSectionOrder: normalizeRoomFixSectionOrder(data?.room_fix_section_order),
     };
   } catch (error) {
     state.runtimeSettings = {
@@ -1484,6 +1514,7 @@ async function loadRuntimeSettings() {
       pdfFields: normalizeExportFieldList(null),
       whatsappFields: normalizeExportFieldList(null),
       bookingViewFields: normalizeBookingViewFieldList(null),
+      roomFixSectionOrder: normalizeRoomFixSectionOrder(null),
     };
     if (canManagePricing()) {
       showToast("Booking runtime settings table is not ready. Run the updated Supabase schema.sql.", true);
@@ -1502,6 +1533,7 @@ async function saveRuntimeSettings() {
     pdf_fields: normalizeExportFieldList(state.runtimeSettings?.pdfFields),
     whatsapp_fields: normalizeExportFieldList(state.runtimeSettings?.whatsappFields),
     booking_view_fields: normalizeBookingViewFieldList(state.runtimeSettings?.bookingViewFields),
+    room_fix_section_order: normalizeRoomFixSectionOrder(state.runtimeSettings?.roomFixSectionOrder),
   };
   const { error } = await state.supabase
     .from(CONFIG.SUPABASE_RUNTIME_SETTINGS_TABLE)
@@ -1515,6 +1547,21 @@ async function saveRuntimeSettings() {
     pdfFields: normalizeExportFieldList(row.pdf_fields),
     whatsappFields: normalizeExportFieldList(row.whatsapp_fields),
     bookingViewFields: normalizeBookingViewFieldList(row.booking_view_fields),
+    roomFixSectionOrder: normalizeRoomFixSectionOrder(row.room_fix_section_order),
+  };
+}
+
+function moveRoomFixSection(fromKey, toKey) {
+  const order = normalizeRoomFixSectionOrder(state.runtimeSettings?.roomFixSectionOrder);
+  const fromIndex = order.indexOf(fromKey);
+  const toIndex = order.indexOf(toKey);
+  if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return;
+  const next = [...order];
+  const [moved] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, moved);
+  state.runtimeSettings = {
+    ...state.runtimeSettings,
+    roomFixSectionOrder: next,
   };
 }
 
@@ -1826,53 +1873,75 @@ function renderPricingScreen() {
     pricingList.appendChild(card);
   });
 
-  const exportCard = document.createElement("article");
-  exportCard.className = "pricing-card";
-  exportCard.innerHTML = `
+  const pdfCard = document.createElement("article");
+  pdfCard.className = "pricing-card room-fix-panel-card";
+  pdfCard.setAttribute("data-room-fix-panel", "pdf");
+  pdfCard.setAttribute("draggable", "true");
+  pdfCard.innerHTML = `
     <div class="pricing-card-head">
+      <button class="room-fix-drag-handle" type="button" aria-label="Drag panel to reorder" title="Drag panel to reorder">⋮⋮</button>
       <div>
-        <h4>Export Details</h4>
-        <p>Choose which booking details should appear in WhatsApp messages and PDF exports.</p>
+        <h4>PDF Export</h4>
+        <p>Choose which booking details should appear in PDF exports.</p>
       </div>
     </div>
-    <div class="export-settings-grid">
-      ${[
-        { key: "pdf", title: "PDF Export", note: "These fields appear when you export the booking as PDF." },
-        { key: "whatsapp", title: "WhatsApp Message", note: "These fields appear in WhatsApp share text and email body." },
-      ].map((section) => `
-        <section class="export-settings-panel">
-          <div class="export-settings-head">
-            <h5>${section.title}</h5>
-            <p>${section.note}</p>
-          </div>
-          <div class="export-field-list">
-            ${EXPORT_FIELD_DEFS.map((field) => `
-              <label class="export-field-row">
-                <input type="checkbox" ${isExportFieldEnabled(section.key, field.key) ? "checked" : ""} data-export-channel="${section.key}" data-export-field="${field.key}" />
-                <span>
-                  <strong>${field.label}</strong>
-                  <small>${field.note}</small>
-                </span>
-              </label>
-            `).join("")}
-          </div>
-        </section>
+    <div class="export-field-list">
+      ${EXPORT_FIELD_DEFS.map((field) => `
+        <label class="export-field-row">
+          <input type="checkbox" ${isExportFieldEnabled("pdf", field.key) ? "checked" : ""} data-export-channel="pdf" data-export-field="${field.key}" />
+          <span>
+            <strong>${field.label}</strong>
+            <small>${field.note}</small>
+          </span>
+        </label>
       `).join("")}
     </div>
   `;
 
-  exportCard.querySelectorAll("[data-export-field]").forEach((input) => {
+  pdfCard.querySelectorAll("[data-export-field]").forEach((input) => {
     input.addEventListener("change", () => {
       toggleRuntimeExportField(input.dataset.exportChannel, input.dataset.exportField, input.checked);
     });
   });
 
-  exportSettingsList.appendChild(exportCard);
+  const whatsappCard = document.createElement("article");
+  whatsappCard.className = "pricing-card room-fix-panel-card";
+  whatsappCard.setAttribute("data-room-fix-panel", "whatsapp");
+  whatsappCard.setAttribute("draggable", "true");
+  whatsappCard.innerHTML = `
+    <div class="pricing-card-head">
+      <button class="room-fix-drag-handle" type="button" aria-label="Drag panel to reorder" title="Drag panel to reorder">⋮⋮</button>
+      <div>
+        <h4>WhatsApp Message</h4>
+        <p>Choose which booking details should appear in WhatsApp share text and email body.</p>
+      </div>
+    </div>
+    <div class="export-field-list">
+      ${EXPORT_FIELD_DEFS.map((field) => `
+        <label class="export-field-row">
+          <input type="checkbox" ${isExportFieldEnabled("whatsapp", field.key) ? "checked" : ""} data-export-channel="whatsapp" data-export-field="${field.key}" />
+          <span>
+            <strong>${field.label}</strong>
+            <small>${field.note}</small>
+          </span>
+        </label>
+      `).join("")}
+    </div>
+  `;
+
+  whatsappCard.querySelectorAll("[data-export-field]").forEach((input) => {
+    input.addEventListener("change", () => {
+      toggleRuntimeExportField(input.dataset.exportChannel, input.dataset.exportField, input.checked);
+    });
+  });
 
   const bookingViewCard = document.createElement("article");
-  bookingViewCard.className = "pricing-card";
+  bookingViewCard.className = "pricing-card room-fix-panel-card";
+  bookingViewCard.setAttribute("data-room-fix-panel", "bookingView");
+  bookingViewCard.setAttribute("draggable", "true");
   bookingViewCard.innerHTML = `
     <div class="pricing-card-head">
+      <button class="room-fix-drag-handle" type="button" aria-label="Drag panel to reorder" title="Drag panel to reorder">⋮⋮</button>
       <div>
         <h4>View By Date Booking Group</h4>
         <p>Choose which booking group details should be visible on the View By Date page.</p>
@@ -1904,7 +1973,46 @@ function renderPricingScreen() {
     });
   });
 
-  exportSettingsList.appendChild(bookingViewCard);
+  const roomFixPanels = new Map([
+    ["pdf", pdfCard],
+    ["whatsapp", whatsappCard],
+    ["bookingView", bookingViewCard],
+  ]);
+
+  normalizeRoomFixSectionOrder(state.runtimeSettings?.roomFixSectionOrder).forEach((key) => {
+    const panel = roomFixPanels.get(key);
+    if (panel) exportSettingsList.appendChild(panel);
+  });
+
+  exportSettingsList.querySelectorAll("[data-room-fix-panel]").forEach((panel) => {
+    panel.addEventListener("dragstart", (event) => {
+      panel.classList.add("room-fix-panel-dragging");
+      event.dataTransfer?.setData("text/plain", String(panel.dataset.roomFixPanel || ""));
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+    });
+    panel.addEventListener("dragend", () => {
+      panel.classList.remove("room-fix-panel-dragging");
+      exportSettingsList.querySelectorAll(".room-fix-panel-drop-target").forEach((item) => {
+        item.classList.remove("room-fix-panel-drop-target");
+      });
+    });
+    panel.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      panel.classList.add("room-fix-panel-drop-target");
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+    });
+    panel.addEventListener("dragleave", () => {
+      panel.classList.remove("room-fix-panel-drop-target");
+    });
+    panel.addEventListener("drop", (event) => {
+      event.preventDefault();
+      panel.classList.remove("room-fix-panel-drop-target");
+      const fromKey = String(event.dataTransfer?.getData("text/plain") || "");
+      const toKey = String(panel.dataset.roomFixPanel || "");
+      moveRoomFixSection(fromKey, toKey);
+      renderPricingScreen();
+    });
+  });
 
   const serviceRows = getEditableServiceCatalogRows();
   const serviceCard = document.createElement("article");
