@@ -5195,64 +5195,74 @@ function bindPlannerBookingButtons() {
   });
 }
 
-function renderReservationPlannerMobile(bookings, startDate, days, pendingCollections) {
+function renderReservationPlannerMobile(bookings, plannerRooms, startDate, days, pendingCollections) {
   const rangeStart = parseDate(startDate);
   const safeDays = Math.max(7, Math.min(60, Number(days || 14)));
   const dateList = Array.from({ length: safeDays }, (_, index) => addDays(rangeStart, index));
+  const roomIndexMap = new Map(plannerRooms.map((room, index) => [`${room.type}-${room.number}`, index]));
+  const roomHeaders = plannerRooms.map((room, index) => `
+    <div class="reservation-planner-mobile-room-head" style="grid-column:${index + 2}; grid-row:1;">
+      <strong>${escapeHtml(room.fullLabel)}</strong>
+    </div>
+  `).join("");
+  const dateLabels = dateList.map((date, index) => `
+    <div class="reservation-planner-mobile-date" style="grid-column:1; grid-row:${index + 2};">
+      <strong>${date.toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}</strong>
+      <span>${date.toLocaleDateString("en-GB", { weekday: "short" })}</span>
+    </div>
+  `).join("");
+  const cells = dateList.map((_, rowIndex) => plannerRooms.map((_, columnIndex) => `
+    <div class="reservation-planner-mobile-cell" style="grid-column:${columnIndex + 2}; grid-row:${rowIndex + 2};"></div>
+  `).join("")).join("");
+  const markers = bookings.flatMap((booking) => {
+    const roomKey = `${normalizeRoomGroup(booking.roomType)}-${Number(booking.roomNumber)}`;
+    const roomIndex = roomIndexMap.get(roomKey);
+    if (roomIndex == null) return [];
+    const bookingStart = parseDate(booking.checkIn);
+    const bookingEnd = parseDate(booking.checkOut);
+    if (!bookingStart || !bookingEnd) return [];
 
-  const sections = dateList.map((date) => {
-    const dateKey = formatDateKey(date);
-    const dayBookings = bookings
-      .filter((booking) => {
-        const bookingStart = parseDate(booking.checkIn);
-        const bookingEnd = parseDate(booking.checkOut);
-        return bookingStart && bookingEnd && bookingStart <= date && bookingEnd > date;
+    const colors = getPlannerBookingColors(booking, pendingCollections);
+    const pendingLabel = getPlannerPendingLabel(booking, pendingCollections);
+    const labelParts = [
+      booking.trackCode || `BOOK-${booking.id}`,
+      getRoomLabel(normalizeRoomGroup(booking.roomType), booking.roomNumber),
+      `${Number(booking.guests || 0)} Pax`,
+      pendingLabel || booking.guestName || "Booking",
+    ].filter(Boolean);
+
+    return dateList
+      .map((date, rowIndex) => {
+        if (!(bookingStart <= date && bookingEnd > date)) return "";
+        return `
+          <button
+            class="reservation-planner-mobile-marker${pendingLabel ? " reservation-planner-mobile-marker-pending" : ""}"
+            type="button"
+            data-planner-group="${escapeHtml(getBookingGroupKey(booking))}"
+            aria-label="${escapeHtml(labelParts.join(" | "))}"
+            title="${escapeHtml(labelParts.join(" | "))}"
+            style="grid-column:${roomIndex + 2}; grid-row:${rowIndex + 2}; --planner-bg:${colors.bg}; --planner-border:${colors.border}; --planner-text:${colors.text};"
+          ></button>
+        `;
       })
-      .sort((a, b) => {
-        const roomDiff = normalizeRoomGroup(a.roomType).localeCompare(normalizeRoomGroup(b.roomType));
-        if (roomDiff !== 0) return roomDiff;
-        return Number(a.roomNumber || 0) - Number(b.roomNumber || 0);
-      });
-
-    const cards = dayBookings.length
-      ? dayBookings.map((booking) => {
-          const colors = getPlannerBookingColors(booking, pendingCollections);
-          const pendingLabel = getPlannerPendingLabel(booking, pendingCollections);
-          const roomLabel = getRoomLabel(normalizeRoomGroup(booking.roomType), booking.roomNumber);
-          return `
-            <button
-              class="planner-mobile-booking"
-              type="button"
-              data-planner-group="${escapeHtml(getBookingGroupKey(booking))}"
-              style="--planner-bg:${colors.bg}; --planner-border:${colors.border}; --planner-text:${colors.text};"
-            >
-              <div class="planner-mobile-booking-head">
-                <strong>${escapeHtml(booking.trackCode || `BOOK-${booking.id}`)}</strong>
-                ${pendingLabel ? `<span class="planner-mobile-pending">${escapeHtml(pendingLabel)}</span>` : ""}
-              </div>
-              <div class="planner-mobile-booking-room">${escapeHtml(roomLabel)}</div>
-              <div class="planner-mobile-booking-meta">${escapeHtml(`${booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType)} · ${Number(booking.guests || 0)} Pax`)}</div>
-              <div class="planner-mobile-booking-meta">${escapeHtml(booking.guestName || "Guest")}</div>
-            </button>
-          `;
-        }).join("")
-      : `<p class="inline-note planner-mobile-empty">No bookings on this date.</p>`;
-
-    return `
-      <section class="planner-day-section">
-        <div class="planner-day-head">
-          <strong>${date.toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}</strong>
-          <span>${date.toLocaleDateString("en-GB", { weekday: "long" })}</span>
-        </div>
-        <div class="planner-day-bookings">
-          ${cards}
-        </div>
-      </section>
-    `;
+      .filter(Boolean);
   }).join("");
 
-  reservationPlannerBoard.innerHTML = `<div class="reservation-planner-mobile">${sections}</div>`;
-  reservationPlannerEmpty.style.display = "none";
+  reservationPlannerBoard.innerHTML = `
+    <div
+      class="reservation-planner-mobile-grid"
+      style="grid-template-columns: 88px repeat(${plannerRooms.length}, minmax(82px, 1fr)); grid-template-rows: 56px repeat(${safeDays}, 54px);"
+    >
+      <div class="reservation-planner-mobile-corner" style="grid-column:1; grid-row:1;">Dates</div>
+      ${roomHeaders}
+      ${dateLabels}
+      ${cells}
+      ${markers}
+    </div>
+  `;
+
+  reservationPlannerEmpty.textContent = bookings.length ? "" : "No bookings found in this range.";
+  reservationPlannerEmpty.style.display = bookings.length ? "none" : "block";
   bindPlannerBookingButtons();
 }
 
@@ -5291,7 +5301,7 @@ function renderReservationPlanner(bookings, startDate, days) {
   }
 
   if (!useDesktopPlannerLayout()) {
-    renderReservationPlannerMobile(bookings, startDate, safeDays, pendingCollections);
+    renderReservationPlannerMobile(bookings, plannerRooms, startDate, safeDays, pendingCollections);
     return;
   }
 

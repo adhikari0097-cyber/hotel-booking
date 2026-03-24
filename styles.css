@@ -2192,92 +2192,96 @@ h4 {
   gap: 16px;
 }
 
-.planner-day-section {
-  border: 1px solid #ebe1d3;
-  border-radius: 22px;
-  background: linear-gradient(180deg, #fffefb 0%, #fffaf3 100%);
-  overflow: hidden;
-}
-
-.planner-day-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  border-bottom: 1px solid #f0e7da;
-  background: #fffdf8;
-}
-
-.planner-day-head strong {
-  font-size: 19px;
-  color: #181512;
-}
-
-.planner-day-head span {
-  font-size: 13px;
-  font-weight: 700;
-  color: #766a60;
-}
-
-.planner-day-bookings {
+.reservation-planner-mobile-grid {
   display: grid;
-  gap: 12px;
-  padding: 14px;
+  position: relative;
+  gap: 0;
+  min-width: max-content;
 }
 
-.planner-mobile-booking {
-  display: grid;
-  gap: 8px;
-  width: 100%;
-  padding: 14px;
-  border-radius: 18px;
-  border: 1px solid var(--planner-border);
-  background: var(--planner-bg);
-  color: var(--planner-text);
-  text-align: left;
-  box-shadow: 0 10px 24px rgba(50, 40, 20, 0.07);
-}
-
-.planner-mobile-booking-head {
+.reservation-planner-mobile-corner,
+.reservation-planner-mobile-room-head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-}
-
-.planner-mobile-booking-head strong {
-  font-size: 17px;
-  line-height: 1.2;
-}
-
-.planner-mobile-pending {
-  display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.55);
-  border: 1px solid rgba(95, 58, 138, 0.2);
+  text-align: center;
+  padding: 8px 6px;
+  background: linear-gradient(180deg, #fffdf9 0%, #fbf7f0 100%);
+  border-bottom: 1px solid #e7dccd;
+}
+
+.reservation-planner-mobile-corner {
+  left: 0;
+  z-index: 7;
+  justify-content: flex-start;
+  padding-left: 10px;
+  border-right: 1px solid #e7dccd;
   font-size: 10px;
   font-weight: 800;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #70665c;
 }
 
-.planner-mobile-booking-room {
-  font-size: 14px;
-  font-weight: 800;
+.reservation-planner-mobile-room-head {
+  min-width: 82px;
+  border-right: 1px solid #eee4d7;
 }
 
-.planner-mobile-booking-meta {
-  font-size: 13px;
-  line-height: 1.3;
-  opacity: 0.92;
+.reservation-planner-mobile-room-head strong {
+  font-size: 11px;
+  line-height: 1.15;
+  color: #201b17;
 }
 
-.planner-mobile-empty {
-  margin: 0;
-  padding: 6px 2px 2px;
+.reservation-planner-mobile-date {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  display: grid;
+  gap: 2px;
+  align-content: center;
+  padding: 8px 10px;
+  background: linear-gradient(180deg, #fffefb 0%, #faf7f2 100%);
+  border-right: 1px solid #e7dccd;
+  border-bottom: 1px solid #f0e8dc;
+}
+
+.reservation-planner-mobile-date strong {
+  font-size: 11px;
+  line-height: 1.1;
+  color: #1d1916;
+}
+
+.reservation-planner-mobile-date span {
+  font-size: 10px;
+  color: #776b60;
+}
+
+.reservation-planner-mobile-cell {
+  position: relative;
+  background: #fffdf9;
+  border-right: 1px solid #f0e7da;
+  border-bottom: 1px solid #f0e7da;
+}
+
+.reservation-planner-mobile-marker {
+  place-self: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  border: 1px solid var(--planner-border);
+  background: var(--planner-bg);
+  box-shadow: 0 6px 16px rgba(50, 40, 20, 0.08);
+}
+
+.reservation-planner-mobile-marker-pending {
+  width: 24px;
+  height: 24px;
+  box-shadow: 0 8px 18px rgba(107, 56, 151, 0.18);
 }
 
 #app-shell.view-desktop .app-header {
