@@ -559,7 +559,7 @@ function roundCurrency(value) {
 }
 
 function createEmptyCustomPayment() {
-  return { amount: "", note: "" };
+  return { amount: "", note: "", linkedService: "" };
 }
 
 function normalizeCustomPayments(value) {
@@ -1176,8 +1176,8 @@ function renderPricingSummary() {
     setHTML(pricingSummaryList, `<p id="pricing-summary-empty" class="inline-note">Select rooms and nights to see the total price.</p>`);
     pricingSummaryTotal.textContent = formatMoney(0);
     if (bookingOfferPreview) bookingOfferPreview.textContent = `Total price: ${formatMoney(0)}`;
-    if (bookingAdvanceBalancePreview) bookingAdvanceBalancePreview.textContent = `Balance after advance: ${formatMoney(0)}`;
-    renderBookingCustomPayments();
+    if (bookingAdvanceBalancePreview) bookingAdvanceBalancePreview.textContent = `Total after advance: ${formatMoney(0)}`;
+    updateCustomPriceSummary();
     return;
   }
 
@@ -1227,9 +1227,9 @@ function renderPricingSummary() {
       : `Total price: ${formatMoney(totalPrice)}`;
   }
   if (bookingAdvanceBalancePreview) {
-    bookingAdvanceBalancePreview.textContent = `Balance after advance: ${formatMoney(balanceAmount)}`;
+    bookingAdvanceBalancePreview.textContent = `Total after advance: ${formatMoney(balanceAmount)}`;
   }
-  renderBookingCustomPayments();
+  updateCustomPriceSummary();
 }
 
 function datesOverlap(startA, endA, startB, endB) {
@@ -1468,15 +1468,15 @@ function renderBookingCustomPayments() {
         </div>
         <div class="field payment-entry-field payment-entry-field-note">
           <label for="custom-payment-note-${index}">Note</label>
-          <input id="custom-payment-note-${index}" type="text" data-payment-note placeholder="Lunch / transport / special charge" value="${escapeHtml(payment.note)}" />
+          <input id="custom-payment-note-${index}" type="text" data-payment-note ${payment.linkedService ? "readonly" : ""} placeholder="Lunch / transport / special charge" value="${escapeHtml(payment.note)}" />
         </div>
-        <button class="subtle-btn payment-entry-remove" type="button" data-remove-payment="${index}">Remove</button>
+        ${payment.linkedService
+          ? `<button class="subtle-btn payment-entry-remove" type="button" disabled>Service</button>`
+          : `<button class="subtle-btn payment-entry-remove" type="button" data-remove-payment="${index}">Remove</button>`}
       </div>
     `).join("");
   }
-  if (bookingCustomPaymentsTotal) {
-    bookingCustomPaymentsTotal.textContent = `Total custom price: ${formatMoney(getCustomPaymentsTotal(state.bookingCustomPayments))}`;
-  }
+  updateCustomPriceSummary();
 }
 
 function syncAdvanceAmountField() {
@@ -1488,7 +1488,7 @@ function syncAdvanceAmountField() {
   if (bookingAdvanceBalancePreview) {
     const previewTotal = roundCurrency(Number(pricingSummaryTotal?.textContent?.replace(/[^\d.-]/g, "") || 0));
     const advanceAmount = isChecked ? roundCurrency(Number(bookingAdvanceAmountInput?.value || 0)) : 0;
-    bookingAdvanceBalancePreview.textContent = `Balance after advance: ${formatMoney(Math.max(0, previewTotal - advanceAmount))}`;
+    bookingAdvanceBalancePreview.textContent = `Total after advance: ${formatMoney(Math.max(0, previewTotal - advanceAmount))}`;
   }
 }
 
@@ -1499,12 +1499,30 @@ function handleBookingCustomPaymentInput(index, field, value) {
   } else {
     state.bookingCustomPayments[index].note = value;
   }
-  renderBookingCustomPayments();
+  updateCustomPriceSummary();
   renderPricingSummary();
 }
 
 function getBookingCustomPaymentsPayload() {
   return normalizeCustomPayments(state.bookingCustomPayments);
+}
+
+function updateCustomPriceSummary() {
+  if (bookingCustomPaymentsTotal) {
+    bookingCustomPaymentsTotal.textContent = `Total custom price: ${formatMoney(getCustomPaymentsTotal(state.bookingCustomPayments))}`;
+  }
+}
+
+function syncCustomPriceRowsFromServices() {
+  const selectedServices = Array.from(getSelectedBookingServices().values());
+  const preserved = state.bookingCustomPayments.filter((item) => !item.linkedService);
+  const linked = selectedServices.map((service) => {
+    const current = state.bookingCustomPayments.find((item) => item.linkedService === service);
+    return current || { amount: "", note: service, linkedService: service };
+  });
+  state.bookingCustomPayments = [...linked, ...preserved];
+  renderBookingCustomPayments();
+  renderPricingSummary();
 }
 
 async function promptGroupPaymentUpdate(groupKey) {
@@ -1587,6 +1605,7 @@ function renderRoomServiceAssignments() {
 
   if (!selectedPlans.length) {
     roomServiceAssignments.innerHTML = '<p class="inline-note">Select rooms first to assign services.</p>';
+    syncCustomPriceRowsFromServices();
     return;
   }
 
@@ -1621,6 +1640,7 @@ function renderRoomServiceAssignments() {
     input.addEventListener("change", () => {
       if (input.checked) selectedServices.add(input.value);
       else selectedServices.delete(input.value);
+      syncCustomPriceRowsFromServices();
     });
   });
 
@@ -2883,6 +2903,7 @@ function updateAvailabilityUI(availability) {
     availabilityHint.textContent = "Select dates to load room planner.";
     state.roomPlans.clear();
     state.bookingServices.clear();
+    syncCustomPriceRowsFromServices();
     renderRoomServiceAssignments();
     renderPricingSummary();
     guestsInput.value = "";
