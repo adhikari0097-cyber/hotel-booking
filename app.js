@@ -407,11 +407,28 @@ const bookingDetailsModal = qs("#booking-details-modal");
 const bookingDetailsTitle = qs("#booking-details-title");
 const bookingDetailsBody = qs("#booking-details-body");
 const closeBookingDetailsBtn = qs("#close-booking-details");
+const analyticsDateFromInput = qs("#analytics-date-from");
+const analyticsDateToInput = qs("#analytics-date-to");
+const loadAnalyticsBtn = qs("#load-analytics");
+const analyticsTotalEarn = qs("#analytics-total-earn");
+const analyticsTotalBookings = qs("#analytics-total-bookings");
+const analyticsAverageBooking = qs("#analytics-average-booking");
+const analyticsPendingBalance = qs("#analytics-pending-balance");
+const analyticsRoomNights = qs("#analytics-room-nights");
+const analyticsAverageStay = qs("#analytics-average-stay");
+const analyticsTopRooms = qs("#analytics-top-rooms");
+const analyticsRoomTypes = qs("#analytics-room-types");
+const analyticsServices = qs("#analytics-services");
+const analyticsCustomers = qs("#analytics-customers");
+const analyticsStatuses = qs("#analytics-statuses");
+const analyticsStaff = qs("#analytics-staff");
+const analyticsEmpty = qs("#analytics-empty");
 
 const navButtons = {
   booking: qs("#tab-booking"),
   view: qs("#tab-view"),
   planner: qs("#tab-planner"),
+  analytics: qs("#tab-analytics"),
   hold: qs("#tab-hold"),
   requests: qs("#tab-requests"),
   accounts: qs("#tab-accounts"),
@@ -424,6 +441,7 @@ const screens = {
   booking: qs("#screen-booking"),
   view: qs("#screen-view"),
   planner: qs("#screen-planner"),
+  analytics: qs("#screen-analytics"),
   hold: qs("#screen-hold"),
   requests: qs("#screen-requests"),
   accounts: qs("#screen-accounts"),
@@ -2630,19 +2648,24 @@ function updateHeaderProfile() {
 
 function updateNavVisibility() {
   const showPlanner = Boolean(state.currentProfile?.approved);
+  const showAnalytics = Boolean(state.currentProfile?.approved);
   const showHold = Boolean(state.currentProfile?.approved);
   const showAccounts = canManageAccounts();
   const showRequests = Boolean(state.currentProfile?.approved);
   const showPricing = canManagePricing();
   navButtons.planner.classList.toggle("hidden", !showPlanner);
+  navButtons.analytics.classList.toggle("hidden", !showAnalytics);
   navButtons.hold.classList.toggle("hidden", !showHold);
   navButtons.requests.classList.toggle("hidden", !showRequests);
   navButtons.accounts.classList.toggle("hidden", !showAccounts);
   navButtons.pricing.classList.toggle("hidden", !showPricing);
-  const visibleTabs = 2 + Number(showPlanner) + Number(showHold) + Number(showRequests) + Number(showAccounts) + Number(showPricing);
+  const visibleTabs = 2 + Number(showPlanner) + Number(showAnalytics) + Number(showHold) + Number(showRequests) + Number(showAccounts) + Number(showPricing);
   const columns = `repeat(${visibleTabs}, 1fr)`;
   qs(".bottom-nav").style.gridTemplateColumns = columns;
   if (!showPlanner && screens.planner.classList.contains("screen-active")) {
+    setScreen("booking");
+  }
+  if (!showAnalytics && screens.analytics.classList.contains("screen-active")) {
     setScreen("booking");
   }
   if (!showHold && screens.hold.classList.contains("screen-active")) {
@@ -2668,8 +2691,170 @@ function setScreen(target) {
   if (target === "planner") {
     loadReservationPlanner();
   }
+  if (target === "analytics") {
+    loadAnalytics();
+  }
   if (target === "hold") {
     loadHoldBookings();
+  }
+}
+
+function getAnalyticsReservationGroups(bookings = []) {
+  return groupBookingsForDisplay((bookings || []).filter((booking) => isVisibleBooking(booking)));
+}
+
+function getAnalyticsRoomNights(group) {
+  return (group?.bookings || []).reduce((sum, booking) => {
+    const nights = Math.max(1, getNightCount(booking.checkIn, booking.checkOut));
+    return sum + nights;
+  }, 0);
+}
+
+function renderAnalyticsBarList(node, items = [], formatter = (value) => String(value)) {
+  if (!node) return;
+  if (!items.length) {
+    node.innerHTML = '<p class="inline-note">No data for this range.</p>';
+    return;
+  }
+  const maxValue = Math.max(...items.map((item) => Number(item.value || 0)), 1);
+  node.innerHTML = items.map((item) => `
+    <div class="analytics-bar-item">
+      <div class="analytics-bar-head">
+        <strong>${escapeHtml(item.label)}</strong>
+        <span>${escapeHtml(formatter(item.value))}</span>
+      </div>
+      <div class="analytics-bar-track">
+        <div class="analytics-bar-fill" style="width:${Math.max(8, Math.round((Number(item.value || 0) / maxValue) * 100))}%"></div>
+      </div>
+      ${item.meta ? `<small>${escapeHtml(item.meta)}</small>` : ""}
+    </div>
+  `).join("");
+}
+
+function renderAnalyticsTableList(node, items = [], valueFormatter = (value) => String(value), emptyText = "No data for this range.") {
+  if (!node) return;
+  if (!items.length) {
+    node.innerHTML = `<p class="inline-note">${emptyText}</p>`;
+    return;
+  }
+  node.innerHTML = items.map((item) => `
+    <div class="analytics-table-item">
+      <div>
+        <strong>${escapeHtml(item.label)}</strong>
+        ${item.meta ? `<small>${escapeHtml(item.meta)}</small>` : ""}
+      </div>
+      <span>${escapeHtml(valueFormatter(item.value))}</span>
+    </div>
+  `).join("");
+}
+
+async function loadAnalytics() {
+  if (!state.currentProfile?.approved || !analyticsDateFromInput || !analyticsDateToInput) return;
+  const from = analyticsDateFromInput.value;
+  const to = analyticsDateToInput.value;
+
+  if (!from || !to) {
+    if (analyticsEmpty) {
+      analyticsEmpty.textContent = "Select a date range to load analytics.";
+      analyticsEmpty.style.display = "block";
+    }
+    return;
+  }
+
+  if (from > to) {
+    showToast("Analytics end date must be after the start date.", true);
+    return;
+  }
+
+  try {
+    const bookings = await fetchBookingsForPeriod(from, formatDateKey(addDays(parseDate(to), 1)));
+    const groups = getAnalyticsReservationGroups(bookings);
+    const totalRevenue = roundCurrency(groups.reduce((sum, group) => sum + Number(group.totalPrice || 0), 0));
+    const totalBookings = groups.length;
+    const totalPendingBalance = roundCurrency(groups.reduce((sum, group) => sum + getBookingBalanceAmount(group), 0));
+    const totalRoomNights = groups.reduce((sum, group) => sum + getAnalyticsRoomNights(group), 0);
+    const averageBookingValue = totalBookings ? roundCurrency(totalRevenue / totalBookings) : 0;
+    const averageStayNights = totalBookings ? roundCurrency(totalRoomNights / totalBookings) : 0;
+
+    const roomTotals = new Map();
+    const roomTypeRevenue = new Map();
+    const customerTotals = new Map();
+    const staffTotals = new Map();
+    const serviceTotals = new Map();
+    const statusTotals = new Map();
+
+    groups.forEach((group) => {
+      const lifecycleStatus = getGroupLifecycleStatus(group);
+      statusTotals.set(getLifecycleStatusLabel(lifecycleStatus), (statusTotals.get(getLifecycleStatusLabel(lifecycleStatus)) || 0) + 1);
+
+      group.bookings.forEach((booking) => {
+        const roomLabel = getRoomLabel(normalizeRoomGroup(booking.roomType), booking.roomNumber);
+        roomTotals.set(roomLabel, (roomTotals.get(roomLabel) || 0) + Math.max(1, getNightCount(booking.checkIn, booking.checkOut)));
+
+        const roomTypeLabel = normalizeRoomGroup(booking.roomType) === "kitchen"
+          ? "Kitchen Room"
+          : normalizeRoomGroup(booking.roomType) === "driver"
+            ? "Driver Room"
+            : "Normal Room";
+        roomTypeRevenue.set(roomTypeLabel, roundCurrency((roomTypeRevenue.get(roomTypeLabel) || 0) + Number(booking.roomTotal || 0)));
+      });
+
+      customerTotals.set(group.guestName || "Guest", roundCurrency((customerTotals.get(group.guestName || "Guest") || 0) + Number(group.totalPrice || 0)));
+      const bookedBy = group.bookings[0]?.createdByName || "Unknown";
+      staffTotals.set(bookedBy, roundCurrency((staffTotals.get(bookedBy) || 0) + Number(group.totalPrice || 0)));
+
+      getServicePricingRows(group.bookings).forEach((row) => {
+        serviceTotals.set(row.service, roundCurrency((serviceTotals.get(row.service) || 0) + Number(row.amount || 0)));
+      });
+    });
+
+    setText(analyticsTotalEarn, formatMoney(totalRevenue));
+    setText(analyticsTotalBookings, String(totalBookings));
+    setText(analyticsAverageBooking, formatMoney(averageBookingValue));
+    setText(analyticsPendingBalance, formatMoney(totalPendingBalance));
+    setText(analyticsRoomNights, String(totalRoomNights));
+    setText(analyticsAverageStay, `${averageStayNights.toFixed(1)} nights`);
+
+    renderAnalyticsBarList(
+      analyticsTopRooms,
+      Array.from(roomTotals.entries()).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value).slice(0, 6),
+      (value) => `${value} nights`,
+    );
+    renderAnalyticsBarList(
+      analyticsRoomTypes,
+      Array.from(roomTypeRevenue.entries()).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value),
+      (value) => formatMoney(value),
+    );
+    renderAnalyticsBarList(
+      analyticsServices,
+      Array.from(serviceTotals.entries()).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value),
+      (value) => formatMoney(value),
+    );
+    renderAnalyticsTableList(
+      analyticsCustomers,
+      Array.from(customerTotals.entries()).map(([label, value]) => ({ label, value, meta: "Reservation value" })).sort((a, b) => b.value - a.value).slice(0, 6),
+      (value) => formatMoney(value),
+    );
+    renderAnalyticsTableList(
+      analyticsStatuses,
+      Array.from(statusTotals.entries()).map(([label, value]) => ({ label, value, meta: "Reservations" })).sort((a, b) => b.value - a.value),
+      (value) => String(value),
+    );
+    renderAnalyticsTableList(
+      analyticsStaff,
+      Array.from(staffTotals.entries()).map(([label, value]) => ({ label, value, meta: "Booked by staff" })).sort((a, b) => b.value - a.value).slice(0, 6),
+      (value) => formatMoney(value),
+    );
+
+    if (analyticsEmpty) {
+      analyticsEmpty.style.display = groups.length ? "none" : "block";
+      analyticsEmpty.textContent = groups.length ? "" : "No analytics data for this range.";
+    }
+  } catch (error) {
+    if (analyticsEmpty) {
+      analyticsEmpty.textContent = error.message;
+      analyticsEmpty.style.display = "block";
+    }
   }
 }
 
@@ -6321,6 +6506,9 @@ async function refreshLiveViews() {
     await loadReservationPlanner();
   }
   await loadHoldBookings();
+  if (screens.analytics?.classList.contains("screen-active")) {
+    await loadAnalytics();
+  }
 }
 
 async function setupRealtime() {
@@ -7050,6 +7238,7 @@ logoutBtn.addEventListener("click", handleLogout);
 loadBookingsBtn.addEventListener("click", () => loadBookingsForDate(viewDateInput.value));
 refreshAccountsBtn.addEventListener("click", () => loadAccounts());
 refreshRequestsBtn.addEventListener("click", () => loadRequests());
+loadAnalyticsBtn?.addEventListener("click", () => loadAnalytics());
 refreshPricingBtn?.addEventListener("click", async () => {
   await loadRoomInventory();
   await loadRoomPricing();
@@ -7219,6 +7408,7 @@ checkAvailabilityBtn.addEventListener("click", refreshAvailability);
 navButtons.booking.addEventListener("click", () => setScreen("booking"));
 navButtons.view.addEventListener("click", () => setScreen("view"));
 navButtons.planner.addEventListener("click", () => setScreen("planner"));
+navButtons.analytics.addEventListener("click", () => setScreen("analytics"));
 navButtons.hold.addEventListener("click", () => setScreen("hold"));
 navButtons.requests.addEventListener("click", () => setScreen("requests"));
 navButtons.accounts.addEventListener("click", () => setScreen("accounts"));
@@ -7241,9 +7431,12 @@ window.addEventListener("offline", updateOnlineStatus);
 
   const today = new Date();
   const tomorrow = addDays(today, 1);
+  const monthStart = startOfMonth(today);
   state.currentMonthDate = startOfMonth(today);
   initBookingDateRangePicker(today, tomorrow);
   viewDateInput.value = toDateInputValue(today);
+  if (analyticsDateFromInput) analyticsDateFromInput.value = toDateInputValue(monthStart);
+  if (analyticsDateToInput) analyticsDateToInput.value = toDateInputValue(today);
   renderRoomStatus([]);
   updateStats([]);
   bootstrapSession();

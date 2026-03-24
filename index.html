@@ -407,6 +407,108 @@
           </div>
         </section>
 
+        <section class="screen" id="screen-analytics" aria-labelledby="tab-analytics">
+          <div class="card analytics-card">
+            <div class="accounts-header">
+              <div>
+                <p class="eyebrow">Business View</p>
+                <h3>Analytics</h3>
+              </div>
+              <div class="planner-toolbar-actions">
+                <div class="field compact-field">
+                  <label for="analytics-date-from">From</label>
+                  <input id="analytics-date-from" type="date" />
+                </div>
+                <div class="field compact-field">
+                  <label for="analytics-date-to">To</label>
+                  <input id="analytics-date-to" type="date" />
+                </div>
+                <button id="load-analytics" class="secondary-btn small-btn" type="button">Load Analytics</button>
+              </div>
+            </div>
+            <p class="inline-note">Track revenue, room demand, service income, and top customers for the selected date range.</p>
+
+            <div class="analytics-summary-grid">
+              <div class="analytics-stat-card">
+                <span>Total Earn</span>
+                <strong id="analytics-total-earn">LKR 0.00</strong>
+              </div>
+              <div class="analytics-stat-card">
+                <span>Total Bookings</span>
+                <strong id="analytics-total-bookings">0</strong>
+              </div>
+              <div class="analytics-stat-card">
+                <span>Avg Booking Value</span>
+                <strong id="analytics-average-booking">LKR 0.00</strong>
+              </div>
+              <div class="analytics-stat-card">
+                <span>Pending Balance</span>
+                <strong id="analytics-pending-balance">LKR 0.00</strong>
+              </div>
+              <div class="analytics-stat-card">
+                <span>Room Nights</span>
+                <strong id="analytics-room-nights">0</strong>
+              </div>
+              <div class="analytics-stat-card">
+                <span>Avg Stay</span>
+                <strong id="analytics-average-stay">0 nights</strong>
+              </div>
+            </div>
+
+            <div class="analytics-panel-grid">
+              <section class="analytics-panel">
+                <div class="analytics-panel-head">
+                  <h4>Top Rooms</h4>
+                  <p>Rooms with the highest room-night demand.</p>
+                </div>
+                <div id="analytics-top-rooms" class="analytics-bar-list"></div>
+              </section>
+
+              <section class="analytics-panel">
+                <div class="analytics-panel-head">
+                  <h4>Room Type Revenue</h4>
+                  <p>How much each room type is earning.</p>
+                </div>
+                <div id="analytics-room-types" class="analytics-bar-list"></div>
+              </section>
+
+              <section class="analytics-panel">
+                <div class="analytics-panel-head">
+                  <h4>Service Revenue</h4>
+                  <p>Paid service totals in the selected range.</p>
+                </div>
+                <div id="analytics-services" class="analytics-bar-list"></div>
+              </section>
+
+              <section class="analytics-panel">
+                <div class="analytics-panel-head">
+                  <h4>Top Customers</h4>
+                  <p>Customers with the most reservation value.</p>
+                </div>
+                <div id="analytics-customers" class="analytics-table-list"></div>
+              </section>
+
+              <section class="analytics-panel">
+                <div class="analytics-panel-head">
+                  <h4>Status Breakdown</h4>
+                  <p>Reservation lifecycle count summary.</p>
+                </div>
+                <div id="analytics-statuses" class="analytics-table-list"></div>
+              </section>
+
+              <section class="analytics-panel">
+                <div class="analytics-panel-head">
+                  <h4>Booked By Staff</h4>
+                  <p>Who is adding the most reservation value.</p>
+                </div>
+                <div id="analytics-staff" class="analytics-table-list"></div>
+              </section>
+            </div>
+
+            <p id="analytics-empty" class="empty-state">Select a date range to load analytics.</p>
+          </div>
+        </section>
+
         <section class="screen" id="screen-hold" aria-labelledby="tab-hold">
           <div class="card">
             <div class="booking-list-head">
@@ -511,6 +613,7 @@
         <button id="tab-booking" class="nav-btn nav-active" type="button">New Booking</button>
         <button id="tab-view" class="nav-btn" type="button">View By Date</button>
         <button id="tab-planner" class="nav-btn" type="button">Booking Planner</button>
+        <button id="tab-analytics" class="nav-btn" type="button">Analytics</button>
         <button id="tab-hold" class="nav-btn" type="button">Hold Bookings</button>
         <button id="tab-requests" class="nav-btn" type="button">Requests</button>
         <button id="tab-accounts" class="nav-btn hidden" type="button">Accounts</button>
