@@ -129,6 +129,25 @@ function toggleHidden(node, hidden) {
   if (node) node.classList.toggle("hidden", hidden);
 }
 
+function splitGuestTitleAndName(value = "") {
+  const raw = String(value || "").trim();
+  const match = raw.match(/^(Mr|Ms|Rev)\.?\s+(.*)$/i);
+  if (!match) {
+    return { title: "", name: raw };
+  }
+  const normalizedTitle = match[1].charAt(0).toUpperCase() + match[1].slice(1).toLowerCase();
+  return {
+    title: normalizedTitle,
+    name: String(match[2] || "").trim(),
+  };
+}
+
+function combineGuestTitleAndName(title = "", name = "") {
+  const cleanName = String(name || "").trim();
+  const cleanTitle = String(title || "").trim();
+  return cleanTitle && cleanName ? `${cleanTitle} ${cleanName}` : cleanName;
+}
+
 function normalizePermissionList(value) {
   if (Array.isArray(value)) {
     return Array.from(new Set(value.map((item) => String(item || "").trim()).filter(Boolean)));
@@ -169,6 +188,55 @@ function getStoredBookingViewMode() {
   } catch (error) {
     return null;
   }
+}
+
+function getPresetRangeDates(presetKey) {
+  const today = parseDate(new Date());
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth();
+
+  switch (presetKey) {
+    case "this-month":
+      return { from: startOfMonth(today), to: today };
+    case "last-month": {
+      const base = new Date(currentYear, currentMonth - 1, 1, 12, 0, 0);
+      return { from: startOfMonth(base), to: endOfMonth(base) };
+    }
+    case "this-year":
+      return { from: new Date(currentYear, 0, 1, 12, 0, 0), to: today };
+    case "last-year":
+      return { from: new Date(currentYear - 1, 0, 1, 12, 0, 0), to: new Date(currentYear - 1, 11, 31, 12, 0, 0) };
+    default:
+      return { from: today, to: today };
+  }
+}
+
+function ensureSelectOptionValue(select, value, label) {
+  if (!select) return;
+  if (!Array.from(select.options).some((option) => Number(option.value) === Number(value))) {
+    const option = document.createElement("option");
+    option.value = String(value);
+    option.textContent = label;
+    select.appendChild(option);
+  }
+  select.value = String(value);
+}
+
+function applyPlannerPreset(presetKey) {
+  if (!plannerStartDateInput || !plannerRangeDaysInput) return;
+  const { from, to } = getPresetRangeDates(presetKey);
+  const days = Math.max(7, Math.min(60, getNightCount(formatDateKey(from), formatDateKey(addDays(to, 1)))));
+  plannerStartDateInput.value = toDateInputValue(from);
+  ensureSelectOptionValue(plannerRangeDaysInput, days, `${days} Days`);
+  loadReservationPlanner();
+}
+
+function applyAnalyticsPreset(presetKey) {
+  if (!analyticsDateFromInput || !analyticsDateToInput) return;
+  const { from, to } = getPresetRangeDates(presetKey);
+  analyticsDateFromInput.value = toDateInputValue(from);
+  analyticsDateToInput.value = toDateInputValue(to);
+  loadAnalytics();
 }
 
 function getDefaultBookingViewMode() {
@@ -278,6 +346,7 @@ const logoutBtn = qs("#logout-btn");
 const userChip = qs("#user-chip");
 
 const bookingForm = qs("#booking-form");
+const bookingGuestTitleInput = qs("#guestTitle");
 const bookingPhoneInput = qs("#phone");
 const signupPhoneInput = qs("#signup-phone");
 const bookingDateRangeInput = qs("#bookingDateRange");
@@ -300,6 +369,7 @@ const bookingViewDesktopBtn = qs("#app-view-desktop");
 const plannerStartDateInput = qs("#plannerStartDate");
 const plannerRangeDaysInput = qs("#plannerRangeDays");
 const plannerLoadBtn = qs("#loadPlanner");
+const plannerPresetButtons = Array.from(document.querySelectorAll("[data-planner-preset]"));
 const plannerSummaryRange = qs("#plannerSummaryRange");
 const plannerSummaryReservations = qs("#plannerSummaryReservations");
 const plannerSummaryNights = qs("#plannerSummaryNights");
@@ -373,6 +443,7 @@ const modalBookingId = qs("#modal-booking-id");
 const modalTitle = qs("#modal-title");
 const requestReasonField = qs("#request-reason-field");
 const requestReasonInput = qs("#request-reason");
+const requestGuestTitleInput = qs("#request-guest-title");
 const requestGuestNameInput = qs("#request-guest-name");
 const requestPhoneInput = qs("#request-phone");
 const requestCurrentDates = qs("#request-current-dates");
@@ -421,6 +492,7 @@ const closeBookingDetailsBtn = qs("#close-booking-details");
 const analyticsDateFromInput = qs("#analytics-date-from");
 const analyticsDateToInput = qs("#analytics-date-to");
 const loadAnalyticsBtn = qs("#load-analytics");
+const analyticsPresetButtons = Array.from(document.querySelectorAll("[data-analytics-preset]"));
 const analyticsTotalEarn = qs("#analytics-total-earn");
 const analyticsTotalBookings = qs("#analytics-total-bookings");
 const analyticsAverageBooking = qs("#analytics-average-booking");
@@ -432,6 +504,7 @@ const analyticsRoomTypes = qs("#analytics-room-types");
 const analyticsServices = qs("#analytics-services");
 const analyticsCustomers = qs("#analytics-customers");
 const analyticsStatuses = qs("#analytics-statuses");
+const analyticsTitles = qs("#analytics-titles");
 const analyticsStaff = qs("#analytics-staff");
 const analyticsEmpty = qs("#analytics-empty");
 
@@ -3007,10 +3080,13 @@ async function loadAnalytics() {
     const staffTotals = new Map();
     const serviceTotals = new Map();
     const statusTotals = new Map();
+    const titleTotals = new Map();
 
     groups.forEach((group) => {
       const lifecycleStatus = getGroupLifecycleStatus(group);
       statusTotals.set(getLifecycleStatusLabel(lifecycleStatus), (statusTotals.get(getLifecycleStatusLabel(lifecycleStatus)) || 0) + 1);
+      const title = splitGuestTitleAndName(group.guestName || "").title || "No Title";
+      titleTotals.set(title, (titleTotals.get(title) || 0) + 1);
 
       group.bookings.forEach((booking) => {
         const roomLabel = getRoomLabel(normalizeRoomGroup(booking.roomType), booking.roomNumber);
@@ -3063,6 +3139,11 @@ async function loadAnalytics() {
     renderAnalyticsTableList(
       analyticsStatuses,
       Array.from(statusTotals.entries()).map(([label, value]) => ({ label, value, meta: "Reservations" })).sort((a, b) => b.value - a.value),
+      (value) => String(value),
+    );
+    renderAnalyticsTableList(
+      analyticsTitles,
+      Array.from(titleTotals.entries()).map(([label, value]) => ({ label, value, meta: "Guest title count" })).sort((a, b) => b.value - a.value),
       (value) => String(value),
     );
     renderAnalyticsTableList(
@@ -5361,8 +5442,10 @@ async function openRequestModal(bookingId, mode, scope = "single") {
   state.requestScope = scope;
   state.modalMode = mode;
   state.modalCustomPayments = customPriceEntries;
+  const guestIdentity = splitGuestTitleAndName(booking.guestName || "");
   setValue(modalBookingId, booking.id);
-  setValue(requestGuestNameInput, booking.guestName || "");
+  setValue(requestGuestTitleInput, guestIdentity.title || "");
+  setValue(requestGuestNameInput, guestIdentity.name || booking.guestName || "");
   setValue(requestPhoneInput, booking.phone || "");
   setText(requestCurrentDates, `${booking.checkIn || "-"} -> ${booking.checkOut || "-"}`);
   setText(
@@ -7077,8 +7160,9 @@ async function handleRequestSubmit(event) {
     : state.requestScope;
   const isFullBookingEdit = reason === "edit_booking_data" && effectiveScope === "group";
   const selectedServices = Array.from(state.modalRequestedServices.values());
+  const guestName = combineGuestTitleAndName(requestGuestTitleInput?.value, requestGuestNameInput.value);
   const payload = {
-    guestName: requestGuestNameInput.value.trim(),
+    guestName,
     phone: sanitizePhoneValue(requestPhoneInput.value),
     checkIn: requestCheckInInput.value,
     checkOut: requestCheckOutInput.value,
@@ -7311,6 +7395,7 @@ bookingForm.addEventListener("submit", async (event) => {
   const formData = new FormData(bookingForm);
   const payload = Object.fromEntries(formData.entries());
   payload.phone = sanitizePhoneValue(payload.phone);
+  payload.guestName = combineGuestTitleAndName(bookingGuestTitleInput?.value, payload.guestName);
   payload.offerPercentage = getBookingOfferPercentage();
   payload.customPayments = getBookingCustomPaymentsPayload();
   payload.advancePaid = Boolean(bookingAdvancePaidInput?.checked);
@@ -7471,9 +7556,15 @@ authTabSignup.addEventListener("click", () => setAuthTab("signup"));
 pendingLogoutBtn.addEventListener("click", handleLogout);
 logoutBtn.addEventListener("click", handleLogout);
 loadBookingsBtn.addEventListener("click", () => loadBookingsForDate(viewDateInput.value));
+plannerPresetButtons.forEach((button) => {
+  button.addEventListener("click", () => applyPlannerPreset(button.dataset.plannerPreset));
+});
 refreshAccountsBtn.addEventListener("click", () => loadAccounts());
 refreshRequestsBtn.addEventListener("click", () => loadRequests());
 loadAnalyticsBtn?.addEventListener("click", () => loadAnalytics());
+analyticsPresetButtons.forEach((button) => {
+  button.addEventListener("click", () => applyAnalyticsPreset(button.dataset.analyticsPreset));
+});
 refreshPricingBtn?.addEventListener("click", async () => {
   await loadRoomInventory();
   await loadServiceCatalog();

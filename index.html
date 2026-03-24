@@ -108,7 +108,15 @@
           <form id="booking-form" class="card">
             <div class="field">
               <label for="guestName">Guest Name *</label>
-              <input id="guestName" name="guestName" type="text" placeholder="Full name" required />
+              <div class="guest-name-grid">
+                <select id="guestTitle" name="guestTitle">
+                  <option value="">Title</option>
+                  <option value="Mr">Mr</option>
+                  <option value="Ms">Ms</option>
+                  <option value="Rev">Rev</option>
+                </select>
+                <input id="guestName" name="guestName" type="text" placeholder="Full name" required />
+              </div>
             </div>
             <div class="field">
               <label for="phone">Phone Number *</label>
@@ -373,6 +381,12 @@
                 <button id="loadPlanner" class="secondary-btn" type="button">Load Planner</button>
               </div>
             </div>
+            <div class="preset-chip-row">
+              <button class="filter-chip" type="button" data-planner-preset="this-month">This Month</button>
+              <button class="filter-chip" type="button" data-planner-preset="last-month">Last Month</button>
+              <button class="filter-chip" type="button" data-planner-preset="this-year">This Year</button>
+              <button class="filter-chip" type="button" data-planner-preset="last-year">Last Year</button>
+            </div>
             <p class="inline-note">Pick a 7 to 60 day range. Pending reservations stay purple. The same track code keeps the same color across rooms and nights.</p>
             <div class="planner-summary-strip">
               <div class="planner-summary-card">
@@ -425,6 +439,12 @@
                 </div>
                 <button id="load-analytics" class="secondary-btn small-btn" type="button">Load Analytics</button>
               </div>
+            </div>
+            <div class="preset-chip-row">
+              <button class="filter-chip" type="button" data-analytics-preset="this-month">This Month</button>
+              <button class="filter-chip" type="button" data-analytics-preset="last-month">Last Month</button>
+              <button class="filter-chip" type="button" data-analytics-preset="this-year">This Year</button>
+              <button class="filter-chip" type="button" data-analytics-preset="last-year">Last Year</button>
             </div>
             <p class="inline-note">Track revenue, room demand, service income, and top customers for the selected date range.</p>
 
@@ -494,6 +514,14 @@
                   <p>Reservation lifecycle count summary.</p>
                 </div>
                 <div id="analytics-statuses" class="analytics-table-list"></div>
+              </section>
+
+              <section class="analytics-panel">
+                <div class="analytics-panel-head">
+                  <h4>Guest Titles</h4>
+                  <p>Track guest title mix from bookings.</p>
+                </div>
+                <div id="analytics-titles" class="analytics-table-list"></div>
               </section>
 
               <section class="analytics-panel">
@@ -665,7 +693,15 @@
             <div class="request-form-grid">
               <div class="field">
                 <label for="request-guest-name">Guest Name</label>
-                <input id="request-guest-name" type="text" />
+                <div class="guest-name-grid">
+                  <select id="request-guest-title">
+                    <option value="">Title</option>
+                    <option value="Mr">Mr</option>
+                    <option value="Ms">Ms</option>
+                    <option value="Rev">Rev</option>
+                  </select>
+                  <input id="request-guest-name" type="text" />
+                </div>
               </div>
               <div class="field">
                 <label for="request-phone">Phone Number</label>
