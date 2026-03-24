@@ -47,6 +47,28 @@ const EXPORT_FIELD_DEFS = [
   { key: "roomDetails", label: "Room Details", note: "Show room-by-room reservation breakdown." },
 ];
 
+const BOOKING_VIEW_FIELD_DEFS = [
+  { key: "stay", label: "Stay", note: "Show stay date range in the booking header." },
+  { key: "rooms", label: "Rooms", note: "Show room count." },
+  { key: "totalPax", label: "Total Pax", note: "Show total pax count." },
+  { key: "lifecycle", label: "Lifecycle", note: "Show booking lifecycle status." },
+  { key: "balance", label: "Balance", note: "Show balance amount." },
+  { key: "trackCode", label: "Track Code", note: "Show reservation track code." },
+  { key: "customer", label: "Customer", note: "Show customer name." },
+  { key: "bookedBy", label: "Booked By", note: "Show staff member who created the booking." },
+  { key: "phone", label: "Phone", note: "Show customer phone number." },
+  { key: "checkIn", label: "Check In", note: "Show check-in date." },
+  { key: "checkOut", label: "Check Out", note: "Show check-out date." },
+  { key: "status", label: "Status", note: "Show booking source / status." },
+  { key: "statusNote", label: "Status Note", note: "Show waiting-for-confirmation note when relevant." },
+  { key: "checkInAt", label: "Check In At", note: "Show actual check-in time." },
+  { key: "checkOutAt", label: "Check Out At", note: "Show actual check-out time." },
+  { key: "totalPrice", label: "Total Price", note: "Show booking total price." },
+  { key: "advance", label: "Advance", note: "Show advance payment status." },
+  { key: "customPrice", label: "Custom Price", note: "Show total custom price amount." },
+  { key: "advanceAmount", label: "Advance Amount", note: "Show advance payment amount." },
+];
+
 const ROOM_DEFS = [
   { type: "kitchen", label: "Kitchen Room", count: 2, maxPax: 6 },
   { type: "normal", label: "Normal Room", count: 4, maxPax: 4 },
@@ -124,6 +146,7 @@ const state = {
     checkOutTime: "11:00",
     pdfFields: EXPORT_FIELD_DEFS.map((item) => item.key),
     whatsappFields: EXPORT_FIELD_DEFS.map((item) => item.key),
+    bookingViewFields: BOOKING_VIEW_FIELD_DEFS.map((item) => item.key),
   },
   bookingRangePicker: null,
   plannerDragBookingId: null,
@@ -847,6 +870,27 @@ function normalizeExportFieldList(value, fallbackToAll = true) {
   return Array.from(new Set(source.map((item) => String(item || "").trim()).filter((item) => validKeys.has(item))));
 }
 
+function normalizeBookingViewFieldList(value, fallbackToAll = true) {
+  const validKeys = new Set(BOOKING_VIEW_FIELD_DEFS.map((item) => item.key));
+  const source = Array.isArray(value)
+    ? value
+    : (value == null
+        ? null
+        : typeof value === "string"
+          ? (() => {
+              try {
+                return JSON.parse(value);
+              } catch (error) {
+                return value.split(",").map((item) => item.trim());
+              }
+            })()
+          : []);
+  if (source == null) {
+    return fallbackToAll ? BOOKING_VIEW_FIELD_DEFS.map((item) => item.key) : [];
+  }
+  return Array.from(new Set(source.map((item) => String(item || "").trim()).filter((item) => validKeys.has(item))));
+}
+
 function getEditableServiceCatalogRows() {
   const source = (state.serviceCatalog?.length ? state.serviceCatalog : DEFAULT_SERVICE_DEFS);
   return source.map((item) => normalizeServiceCatalogRow(item));
@@ -866,6 +910,17 @@ function toggleRuntimeExportField(channel, fieldKey, enabled) {
   state.runtimeSettings = {
     ...state.runtimeSettings,
     [fieldName]: next,
+  };
+}
+
+function toggleRuntimeBookingViewField(fieldKey, enabled) {
+  const current = normalizeBookingViewFieldList(state.runtimeSettings?.bookingViewFields);
+  const next = enabled
+    ? Array.from(new Set([...current, fieldKey]))
+    : current.filter((item) => item !== fieldKey);
+  state.runtimeSettings = {
+    ...state.runtimeSettings,
+    bookingViewFields: next,
   };
 }
 
@@ -1389,6 +1444,7 @@ async function loadRuntimeSettings() {
       checkOutTime: data?.check_out_time || "11:00",
       pdfFields: normalizeExportFieldList(data?.pdf_fields),
       whatsappFields: normalizeExportFieldList(data?.whatsapp_fields),
+      bookingViewFields: normalizeBookingViewFieldList(data?.booking_view_fields),
     };
   } catch (error) {
     state.runtimeSettings = {
@@ -1396,6 +1452,7 @@ async function loadRuntimeSettings() {
       checkOutTime: "11:00",
       pdfFields: normalizeExportFieldList(null),
       whatsappFields: normalizeExportFieldList(null),
+      bookingViewFields: normalizeBookingViewFieldList(null),
     };
     if (canManagePricing()) {
       showToast("Booking runtime settings table is not ready. Run the updated Supabase schema.sql.", true);
@@ -1413,6 +1470,7 @@ async function saveRuntimeSettings() {
     check_out_time: runtimeCheckOutTimeInput?.value || "11:00",
     pdf_fields: normalizeExportFieldList(state.runtimeSettings?.pdfFields),
     whatsapp_fields: normalizeExportFieldList(state.runtimeSettings?.whatsappFields),
+    booking_view_fields: normalizeBookingViewFieldList(state.runtimeSettings?.bookingViewFields),
   };
   const { error } = await state.supabase
     .from(CONFIG.SUPABASE_RUNTIME_SETTINGS_TABLE)
@@ -1425,6 +1483,7 @@ async function saveRuntimeSettings() {
     checkOutTime: row.check_out_time,
     pdfFields: normalizeExportFieldList(row.pdf_fields),
     whatsappFields: normalizeExportFieldList(row.whatsapp_fields),
+    bookingViewFields: normalizeBookingViewFieldList(row.booking_view_fields),
   };
 }
 
@@ -1778,6 +1837,43 @@ function renderPricingScreen() {
   });
 
   exportSettingsList.appendChild(exportCard);
+
+  const bookingViewCard = document.createElement("article");
+  bookingViewCard.className = "pricing-card";
+  bookingViewCard.innerHTML = `
+    <div class="pricing-card-head">
+      <div>
+        <h4>View By Date Booking Group</h4>
+        <p>Choose which booking group details should be visible on the View By Date page.</p>
+      </div>
+    </div>
+    <div class="export-settings-grid">
+      ${BOOKING_VIEW_FIELD_DEFS.map((field) => `
+        <label class="export-field-option">
+          <input
+            type="checkbox"
+            data-booking-view-field="${field.key}"
+            ${normalizeBookingViewFieldList(state.runtimeSettings?.bookingViewFields).includes(field.key) ? "checked" : ""}
+          />
+          <div>
+            <strong>${field.label}</strong>
+            <span>${field.note}</span>
+          </div>
+        </label>
+      `).join("")}
+    </div>
+  `;
+
+  bookingViewCard.querySelectorAll("[data-booking-view-field]").forEach((input) => {
+    input.addEventListener("change", () => {
+      toggleRuntimeBookingViewField(input.dataset.bookingViewField, input.checked);
+      if (viewDateInput?.value) {
+        loadBookingsForDate(viewDateInput.value);
+      }
+    });
+  });
+
+  exportSettingsList.appendChild(bookingViewCard);
 
   const serviceRows = getEditableServiceCatalogRows();
   const serviceCard = document.createElement("article");
@@ -4319,86 +4415,40 @@ function renderBookingGroupOverview(group, groupStatus) {
   const statusNote = getBookingStatusNote(groupStatus);
   const checkedInAt = group.bookings[0]?.checkedInAt ? new Date(group.bookings[0].checkedInAt).toLocaleString("en-GB") : "-";
   const checkedOutAt = group.bookings[0]?.checkedOutAt ? new Date(group.bookings[0].checkedOutAt).toLocaleString("en-GB") : "-";
+  const enabledFields = normalizeBookingViewFieldList(state.runtimeSettings?.bookingViewFields);
+  const hasField = (fieldKey) => enabledFields.includes(fieldKey);
   return `
     <div class="booking-group-overview">
       <section class="booking-overview-panel booking-overview-panel-reservation">
         <div class="booking-overview-panel-title">Reservation</div>
         <div class="booking-overview-rows">
-          <div class="booking-overview-row">
-            <span>Track Code</span>
-            <strong>${group.trackCode || "-"}</strong>
-          </div>
-          <div class="booking-overview-row">
-            <span>Customer</span>
-            <strong>${group.guestName || "Guest"}</strong>
-          </div>
-          <div class="booking-overview-row">
-            <span>Booked By</span>
-            <strong>${group.bookings[0]?.createdByName || "-"}</strong>
-          </div>
-          <div class="booking-overview-row">
-            <span>Phone</span>
-            <strong>${group.phone || "-"}</strong>
-          </div>
+          ${hasField("trackCode") ? `<div class="booking-overview-row"><span>Track Code</span><strong>${group.trackCode || "-"}</strong></div>` : ""}
+          ${hasField("customer") ? `<div class="booking-overview-row"><span>Customer</span><strong>${group.guestName || "Guest"}</strong></div>` : ""}
+          ${hasField("bookedBy") ? `<div class="booking-overview-row"><span>Booked By</span><strong>${group.bookings[0]?.createdByName || "-"}</strong></div>` : ""}
+          ${hasField("phone") ? `<div class="booking-overview-row"><span>Phone</span><strong>${group.phone || "-"}</strong></div>` : ""}
         </div>
       </section>
       <section class="booking-overview-panel booking-overview-panel-stay">
         <div class="booking-overview-panel-title">Stay</div>
         <div class="booking-overview-rows">
-          <div class="booking-overview-row">
-            <span>Check In</span>
-            <strong>${group.checkIn || "-"}</strong>
-          </div>
-          <div class="booking-overview-row">
-            <span>Check Out</span>
-            <strong>${group.checkOut || "-"}</strong>
-          </div>
-          <div class="booking-overview-row">
-            <span>Status</span>
-            <strong>${statusLabel}</strong>
-          </div>
-          ${statusNote ? `<div class="booking-overview-row booking-overview-row-note"><span>Status Note</span><strong>${statusNote}</strong></div>` : ""}
-          <div class="booking-overview-row">
-            <span>Lifecycle</span>
-            <strong>${lifecycleLabel}</strong>
-          </div>
-          <div class="booking-overview-row">
-            <span>Rooms / Pax</span>
-            <strong>${group.bookings.length} room(s) · ${group.totalGuests} pax</strong>
-          </div>
-          <div class="booking-overview-row">
-            <span>Check In At</span>
-            <strong>${checkedInAt}</strong>
-          </div>
-          <div class="booking-overview-row">
-            <span>Check Out At</span>
-            <strong>${checkedOutAt}</strong>
-          </div>
+          ${hasField("checkIn") ? `<div class="booking-overview-row"><span>Check In</span><strong>${group.checkIn || "-"}</strong></div>` : ""}
+          ${hasField("checkOut") ? `<div class="booking-overview-row"><span>Check Out</span><strong>${group.checkOut || "-"}</strong></div>` : ""}
+          ${hasField("status") ? `<div class="booking-overview-row"><span>Status</span><strong>${statusLabel}</strong></div>` : ""}
+          ${(hasField("statusNote") && statusNote) ? `<div class="booking-overview-row booking-overview-row-note"><span>Status Note</span><strong>${statusNote}</strong></div>` : ""}
+          ${hasField("lifecycle") ? `<div class="booking-overview-row"><span>Lifecycle</span><strong>${lifecycleLabel}</strong></div>` : ""}
+          ${(hasField("rooms") || hasField("totalPax")) ? `<div class="booking-overview-row"><span>Rooms / Pax</span><strong>${hasField("rooms") ? `${group.bookings.length} room(s)` : ""}${hasField("rooms") && hasField("totalPax") ? " · " : ""}${hasField("totalPax") ? `${group.totalGuests} pax` : ""}</strong></div>` : ""}
+          ${hasField("checkInAt") ? `<div class="booking-overview-row"><span>Check In At</span><strong>${checkedInAt}</strong></div>` : ""}
+          ${hasField("checkOutAt") ? `<div class="booking-overview-row"><span>Check Out At</span><strong>${checkedOutAt}</strong></div>` : ""}
         </div>
       </section>
       <section class="booking-overview-panel booking-overview-panel-billing">
         <div class="booking-overview-panel-title">Billing</div>
         <div class="booking-overview-rows">
-          <div class="booking-overview-row booking-overview-row-strong">
-            <span>Total Price</span>
-            <strong>${formatMoney(group.totalPrice || 0)}</strong>
-          </div>
-          <div class="booking-overview-row">
-            <span>Advance</span>
-            <strong>${advanceInfo.label}</strong>
-          </div>
-          <div class="booking-overview-row">
-            <span>Custom Price</span>
-            <strong>${formatMoney(customPriceTotal)}</strong>
-          </div>
-          <div class="booking-overview-row">
-            <span>Advance Amount</span>
-            <strong>${formatMoney(advanceInfo.amount || 0)}</strong>
-          </div>
-          <div class="booking-overview-row booking-overview-row-strong">
-            <span>Balance</span>
-            <strong>${formatMoney(balanceAmount)}</strong>
-          </div>
+          ${hasField("totalPrice") ? `<div class="booking-overview-row booking-overview-row-strong"><span>Total Price</span><strong>${formatMoney(group.totalPrice || 0)}</strong></div>` : ""}
+          ${hasField("advance") ? `<div class="booking-overview-row"><span>Advance</span><strong>${advanceInfo.label}</strong></div>` : ""}
+          ${hasField("customPrice") ? `<div class="booking-overview-row"><span>Custom Price</span><strong>${formatMoney(customPriceTotal)}</strong></div>` : ""}
+          ${hasField("advanceAmount") ? `<div class="booking-overview-row"><span>Advance Amount</span><strong>${formatMoney(advanceInfo.amount || 0)}</strong></div>` : ""}
+          ${hasField("balance") ? `<div class="booking-overview-row booking-overview-row-strong"><span>Balance</span><strong>${formatMoney(balanceAmount)}</strong></div>` : ""}
         </div>
       </section>
     </div>
@@ -4406,28 +4456,15 @@ function renderBookingGroupOverview(group, groupStatus) {
 }
 
 function renderBookingHeaderSummary(group) {
+  const enabledFields = normalizeBookingViewFieldList(state.runtimeSettings?.bookingViewFields);
+  const hasField = (fieldKey) => enabledFields.includes(fieldKey);
   return `
     <div class="booking-group-summary-grid">
-      <div class="booking-summary-chip booking-summary-chip-wide">
-        <span>Stay</span>
-        <strong>${group.checkIn || "-"} -> ${group.checkOut || "-"}</strong>
-      </div>
-      <div class="booking-summary-chip">
-        <span>Rooms</span>
-        <strong>${group.bookings.length}</strong>
-      </div>
-      <div class="booking-summary-chip">
-        <span>Total Pax</span>
-        <strong>${group.totalGuests}</strong>
-      </div>
-      <div class="booking-summary-chip">
-        <span>Lifecycle</span>
-        <strong>${getLifecycleStatusLabel(getGroupLifecycleStatus(group))}</strong>
-      </div>
-      <div class="booking-summary-chip booking-summary-chip-strong">
-        <span>Balance</span>
-        <strong>${formatMoney(getBookingBalanceAmount(group))}</strong>
-      </div>
+      ${hasField("stay") ? `<div class="booking-summary-chip booking-summary-chip-wide"><span>Stay</span><strong>${group.checkIn || "-"} -> ${group.checkOut || "-"}</strong></div>` : ""}
+      ${hasField("rooms") ? `<div class="booking-summary-chip"><span>Rooms</span><strong>${group.bookings.length}</strong></div>` : ""}
+      ${hasField("totalPax") ? `<div class="booking-summary-chip"><span>Total Pax</span><strong>${group.totalGuests}</strong></div>` : ""}
+      ${hasField("lifecycle") ? `<div class="booking-summary-chip"><span>Lifecycle</span><strong>${getLifecycleStatusLabel(getGroupLifecycleStatus(group))}</strong></div>` : ""}
+      ${hasField("balance") ? `<div class="booking-summary-chip booking-summary-chip-strong"><span>Balance</span><strong>${formatMoney(getBookingBalanceAmount(group))}</strong></div>` : ""}
     </div>
   `;
 }
