@@ -280,6 +280,74 @@ function applyBookingViewMode() {
   bookingViewDesktopBtn?.classList.toggle("view-mode-btn-active", state.bookingViewMode === "desktop");
 }
 
+function renderGuideBookMarkup(markdownText) {
+  const lines = String(markdownText || "").split(/\r?\n/);
+  const parts = [];
+  let listItems = [];
+
+  const flushList = () => {
+    if (!listItems.length) return;
+    parts.push(`<ul>${listItems.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`);
+    listItems = [];
+  };
+
+  lines.forEach((line) => {
+    const text = line.trim();
+    if (!text) {
+      flushList();
+      return;
+    }
+    if (text.startsWith("- ")) {
+      listItems.push(text.slice(2).trim());
+      return;
+    }
+    flushList();
+    if (text.startsWith("## ")) {
+      parts.push(`<h2>${escapeHtml(text.slice(3).trim())}</h2>`);
+      return;
+    }
+    if (text.startsWith("### ")) {
+      parts.push(`<h3>${escapeHtml(text.slice(4).trim())}</h3>`);
+      return;
+    }
+    if (text.startsWith("# ")) {
+      parts.push(`<h1>${escapeHtml(text.slice(2).trim())}</h1>`);
+      return;
+    }
+    parts.push(`<p>${escapeHtml(text)}</p>`);
+  });
+
+  flushList();
+  return parts.join("");
+}
+
+async function loadGuideBook() {
+  if (!guideBookContent) return;
+  try {
+    guideBookContent.innerHTML = '<p class="inline-note">Loading guide book...</p>';
+    const guideCandidates = ["GUIDE_BOOK.md", "./GUIDE_BOOK.md", "/GUIDE_BOOK.md"];
+    let markdown = "";
+    let lastError = null;
+    for (const guidePath of guideCandidates) {
+      try {
+        const response = await fetch(guidePath, { cache: "no-store" });
+        if (!response.ok) {
+          lastError = new Error("Guide book could not be loaded.");
+          continue;
+        }
+        markdown = await response.text();
+        if (markdown.trim()) break;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    if (!markdown.trim()) throw lastError || new Error("Guide book could not be loaded.");
+    guideBookContent.innerHTML = renderGuideBookMarkup(markdown);
+  } catch (error) {
+    guideBookContent.innerHTML = `<p class="inline-note">${escapeHtml(error.message || "Guide book could not be loaded.")}</p>`;
+  }
+}
+
 function setBookingViewMode(mode) {
   state.bookingViewMode = mode === "desktop" ? "desktop" : "mobile";
   try {
@@ -534,12 +602,15 @@ const analyticsSources = qs("#analytics-sources");
 const analyticsTitles = qs("#analytics-titles");
 const analyticsStaff = qs("#analytics-staff");
 const analyticsEmpty = qs("#analytics-empty");
+const guideBookContent = qs("#guide-book-content");
+const refreshGuideBtn = qs("#refresh-guide");
 
 const navButtons = {
   booking: qs("#tab-booking"),
   view: qs("#tab-view"),
   planner: qs("#tab-planner"),
   analytics: qs("#tab-analytics"),
+  guide: qs("#tab-guide"),
   hold: qs("#tab-hold"),
   requests: qs("#tab-requests"),
   accounts: qs("#tab-accounts"),
@@ -553,6 +624,7 @@ const screens = {
   view: qs("#screen-view"),
   planner: qs("#screen-planner"),
   analytics: qs("#screen-analytics"),
+  guide: qs("#screen-guide"),
   hold: qs("#screen-hold"),
   requests: qs("#screen-requests"),
   accounts: qs("#screen-accounts"),
@@ -738,6 +810,11 @@ function createEmptyCustomPayment() {
   return { amount: "", note: "", linkedService: "" };
 }
 
+function createUuid() {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  return `tmp-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 function normalizeServiceCatalogRow(row = {}) {
   return {
     id: row.id || null,
@@ -802,7 +879,14 @@ function getServiceCatalogRows({ includeInactive = false } = {}) {
 }
 
 function getServiceOptionNames(extraServices = []) {
-  const extras = Array.from(new Set((extraServices || []).map((item) => String(item || "").trim()).filter(Boolean)));
+  const normalizedExtras = Array.isArray(extraServices)
+    ? extraServices
+    : extraServices instanceof Set
+      ? Array.from(extraServices)
+      : typeof extraServices === "string"
+        ? extraServices.split(",")
+        : [];
+  const extras = Array.from(new Set(normalizedExtras.map((item) => String(item || "").trim()).filter(Boolean)));
   const catalog = getServiceCatalogRows({ includeInactive: true });
   const activeCatalogNames = catalog.filter((item) => item.isActive || extras.includes(item.name)).map((item) => item.name);
   return Array.from(new Set([...activeCatalogNames, ...extras]));
@@ -1237,7 +1321,7 @@ async function saveServiceCatalog() {
 
   const existingById = new Map((existingRows || []).map((row) => [row.id, row]));
   const updateRows = rows.filter((row) => row.id && existingById.has(row.id));
-  const insertRows = rows.filter((row) => !row.id);
+  const insertRows = rows.filter((row) => !row.id || !existingById.has(row.id));
 
   for (const row of updateRows) {
     const { error: updateError } = await state.supabase
@@ -1257,6 +1341,7 @@ async function saveServiceCatalog() {
     const { error: insertError } = await state.supabase
       .from(CONFIG.SUPABASE_SERVICES_TABLE)
       .insert(insertRows.map((row) => ({
+        id: row.id || createUuid(),
         service_name: row.name,
         default_price: roundCurrency(row.defaultPrice),
         is_active: row.isActive,
@@ -3086,23 +3171,28 @@ function updateHeaderProfile() {
 function updateNavVisibility() {
   const showPlanner = Boolean(state.currentProfile?.approved);
   const showAnalytics = Boolean(state.currentProfile?.approved);
+  const showGuide = Boolean(state.currentProfile?.approved);
   const showHold = Boolean(state.currentProfile?.approved);
   const showAccounts = canManageAccounts();
   const showRequests = Boolean(state.currentProfile?.approved);
   const showPricing = canManagePricing();
   navButtons.planner.classList.toggle("hidden", !showPlanner);
   navButtons.analytics.classList.toggle("hidden", !showAnalytics);
+  navButtons.guide.classList.toggle("hidden", !showGuide);
   navButtons.hold.classList.toggle("hidden", !showHold);
   navButtons.requests.classList.toggle("hidden", !showRequests);
   navButtons.accounts.classList.toggle("hidden", !showAccounts);
   navButtons.pricing.classList.toggle("hidden", !showPricing);
-  const visibleTabs = 2 + Number(showPlanner) + Number(showAnalytics) + Number(showHold) + Number(showRequests) + Number(showAccounts) + Number(showPricing);
+  const visibleTabs = 2 + Number(showPlanner) + Number(showAnalytics) + Number(showGuide) + Number(showHold) + Number(showRequests) + Number(showAccounts) + Number(showPricing);
   const columns = `repeat(${visibleTabs}, 1fr)`;
   qs(".bottom-nav").style.gridTemplateColumns = columns;
   if (!showPlanner && screens.planner.classList.contains("screen-active")) {
     setScreen("booking");
   }
   if (!showAnalytics && screens.analytics.classList.contains("screen-active")) {
+    setScreen("booking");
+  }
+  if (!showGuide && screens.guide.classList.contains("screen-active")) {
     setScreen("booking");
   }
   if (!showHold && screens.hold.classList.contains("screen-active")) {
@@ -3130,6 +3220,9 @@ function setScreen(target) {
   }
   if (target === "analytics") {
     loadAnalytics();
+  }
+  if (target === "guide") {
+    loadGuideBook();
   }
   if (target === "hold") {
     loadHoldBookings();
@@ -4558,6 +4651,7 @@ function normalizeWhatsappPhone(value) {
 }
 
 function buildReservationWhatsappMessage(group) {
+  const customerName = group.guestName || group.bookings?.[0]?.guestName || "Guest";
   const advanceInfo = getAdvancePaymentInfo(group.bookings);
   const customPriceItems = getGroupCustomPriceEntries(group.bookings);
   const customPriceTotal = getGroupCustomPriceTotal(group.bookings);
@@ -4583,7 +4677,7 @@ function buildReservationWhatsappMessage(group) {
     `Reservation Details`,
     ``,
     ...(hasField("trackCode") ? [`Track Code: ${group.trackCode || "-"}`] : []),
-    ...(hasField("customer") ? [`Customer: ${group.guestName || "Guest"}`] : []),
+    `Customer: ${customerName}`,
     ...(hasField("phone") ? [`Phone: ${group.phone || "-"}`] : []),
     ...(hasField("bookedBy") ? [`Booked By: ${group.bookings[0]?.createdByName || "-"}`] : []),
     ...(hasField("stay") ? [`Stay: ${group.checkIn || "-"} -> ${group.checkOut || "-"}`] : []),
@@ -8009,10 +8103,12 @@ navButtons.booking.addEventListener("click", () => setScreen("booking"));
 navButtons.view.addEventListener("click", () => setScreen("view"));
 navButtons.planner.addEventListener("click", () => setScreen("planner"));
 navButtons.analytics.addEventListener("click", () => setScreen("analytics"));
+navButtons.guide.addEventListener("click", () => setScreen("guide"));
 navButtons.hold.addEventListener("click", () => setScreen("hold"));
 navButtons.requests.addEventListener("click", () => setScreen("requests"));
 navButtons.accounts.addEventListener("click", () => setScreen("accounts"));
 navButtons.pricing.addEventListener("click", () => setScreen("pricing"));
+refreshGuideBtn?.addEventListener("click", () => loadGuideBook());
 plannerLoadBtn?.addEventListener("click", () => loadReservationPlanner());
 
 window.addEventListener("online", updateOnlineStatus);
