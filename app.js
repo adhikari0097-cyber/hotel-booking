@@ -2408,6 +2408,59 @@ async function updateGroupAdvancePayment(groupKey, advanceAmount) {
   }
 }
 
+async function promptGroupCustomPriceAdd(groupKey) {
+  const group = getBookingGroupByKey(groupKey);
+  if (!group?.bookings?.length) throw new Error("Booking group not found.");
+
+  const noteInput = window.prompt("Custom price note. Example: Late checkout / transport / extra charge.", "");
+  if (noteInput == null) return false;
+  const note = String(noteInput || "").trim();
+  if (!note) {
+    throw new Error("Enter a custom price note.");
+  }
+
+  const amountInput = window.prompt(`Enter amount for ${note}.`, "");
+  if (amountInput == null) return false;
+  const amount = roundCurrency(Number(amountInput || 0));
+  if (Number.isNaN(amount) || amount <= 0) {
+    throw new Error("Enter a valid amount greater than 0.");
+  }
+
+  const nextCustomPayments = getGroupCustomPriceEntries(group.bookings);
+  const existing = nextCustomPayments.find(
+    (item) => String(item.note || "").trim().toLowerCase() === note.toLowerCase(),
+  );
+  if (existing) {
+    existing.amount = roundCurrency(Number(existing.amount || 0) + amount);
+  } else {
+    nextCustomPayments.push({ amount, note });
+  }
+
+  const mergedNotes = mergeNotesAndServices(
+    getGroupOtherNotes(group.bookings),
+    getGroupServices(group.bookings),
+  );
+
+  for (const booking of group.bookings) {
+    await updateBooking(booking.id, {
+      guestName: booking.guestName,
+      phone: booking.phone,
+      checkIn: booking.checkIn,
+      checkOut: booking.checkOut,
+      roomType: booking.roomType,
+      roomTypeLabel: booking.roomTypeLabel,
+      roomNumber: booking.roomNumber,
+      notes: mergedNotes,
+      status: booking.status,
+      guests: booking.guests,
+      roomsNeeded: booking.roomsNeeded,
+      customPayments: nextCustomPayments,
+    });
+  }
+
+  return true;
+}
+
 function renderBookingCustomPayments() {
   if (!bookingCustomPaymentList) return;
   if (!state.bookingCustomPayments.length) {
@@ -5113,6 +5166,16 @@ function openBookingDetailsModal(groupKey) {
     ${customPriceItems.length ? `<div class="booking-details-services-panel"><div class="booking-details-panel-title">Custom Price</div>${getCustomPriceListMarkup(customPriceItems)}</div>` : ""}
     ${groupServices.length ? `<div class="booking-details-services-panel"><div class="booking-details-panel-title">Services</div>${renderServiceChips(groupServices)}</div>` : ""}
     <div class="booking-details-services-panel"><div class="booking-details-panel-title">Service Prices</div>${servicePricingMarkup}</div>
+    ${lifecycleStatus === "checked_in" ? `
+      <div class="booking-details-services-panel booking-details-service-manage-panel" data-booking-service-manage-panel>
+        <div class="booking-details-panel-title">Add Services</div>
+        <p class="inline-note">Checked-in bookings can add services and custom charges here.</p>
+        ${renderGroupServiceToggleButtons(group)}
+        <div class="booking-details-service-manage-actions">
+          <button class="action-btn" type="button" data-booking-group-action="custom-price">Add Custom Price</button>
+        </div>
+      </div>
+    ` : ""}
     ${requestHistoryMarkup}
     <div class="booking-details-actions">
       ${canManageBookings() ? `<button class="action-btn action-btn-icon action-btn-icon-advance" type="button" data-booking-group-action="advance">Update Advance</button>` : ""}
@@ -5121,6 +5184,7 @@ function openBookingDetailsModal(groupKey) {
       <button class="action-btn action-btn-icon action-btn-icon-pdf" type="button" data-booking-group-action="pdf">Export PDF</button>
       ${(directEditAllowed || canManageBookings()) ? `<button class="primary-btn" type="button" data-booking-group-action="manage">Edit Booking</button>` : ""}
       ${(directEditAllowed || canManageBookings()) ? `<button class="action-btn" type="button" data-booking-group-action="add-room">Add Room</button>` : ""}
+      ${lifecycleStatus === "checked_in" ? `<button class="action-btn" type="button" data-booking-group-action="services">Add Services</button>` : ""}
       ${lifecycleStatus === "booked" ? `<button class="primary-btn" type="button" data-booking-group-action="checkin">Check In</button>` : ""}
       ${lifecycleStatus === "checked_in" ? `<button class="primary-btn" type="button" data-booking-group-action="checkout">Check Out</button>` : ""}
       ${lifecycleStatus === "hold" ? `${getLifecycleBadgeMarkup(group)}` : ""}
@@ -5207,6 +5271,32 @@ function openBookingDetailsModal(groupKey) {
       }
     });
   }
+  const servicesBtn = bookingDetailsBody.querySelector('[data-booking-group-action="services"]');
+  if (servicesBtn) {
+    servicesBtn.addEventListener("click", () => {
+      const servicePanel = bookingDetailsBody.querySelector("[data-booking-service-manage-panel]");
+      if (!servicePanel) return;
+      servicePanel.scrollIntoView({ behavior: "smooth", block: "center" });
+      servicePanel.classList.add("booking-details-service-manage-panel-focus");
+      window.setTimeout(() => {
+        servicePanel.classList.remove("booking-details-service-manage-panel-focus");
+      }, 1200);
+    });
+  }
+  const customPriceBtn = bookingDetailsBody.querySelector('[data-booking-group-action="custom-price"]');
+  if (customPriceBtn) {
+    customPriceBtn.addEventListener("click", async () => {
+      try {
+        const changed = await promptGroupCustomPriceAdd(group.key);
+        if (!changed) return;
+        showToast("Custom price added.");
+        await refreshLiveViews();
+        openBookingDetailsModal(group.key);
+      } catch (error) {
+        showToast(error.message || "Unable to add custom price.", true);
+      }
+    });
+  }
   const checkInBtn = bookingDetailsBody.querySelector('[data-booking-group-action="checkin"]');
   if (checkInBtn) {
     checkInBtn.addEventListener("click", async () => {
@@ -5235,6 +5325,17 @@ function openBookingDetailsModal(groupKey) {
       }
     });
   }
+  bookingDetailsBody.querySelectorAll("[data-group-service-toggle]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        await toggleGroupServiceDirect(button.dataset.groupServiceToggle, button.dataset.serviceName);
+        await refreshLiveViews();
+        openBookingDetailsModal(group.key);
+      } catch (error) {
+        showToast(error.message, true);
+      }
+    });
+  });
   const holdBtn = bookingDetailsBody.querySelector('[data-booking-group-action="hold"]');
   if (holdBtn) {
     holdBtn.addEventListener("click", async () => {

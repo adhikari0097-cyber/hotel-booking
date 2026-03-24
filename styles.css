@@ -1887,6 +1887,19 @@ h4 {
   background: #fff;
 }
 
+.booking-details-service-manage-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.booking-details-service-manage-panel-focus {
+  border-color: #d7be6b;
+  box-shadow: 0 0 0 3px rgba(215, 190, 107, 0.18);
+}
+
 
 .booking-details-history-panel {
   padding: 12px 14px;
