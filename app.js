@@ -2454,6 +2454,20 @@ function getAdvancePaymentInfo(bookings = []) {
   return { label: "Partial", allPaid: false, partiallyPaid: true, amount };
 }
 
+function isGroupAdvancePending(groupKey) {
+  const group = getBookingGroupByKey(groupKey);
+  if (!group?.bookings?.length) return false;
+  const advanceInfo = getAdvancePaymentInfo(group.bookings);
+  return !advanceInfo.allPaid;
+}
+
+function isPlannerPendingBooking(booking, pendingCollections) {
+  const groupKey = getBookingGroupKey(booking);
+  const hasPendingRequest = pendingCollections.byTrack.get(groupKey)?.status === "pending";
+  const isPendingStatus = String(booking.status || "").toLowerCase() === "pending";
+  return isPendingStatus || hasPendingRequest || isGroupAdvancePending(groupKey);
+}
+
 function getGroupCustomPriceEntries(bookings = []) {
   const items = Array.isArray(bookings) ? bookings : [];
   const source = items.find((booking) => getBookingCustomPriceEntries(booking).length);
@@ -4438,7 +4452,7 @@ function getTrackCodeTint(trackCode) {
     { bg: "#dff6b3", border: "#a9d45f" },
     { bg: "#f7cec6", border: "#e69a8c" },
     { bg: "#dff0ff", border: "#93c0ec" },
-    { bg: "#eadcfb", border: "#bca1eb" },
+    { bg: "#dff5ec", border: "#8fceb7" },
     { bg: "#ffe2bf", border: "#efb76f" }
   ];
   let hash = 0;
@@ -7045,8 +7059,7 @@ function getPlannerRooms(bookings = []) {
 }
 
 function getPlannerBookingColors(booking, pendingCollections) {
-  const hasPendingRequest = pendingCollections.byTrack.get(getBookingGroupKey(booking))?.status === "pending";
-  if (String(booking.status || "").toLowerCase() === "pending" || hasPendingRequest) {
+  if (isPlannerPendingBooking(booking, pendingCollections)) {
     return { bg: "#d9c3f7", border: "#9b68dd", text: "#44206b" };
   }
   const tint = getTrackCodeTint(getBookingGroupKey(booking));
@@ -7081,6 +7094,9 @@ function getPlannerPendingLabel(booking, pendingCollections) {
   }
   if (String(booking.status || "").toLowerCase() === "pending") {
     return "Waiting for confirmation";
+  }
+  if (isGroupAdvancePending(getBookingGroupKey(booking))) {
+    return "Pending: Advance";
   }
   return "";
 }
@@ -7507,6 +7523,7 @@ function renderMonthCalendar(bookings, requests = Array.from(state.requestMap.va
   const selectedDateKey = viewDateInput.value;
   const todayKey = formatDateKey(new Date());
   const dayMap = new Map();
+  const pendingCollections = getLatestPendingRequestCollections();
 
   bookings.forEach((booking) => {
     if (!isVisibleBooking(booking)) return;
@@ -7533,7 +7550,7 @@ function renderMonthCalendar(bookings, requests = Array.from(state.requestMap.va
       if (roomGroup === "normal") next.normalRooms.add(roomKey);
       if (roomGroup === "kitchen") next.kitchenRooms.add(roomKey);
       if (roomGroup === "driver") next.driverRooms.add(roomKey);
-      if (String(booking.status || "").toLowerCase() === "pending") {
+      if (isPlannerPendingBooking(booking, pendingCollections)) {
         next.pending += 1;
         next.hasPendingBooking = true;
       }
