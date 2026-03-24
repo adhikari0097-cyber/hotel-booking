@@ -118,6 +118,26 @@ create table if not exists public.room_inventory (
   constraint room_inventory_unique unique (room_type, room_number)
 );
 
+create table if not exists public.service_catalog (
+  id uuid primary key default gen_random_uuid(),
+  service_name text not null unique,
+  default_price numeric(12,2) not null default 0 check (default_price >= 0),
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+insert into public.service_catalog (service_name, default_price, is_active)
+values
+  ('Breakfast', 0, true),
+  ('Lunch', 0, true),
+  ('Dinner', 0, true),
+  ('Liquor', 0, true),
+  ('Kitchen', 0, true),
+  ('Car', 0, true),
+  ('Van', 0, true)
+on conflict (service_name) do nothing;
+
 insert into public.room_inventory (room_type, room_number, max_pax, is_active)
 values
   ('kitchen', 1, 6, true),
@@ -297,6 +317,7 @@ alter table public.profiles enable row level security;
 alter table public.booking_change_requests enable row level security;
 alter table public.room_pricing enable row level security;
 alter table public.room_inventory enable row level security;
+alter table public.service_catalog enable row level security;
 alter table public.booking_runtime_settings enable row level security;
 
 drop policy if exists "anon can read bookings" on public.bookings;
@@ -377,6 +398,13 @@ for select
 to authenticated
 using (public.is_approved_user());
 
+drop policy if exists "approved users can read service catalog" on public.service_catalog;
+create policy "approved users can read service catalog"
+on public.service_catalog
+for select
+to authenticated
+using (public.is_approved_user());
+
 drop policy if exists "approved users can read booking runtime settings" on public.booking_runtime_settings;
 create policy "approved users can read booking runtime settings"
 on public.booking_runtime_settings
@@ -417,6 +445,28 @@ with check (public.has_profile_permission('manage_pricing'));
 drop policy if exists "owner admin can delete room inventory" on public.room_inventory;
 create policy "owner admin can delete room inventory"
 on public.room_inventory
+for delete
+to authenticated
+using (public.has_profile_permission('manage_pricing'));
+
+drop policy if exists "owner admin can insert service catalog" on public.service_catalog;
+create policy "owner admin can insert service catalog"
+on public.service_catalog
+for insert
+to authenticated
+with check (public.has_profile_permission('manage_pricing'));
+
+drop policy if exists "owner admin can update service catalog" on public.service_catalog;
+create policy "owner admin can update service catalog"
+on public.service_catalog
+for update
+to authenticated
+using (public.has_profile_permission('manage_pricing'))
+with check (public.has_profile_permission('manage_pricing'));
+
+drop policy if exists "owner admin can delete service catalog" on public.service_catalog;
+create policy "owner admin can delete service catalog"
+on public.service_catalog
 for delete
 to authenticated
 using (public.has_profile_permission('manage_pricing'));

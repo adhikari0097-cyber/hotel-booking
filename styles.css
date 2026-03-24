@@ -3324,6 +3324,40 @@ h4 {
   opacity: 0.88;
 }
 
+.service-config-list {
+  display: grid;
+  gap: 10px;
+}
+
+.service-config-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: #fff;
+}
+
+.service-config-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(160px, 0.8fr);
+  gap: 12px;
+  flex: 1;
+}
+
+@media (max-width: 720px) {
+  .service-config-row {
+    flex-direction: column;
+  }
+
+  .service-config-main {
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+}
+
 .analytics-card {
   display: grid;
   gap: 18px;

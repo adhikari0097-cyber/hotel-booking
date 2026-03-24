@@ -6,13 +6,22 @@ const CONFIG = {
   SUPABASE_REQUESTS_TABLE: "booking_change_requests",
   SUPABASE_PRICING_TABLE: "room_pricing",
   SUPABASE_ROOMS_TABLE: "room_inventory",
+  SUPABASE_SERVICES_TABLE: "service_catalog",
   SUPABASE_RUNTIME_SETTINGS_TABLE: "booking_runtime_settings",
   GOOGLE_SHEETS_BACKUP_URL: "/.netlify/functions/proxy",
 };
 
 const RESERVATION_WHATSAPP_NUMBER = "+94719707597";
 
-const ROOM_SERVICE_OPTIONS = ["Breakfast", "Lunch", "Dinner", "Liquor", "Kitchen", "Car", "Van"];
+const DEFAULT_SERVICE_DEFS = [
+  { name: "Breakfast", defaultPrice: 0, isActive: true },
+  { name: "Lunch", defaultPrice: 0, isActive: true },
+  { name: "Dinner", defaultPrice: 0, isActive: true },
+  { name: "Liquor", defaultPrice: 0, isActive: true },
+  { name: "Kitchen", defaultPrice: 0, isActive: true },
+  { name: "Car", defaultPrice: 0, isActive: true },
+  { name: "Van", defaultPrice: 0, isActive: true },
+];
 
 const ROOM_DEFS = [
   { type: "kitchen", label: "Kitchen Room", count: 2, maxPax: 6 },
@@ -84,6 +93,7 @@ const state = {
   pricingSchemaReady: null,
   bookingCustomPayments: [],
   roomInventory: [],
+  serviceCatalog: [],
   roomInventorySchemaReady: null,
   runtimeSettings: {
     checkInTime: "14:00",
@@ -342,6 +352,7 @@ const accountsEmpty = qs("#accounts-empty");
 const refreshAccountsBtn = qs("#refresh-accounts");
 const roomInventoryList = qs("#room-inventory-list");
 const pricingList = qs("#pricing-list");
+const serviceCatalogList = qs("#service-catalog-list");
 const refreshPricingBtn = qs("#refresh-pricing");
 const savePricingBtn = qs("#save-pricing");
 const runtimeCheckInTimeInput = qs("#runtime-checkin-time");
@@ -625,6 +636,38 @@ function roundCurrency(value) {
 
 function createEmptyCustomPayment() {
   return { amount: "", note: "", linkedService: "" };
+}
+
+function normalizeServiceCatalogRow(row = {}) {
+  return {
+    id: row.id || null,
+    name: String(row.name || row.service_name || "").trim(),
+    defaultPrice: roundCurrency(Math.max(0, Number(row.defaultPrice ?? row.default_price ?? 0))),
+    isActive: row.isActive == null ? row.is_active !== false : Boolean(row.isActive),
+  };
+}
+
+function setDefaultServiceCatalogState() {
+  state.serviceCatalog = DEFAULT_SERVICE_DEFS.map((item) => normalizeServiceCatalogRow(item));
+}
+
+function getServiceCatalogRows({ includeInactive = false } = {}) {
+  const source = (state.serviceCatalog?.length ? state.serviceCatalog : DEFAULT_SERVICE_DEFS)
+    .map((item) => normalizeServiceCatalogRow(item))
+    .filter((item) => item.name);
+  return includeInactive ? source : source.filter((item) => item.isActive);
+}
+
+function getServiceOptionNames(extraServices = []) {
+  const extras = Array.from(new Set((extraServices || []).map((item) => String(item || "").trim()).filter(Boolean)));
+  const catalog = getServiceCatalogRows({ includeInactive: true });
+  const activeCatalogNames = catalog.filter((item) => item.isActive || extras.includes(item.name)).map((item) => item.name);
+  return Array.from(new Set([...activeCatalogNames, ...extras]));
+}
+
+function getServiceConfig(serviceName) {
+  const key = String(serviceName || "").trim().toLowerCase();
+  return getServiceCatalogRows({ includeInactive: true }).find((item) => item.name.toLowerCase() === key) || null;
 }
 
 function normalizeCustomPayments(value) {
@@ -983,6 +1026,30 @@ async function loadRoomInventory() {
   renderPricingScreen();
 }
 
+async function loadServiceCatalog() {
+  ensureSupabase();
+  try {
+    const { data, error } = await state.supabase
+      .from(CONFIG.SUPABASE_SERVICES_TABLE)
+      .select("*")
+      .order("service_name", { ascending: true });
+
+    if (error) throw error;
+    state.serviceCatalog = (data || []).map(normalizeServiceCatalogRow);
+    if (!state.serviceCatalog.length) {
+      setDefaultServiceCatalogState();
+    }
+  } catch (error) {
+    setDefaultServiceCatalogState();
+    if (canManagePricing()) {
+      showToast("Service catalog table is not ready. Run the updated Supabase schema.sql.", true);
+    }
+  }
+
+  renderPricingScreen();
+  renderRoomServiceAssignments();
+}
+
 async function loadRoomPricing() {
   ensureSupabase();
   try {
@@ -1005,6 +1072,54 @@ async function loadRoomPricing() {
 
   renderPricingScreen();
   renderPricingSummary();
+}
+
+async function saveServiceCatalog() {
+  if (!canManagePricing()) return;
+  const rows = getServiceCatalogRows({ includeInactive: true });
+  const names = rows.map((row) => String(row.name || "").trim()).filter(Boolean);
+  if (names.length !== rows.length) {
+    throw new Error("Every service needs a name before saving.");
+  }
+  if (new Set(names.map((name) => name.toLowerCase())).size !== names.length) {
+    throw new Error("Service names must be unique.");
+  }
+  const existingIds = new Set(rows.map((row) => row.id).filter(Boolean));
+  const { data: existingRows, error: fetchError } = await state.supabase
+    .from(CONFIG.SUPABASE_SERVICES_TABLE)
+    .select("id");
+  if (fetchError) {
+    throw new Error(fetchError.message || "Could not read current service catalog.");
+  }
+
+  const upsertRows = rows.map((row) => ({
+    id: row.id || undefined,
+    service_name: row.name,
+    default_price: roundCurrency(row.defaultPrice),
+    is_active: row.isActive,
+  }));
+
+  if (upsertRows.length) {
+    const { error: upsertError } = await state.supabase
+      .from(CONFIG.SUPABASE_SERVICES_TABLE)
+      .upsert(upsertRows, { onConflict: "service_name" });
+    if (upsertError) {
+      throw new Error(upsertError.message || "Could not save service catalog.");
+    }
+  }
+
+  const removedIds = (existingRows || []).map((row) => row.id).filter((id) => id && !existingIds.has(id));
+  if (removedIds.length) {
+    const { error: deleteError } = await state.supabase
+      .from(CONFIG.SUPABASE_SERVICES_TABLE)
+      .delete()
+      .in("id", removedIds);
+    if (deleteError) {
+      throw new Error(deleteError.message || "Could not delete removed services.");
+    }
+  }
+
+  await loadServiceCatalog();
 }
 
 async function loadRuntimeSettings() {
@@ -1233,16 +1348,19 @@ function renderRequestOfferPreview() {
 }
 
 function renderPricingScreen() {
-  if (!pricingList || !roomInventoryList) return;
+  if (!pricingList || !roomInventoryList || !serviceCatalogList) return;
+  if (!state.serviceCatalog?.length) setDefaultServiceCatalogState();
   if (runtimeCheckInTimeInput) runtimeCheckInTimeInput.value = getRuntimeCheckInTime();
   if (runtimeCheckOutTimeInput) runtimeCheckOutTimeInput.value = getRuntimeCheckOutTime();
   if (!canManagePricing()) {
     setHTML(roomInventoryList, "");
+    setHTML(serviceCatalogList, "");
     setHTML(pricingList, `<p class="inline-note">You do not have room pricing access yet.</p>`);
     return;
   }
 
   roomInventoryList.innerHTML = "";
+  serviceCatalogList.innerHTML = "";
   pricingList.innerHTML = "";
 
   ROOM_DEFS.forEach((roomDef) => {
@@ -1354,6 +1472,90 @@ function renderPricingScreen() {
     weekendInput.addEventListener("input", syncCardValues);
     pricingList.appendChild(card);
   });
+
+  const serviceCard = document.createElement("article");
+  serviceCard.className = "pricing-card";
+  serviceCard.innerHTML = `
+    <div class="pricing-card-head">
+      <div>
+        <h4>Booking Services</h4>
+        <p>Add services you want to use in bookings. Default price is optional.</p>
+      </div>
+      <button class="secondary-btn small-btn" type="button" data-add-service>Add Service</button>
+    </div>
+    <div class="service-config-list">
+      ${
+        getServiceCatalogRows({ includeInactive: true }).length
+          ? getServiceCatalogRows({ includeInactive: true }).map((service, index) => `
+              <div class="service-config-row${service.isActive ? "" : " room-config-row-off"}" data-service-index="${index}">
+                <div class="service-config-main">
+                  <label class="field compact-field">
+                    <span>Service Name</span>
+                    <input type="text" value="${escapeHtml(service.name)}" data-service-name />
+                  </label>
+                  <label class="field compact-field">
+                    <span>Default Price</span>
+                    <input type="number" min="0" step="0.01" value="${Number(service.defaultPrice || 0)}" data-service-price />
+                  </label>
+                </div>
+                <div class="room-config-actions">
+                  <label class="room-config-toggle">
+                    <input type="checkbox" ${service.isActive ? "checked" : ""} data-service-toggle />
+                    <span>${service.isActive ? "On" : "Off"}</span>
+                  </label>
+                  <button class="ghost-btn small-btn" type="button" data-delete-service>Delete</button>
+                </div>
+              </div>
+            `).join("")
+          : `<p class="inline-note">No services added yet.</p>`
+      }
+    </div>
+  `;
+
+  serviceCard.querySelector("[data-add-service]")?.addEventListener("click", () => {
+    state.serviceCatalog = [
+      ...getServiceCatalogRows({ includeInactive: true }),
+      normalizeServiceCatalogRow({ name: "", defaultPrice: 0, isActive: true }),
+    ];
+    renderPricingScreen();
+  });
+
+  serviceCard.querySelectorAll("[data-service-index]").forEach((row) => {
+    const index = Number(row.dataset.serviceIndex);
+    const nameInput = row.querySelector("[data-service-name]");
+    const priceInput = row.querySelector("[data-service-price]");
+    const toggleInput = row.querySelector("[data-service-toggle]");
+    const deleteBtn = row.querySelector("[data-delete-service]");
+
+    nameInput?.addEventListener("input", () => {
+      state.serviceCatalog[index] = normalizeServiceCatalogRow({
+        ...state.serviceCatalog[index],
+        name: nameInput.value,
+      });
+    });
+
+    priceInput?.addEventListener("input", () => {
+      state.serviceCatalog[index] = normalizeServiceCatalogRow({
+        ...state.serviceCatalog[index],
+        defaultPrice: priceInput.value,
+      });
+    });
+
+    toggleInput?.addEventListener("change", () => {
+      state.serviceCatalog[index] = normalizeServiceCatalogRow({
+        ...state.serviceCatalog[index],
+        isActive: toggleInput.checked,
+      });
+      renderPricingScreen();
+    });
+
+    deleteBtn?.addEventListener("click", () => {
+      state.serviceCatalog = getServiceCatalogRows({ includeInactive: true }).filter((_, itemIndex) => itemIndex !== index);
+      renderPricingScreen();
+    });
+  });
+
+  serviceCatalogList.appendChild(serviceCard);
 }
 
 async function saveRoomPricing() {
@@ -1581,7 +1783,7 @@ function renderGroupServiceToggleButtons(group) {
   const active = new Set(parseBookingNotes(group.bookings[0]?.notes || "").services);
   return `
     <div class="service-chip-list service-chip-list-editable">
-      ${ROOM_SERVICE_OPTIONS.map((service) => `
+      ${getServiceOptionNames(active).map((service) => `
         <button
           class="service-chip service-chip-toggle ${active.has(service) ? "service-chip-active" : "service-chip-inactive"}"
           type="button"
@@ -1595,6 +1797,20 @@ function renderGroupServiceToggleButtons(group) {
       `).join("")}
     </div>
   `;
+}
+
+function syncGroupCustomPaymentsWithServices(bookings = [], nextServices = []) {
+  const selectedServices = new Set((nextServices || []).map((service) => String(service || "").trim().toLowerCase()));
+  const existingEntries = getGroupCustomPriceEntries(bookings);
+  const preserved = existingEntries.filter((item) => {
+    const noteKey = String(item.note || "").trim().toLowerCase();
+    return noteKey && !selectedServices.has(noteKey);
+  });
+  const linked = nextServices.map((service) => {
+    const existing = existingEntries.find((item) => String(item.note || "").trim().toLowerCase() === String(service || "").trim().toLowerCase());
+    return existing || { amount: roundCurrency(getServiceConfig(service)?.defaultPrice || 0), note: service };
+  });
+  return [...linked, ...preserved];
 }
 
 async function toggleGroupServiceDirect(groupKey, serviceName) {
@@ -1614,6 +1830,13 @@ async function toggleGroupServiceDirect(groupKey, serviceName) {
     next.add(serviceName);
   }
   const nextServices = Array.from(next);
+  const nextCustomPayments = syncGroupCustomPaymentsWithServices(group.bookings, nextServices);
+  const linkedEntry = nextCustomPayments.find((item) => String(item.note || "").trim().toLowerCase() === String(serviceName || "").trim().toLowerCase());
+  if (linkedEntry && next.has(serviceName)) {
+    const amountInput = window.prompt(`Enter price for ${serviceName}. Leave empty or 0 if not charged.`, linkedEntry.amount ? String(linkedEntry.amount) : "");
+    if (amountInput === null) return;
+    linkedEntry.amount = roundCurrency(Math.max(0, Number(amountInput || 0)));
+  }
 
   for (const booking of group.bookings) {
     const bookingParsed = parseBookingNotes(booking.notes);
@@ -1627,6 +1850,7 @@ async function toggleGroupServiceDirect(groupKey, serviceName) {
       roomNumber: booking.roomNumber,
       notes: mergeNotesAndServices(bookingParsed.otherNotes.join(" | "), nextServices),
       status: booking.status,
+      customPayments: nextCustomPayments,
     });
   }
 }
@@ -1855,7 +2079,8 @@ function syncCustomPriceRowsFromServices() {
   const preserved = state.bookingCustomPayments.filter((item) => !item.linkedService);
   const linked = selectedServices.map((service) => {
     const current = state.bookingCustomPayments.find((item) => item.linkedService === service);
-    return current || { amount: "", note: service, linkedService: service };
+    const defaultPrice = getServiceConfig(service)?.defaultPrice || 0;
+    return current || { amount: defaultPrice ? String(defaultPrice) : "", note: service, linkedService: service };
   });
   state.bookingCustomPayments = [...linked, ...preserved];
   renderBookingCustomPayments();
@@ -1961,7 +2186,7 @@ function renderRoomServiceAssignments() {
       </div>
     </div>
     <div class="room-service-grid">
-      ${ROOM_SERVICE_OPTIONS.map((service) => {
+      ${getServiceOptionNames(Array.from(selectedServices)).map((service) => {
         const id = `booking-service-${service.toLowerCase().replace(/\s+/g, "-")}`;
         return `
           <label class="service-option">
@@ -2091,7 +2316,7 @@ function renderServiceRequestOptions(booking) {
   state.modalRequestedServices = new Set(extractServicesFromNotes(booking.notes));
   if (!requestServices) return;
   setHTML(requestServices, "");
-  ROOM_SERVICE_OPTIONS.forEach((service) => {
+  getServiceOptionNames(Array.from(state.modalRequestedServices)).forEach((service) => {
     const id = `request-service-${service.toLowerCase().replace(/\s+/g, "-")}`;
     const item = document.createElement("label");
     item.className = "service-option";
@@ -2228,10 +2453,10 @@ function renderBookingRoomEditors(booking) {
         <label>Pax Count</label>
         <select data-booking-room-guests>${paxOptions}</select>
       </div>
-      <div class="booking-room-service-editor">
-        <span class="booking-room-row-label">Services</span>
-        <div class="service-chip-list service-chip-list-editable">
-          ${ROOM_SERVICE_OPTIONS.map((service) => `
+        <div class="booking-room-service-editor">
+          <span class="booking-room-row-label">Services</span>
+          <div class="service-chip-list service-chip-list-editable">
+          ${getServiceOptionNames(roomEdit.services).map((service) => `
             <button
               class="service-chip service-chip-toggle ${roomEdit.services.includes(service) ? "service-chip-active" : "service-chip-inactive"}"
               type="button"
@@ -2933,6 +3158,7 @@ async function applySession(session) {
   renderShell("app");
   updateOnlineStatus();
   await loadRoomInventory();
+  await loadServiceCatalog();
   await loadRoomPricing();
   await loadRuntimeSettings();
   await setupRealtime();
@@ -6550,6 +6776,15 @@ async function setupRealtime() {
     )
     .on(
       "postgres_changes",
+      { event: "*", schema: "public", table: CONFIG.SUPABASE_SERVICES_TABLE },
+      async () => {
+        setSyncState("live");
+        await loadServiceCatalog();
+        await refreshLiveViews();
+      }
+    )
+    .on(
+      "postgres_changes",
       { event: "*", schema: "public", table: CONFIG.SUPABASE_PRICING_TABLE },
       async () => {
         setSyncState("live");
@@ -7241,6 +7476,7 @@ refreshRequestsBtn.addEventListener("click", () => loadRequests());
 loadAnalyticsBtn?.addEventListener("click", () => loadAnalytics());
 refreshPricingBtn?.addEventListener("click", async () => {
   await loadRoomInventory();
+  await loadServiceCatalog();
   await loadRoomPricing();
   await loadRuntimeSettings();
 });
@@ -7249,6 +7485,7 @@ savePricingBtn?.addEventListener("click", async () => {
     savePricingBtn.disabled = true;
     savePricingBtn.textContent = "Saving...";
     await saveRoomInventory();
+    await saveServiceCatalog();
     await saveRoomPricing();
     await saveRuntimeSettings();
     await refreshLiveViews();
