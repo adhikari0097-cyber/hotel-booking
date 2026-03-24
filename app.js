@@ -1648,6 +1648,12 @@ function getDateTimeFromBooking(dateKey, timeValue) {
   return date;
 }
 
+function normalizeTimestampValue(value) {
+  if (!value) return null;
+  const text = String(value).trim();
+  return text ? text : null;
+}
+
 function getBookingLifecycleStatus(booking) {
   return String(booking?.lifecycleStatus || "booked").toLowerCase();
 }
@@ -2473,8 +2479,8 @@ function mapBooking(row) {
     customPayments: normalizeCustomPayments(row.custom_payments),
     roomTotal: Number(row.room_total || 0),
     lifecycleStatus: row.lifecycle_status || "booked",
-    checkedInAt: row.checked_in_at || "",
-    checkedOutAt: row.checked_out_at || "",
+    checkedInAt: normalizeTimestampValue(row.checked_in_at),
+    checkedOutAt: normalizeTimestampValue(row.checked_out_at),
     closeDetails: row.close_details || {},
     createdAt: row.created_at,
   };
@@ -2529,8 +2535,8 @@ function applyPricingToBookingRow(row, values) {
   row.custom_payments = customPayments;
   row.room_total = applyOfferPercentage(pricing.roomTotal, row.offer_percentage);
   row.lifecycle_status = values.lifecycleStatus || row.lifecycle_status || "booked";
-  row.checked_in_at = values.checkedInAt ?? row.checked_in_at ?? null;
-  row.checked_out_at = values.checkedOutAt ?? row.checked_out_at ?? null;
+  row.checked_in_at = normalizeTimestampValue(values.checkedInAt ?? row.checked_in_at ?? null);
+  row.checked_out_at = normalizeTimestampValue(values.checkedOutAt ?? row.checked_out_at ?? null);
   row.close_details = values.closeDetails ?? row.close_details ?? {};
 }
 
