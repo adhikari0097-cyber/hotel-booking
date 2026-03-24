@@ -29,6 +29,7 @@ const EXPORT_FIELD_DEFS = [
   { key: "phone", label: "Phone", note: "Show customer phone number." },
   { key: "bookedBy", label: "Booked By", note: "Show staff member who created the booking." },
   { key: "stay", label: "Stay Dates", note: "Show check-in and check-out date range." },
+  { key: "notes", label: "Notes", note: "Show booking notes / special requests." },
   { key: "totalPax", label: "Total Pax", note: "Show total guest count." },
   { key: "rooms", label: "Rooms", note: "Show number of rooms in the reservation." },
   { key: "totalPrice", label: "Total Price", note: "Show booking total price." },
@@ -125,6 +126,7 @@ const state = {
     whatsappFields: EXPORT_FIELD_DEFS.map((item) => item.key),
   },
   bookingRangePicker: null,
+  plannerDragBookingId: null,
 };
 
 const qs = (selector) => document.querySelector(selector);
@@ -974,6 +976,14 @@ function getServicePricingMarkup(bookings = []) {
       `).join("")}
     </div>
   `;
+}
+
+function getGroupOtherNotes(bookings = []) {
+  const notes = (bookings || [])
+    .flatMap((booking) => parseBookingNotes(booking.notes).otherNotes)
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+  return Array.from(new Set(notes)).join(" | ");
 }
 
 function getRoomPricingKey(roomType, pax = 0) {
@@ -3184,8 +3194,11 @@ function updateNavVisibility() {
   navButtons.accounts.classList.toggle("hidden", !showAccounts);
   navButtons.pricing.classList.toggle("hidden", !showPricing);
   const visibleTabs = 2 + Number(showPlanner) + Number(showAnalytics) + Number(showGuide) + Number(showHold) + Number(showRequests) + Number(showAccounts) + Number(showPricing);
-  const columns = `repeat(${visibleTabs}, 1fr)`;
-  qs(".bottom-nav").style.gridTemplateColumns = columns;
+  const bottomNav = qs(".bottom-nav");
+  const isDesktopNav = state.bookingViewMode === "desktop" && window.innerWidth >= 980;
+  bottomNav.style.gridTemplateColumns = isDesktopNav
+    ? `repeat(${visibleTabs}, 1fr)`
+    : `repeat(4, minmax(0, 1fr))`;
   if (!showPlanner && screens.planner.classList.contains("screen-active")) {
     setScreen("booking");
   }
@@ -4447,6 +4460,7 @@ function buildBookingPdfMarkup(group) {
   const allServices = getGroupServices(group.bookings);
   const servicePricingRows = getServicePricingRows(group.bookings);
   const lifecycleLabel = getLifecycleStatusLabel(getGroupLifecycleStatus(group));
+  const groupNotes = getGroupOtherNotes(group.bookings);
   const enabledFields = normalizeExportFieldList(state.runtimeSettings?.pdfFields);
   const hasField = (fieldKey) => enabledFields.includes(fieldKey);
   const summaryItems = [
@@ -4571,6 +4585,12 @@ function buildBookingPdfMarkup(group) {
                 <div class="pdf-chip-list">${allServices.map((service) => `<span class="pdf-chip">${escapeHtml(service)}</span>`).join("")}</div>
               </div>
             ` : ""}
+            ${hasField("notes") ? `
+              <div class="pdf-services">
+                <strong>Notes</strong>
+                <div class="pdf-notes">${escapeHtml(groupNotes || "-")}</div>
+              </div>
+            ` : ""}
             ${hasField("servicePrices") ? `
               <div class="pdf-services">
                 <strong>Service Prices</strong>
@@ -4652,6 +4672,7 @@ function normalizeWhatsappPhone(value) {
 
 function buildReservationWhatsappMessage(group) {
   const customerName = group.guestName || group.bookings?.[0]?.guestName || "Guest";
+  const groupNotes = getGroupOtherNotes(group.bookings);
   const advanceInfo = getAdvancePaymentInfo(group.bookings);
   const customPriceItems = getGroupCustomPriceEntries(group.bookings);
   const customPriceTotal = getGroupCustomPriceTotal(group.bookings);
@@ -4681,6 +4702,7 @@ function buildReservationWhatsappMessage(group) {
     ...(hasField("phone") ? [`Phone: ${group.phone || "-"}`] : []),
     ...(hasField("bookedBy") ? [`Booked By: ${group.bookings[0]?.createdByName || "-"}`] : []),
     ...(hasField("stay") ? [`Stay: ${group.checkIn || "-"} -> ${group.checkOut || "-"}`] : []),
+    ...(hasField("notes") ? [`Notes: ${groupNotes || "-"}`] : []),
     ...(hasField("totalPax") ? [`Total Pax: ${group.totalGuests || 0}`] : []),
     ...(hasField("rooms") ? [`Rooms: ${group.bookings.length || 0}`] : []),
     ...(hasField("totalPrice") ? [`Total Price: ${formatMoney(group.totalPrice || 0)}`] : []),
@@ -5061,6 +5083,7 @@ function openBookingDetailsModal(groupKey) {
       <button class="action-btn" type="button" data-booking-group-action="email">Email Slip</button>
       <button class="action-btn action-btn-icon action-btn-icon-pdf" type="button" data-booking-group-action="pdf">Export PDF</button>
       ${(directEditAllowed || canManageBookings()) ? `<button class="primary-btn" type="button" data-booking-group-action="manage">Edit Booking</button>` : ""}
+      ${(directEditAllowed || canManageBookings()) ? `<button class="action-btn" type="button" data-booking-group-action="add-room">Add Room</button>` : ""}
       ${lifecycleStatus === "booked" ? `<button class="primary-btn" type="button" data-booking-group-action="checkin">Check In</button>` : ""}
       ${lifecycleStatus === "checked_in" ? `<button class="primary-btn" type="button" data-booking-group-action="checkout">Check Out</button>` : ""}
       ${lifecycleStatus === "hold" ? `${getLifecycleBadgeMarkup(group)}` : ""}
@@ -5084,6 +5107,19 @@ function openBookingDetailsModal(groupKey) {
         await openRequestModal(group.bookings[0].id, (directEditAllowed || canManageBookings()) ? "edit" : "request", "group");
       } catch (error) {
         showToast(error.message || "Unable to open full booking editor.", true);
+      }
+    });
+  }
+  const addRoomBtn = bookingDetailsBody.querySelector('[data-booking-group-action="add-room"]');
+  if (addRoomBtn) {
+    addRoomBtn.addEventListener("click", async () => {
+      try {
+        closeBookingDetailsModal();
+        await openRequestModal(group.bookings[0].id, (directEditAllowed || canManageBookings()) ? "edit" : "request", "group");
+        requestReasonInput.value = "additional_rooms";
+        syncModalReasonDefaults();
+      } catch (error) {
+        showToast(error.message || "Unable to open additional room editor.", true);
       }
     });
   }
@@ -6746,6 +6782,21 @@ function bindPlannerBookingButtons() {
       openBookingDetailsModal(button.dataset.plannerGroup);
     });
   });
+  reservationPlannerBoard.querySelectorAll("[data-planner-booking-id]").forEach((button) => {
+    button.addEventListener("dragstart", (event) => {
+      state.plannerDragBookingId = button.dataset.plannerBookingId;
+      button.classList.add("reservation-planner-booking-dragging");
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", button.dataset.plannerBookingId || "");
+    });
+    button.addEventListener("dragend", () => {
+      state.plannerDragBookingId = null;
+      button.classList.remove("reservation-planner-booking-dragging");
+      reservationPlannerBoard.querySelectorAll(".reservation-planner-cell-drop-target").forEach((cell) => {
+        cell.classList.remove("reservation-planner-cell-drop-target");
+      });
+    });
+  });
   reservationPlannerBoard.querySelectorAll("[data-planner-empty-room]").forEach((button) => {
     button.addEventListener("click", async () => {
       try {
@@ -6756,6 +6807,36 @@ function bindPlannerBookingButtons() {
         );
       } catch (error) {
         showToast(error.message || "Could not start a booking from the planner.", true);
+      }
+    });
+  });
+  reservationPlannerBoard.querySelectorAll("[data-planner-drop-room]").forEach((cell) => {
+    cell.addEventListener("dragover", (event) => {
+      if (!state.plannerDragBookingId) return;
+      event.preventDefault();
+      cell.classList.add("reservation-planner-cell-drop-target");
+    });
+    cell.addEventListener("dragleave", () => {
+      cell.classList.remove("reservation-planner-cell-drop-target");
+    });
+    cell.addEventListener("drop", async (event) => {
+      event.preventDefault();
+      cell.classList.remove("reservation-planner-cell-drop-target");
+      const bookingId = event.dataTransfer.getData("text/plain") || state.plannerDragBookingId;
+      if (!bookingId) return;
+      try {
+        const changed = await movePlannerBookingToRoom(
+          bookingId,
+          cell.dataset.plannerDropRoom,
+          cell.dataset.plannerDropNumber,
+        );
+        if (!changed) return;
+        showToast("Booking room updated from planner.");
+        await refreshLiveViews();
+      } catch (error) {
+        showToast(error.message || "Could not move booking.", true);
+      } finally {
+        state.plannerDragBookingId = null;
       }
     });
   });
@@ -6784,6 +6865,46 @@ async function openBookingFromPlannerCell(roomType, roomNumber, dateKey) {
   plan.pax = 1;
   await refreshAvailability();
   showToast(`${getRoomLabel(normalizedRoomType, numericRoomNumber)} selected for ${formatDateKey(checkInDate)}.`);
+}
+
+async function movePlannerBookingToRoom(bookingId, targetRoomType, targetRoomNumber) {
+  const booking = state.bookingMap.get(bookingId);
+  if (!booking) throw new Error("Booking not found.");
+  const normalizedRoomType = normalizeRoomGroup(targetRoomType);
+  const numericRoomNumber = Number(targetRoomNumber);
+  if (!normalizedRoomType || !numericRoomNumber) throw new Error("Select a valid room.");
+  if (normalizeRoomGroup(booking.roomType) === normalizedRoomType && Number(booking.roomNumber) === numericRoomNumber) {
+    return false;
+  }
+
+  const targetRoom = getRoomInventoryRows({ includeInactive: true }).find((room) => (
+    room.roomType === normalizedRoomType && Number(room.roomNumber) === numericRoomNumber
+  ));
+  if (!targetRoom || !targetRoom.isActive) {
+    throw new Error("Target room is not available.");
+  }
+  if (Number(targetRoom.maxPax || 0) < Number(booking.guests || 0)) {
+    throw new Error("Target room does not have enough pax capacity.");
+  }
+
+  const overlapBookings = await fetchBookingsForPeriod(booking.checkIn, booking.checkOut);
+  const hasConflict = overlapBookings.some((item) => {
+    if (String(item.id) === String(booking.id)) return false;
+    if (!isBlockingBooking(item)) return false;
+    if (normalizeRoomGroup(item.roomType) !== normalizedRoomType) return false;
+    if (Number(item.roomNumber) !== numericRoomNumber) return false;
+    return datesOverlap(parseDate(booking.checkIn), parseDate(booking.checkOut), parseDate(item.checkIn), parseDate(item.checkOut));
+  });
+  if (hasConflict) {
+    throw new Error("That room is already booked for this stay.");
+  }
+
+  await updateBooking(booking.id, {
+    roomType: normalizedRoomType,
+    roomTypeLabel: getRoomTypeLabelForGuests(normalizedRoomType, booking.guests),
+    roomNumber: numericRoomNumber,
+  });
+  return true;
 }
 
 function renderReservationPlannerMobile(bookings, plannerRooms, startDate, days, pendingCollections) {
@@ -6938,7 +7059,13 @@ function renderReservationPlanner(bookings, startDate, days) {
   `).join("");
 
   const cells = dateList.map((date, rowIndex) => plannerRooms.map((room, columnIndex) => `
-    <div class="reservation-planner-cell" style="grid-column:${columnIndex + 2}; grid-row:${rowIndex + 2};">
+    <div
+      class="reservation-planner-cell"
+      style="grid-column:${columnIndex + 2}; grid-row:${rowIndex + 2};"
+      data-planner-drop-room="${escapeHtml(room.type)}"
+      data-planner-drop-number="${escapeHtml(String(room.number))}"
+      data-planner-drop-date="${escapeHtml(formatDateKey(date))}"
+    >
       <button
         class="reservation-planner-empty-trigger"
         type="button"
@@ -6975,7 +7102,9 @@ function renderReservationPlanner(bookings, startDate, days) {
       <button
         class="reservation-planner-booking${String(booking.status || "").toLowerCase() === "pending" ? " reservation-planner-booking-pending" : ""}"
         type="button"
+        draggable="true"
         data-planner-group="${escapeHtml(getBookingGroupKey(booking))}"
+        data-planner-booking-id="${escapeHtml(String(booking.id))}"
         style="grid-column:${roomIndex + 2}; grid-row:${startOffset + 2} / span ${span}; --planner-bg:${colors.bg}; --planner-border:${colors.border}; --planner-text:${colors.text};"
         title="${escapeHtml(detailBits.join(" | "))}"
       >
