@@ -3519,6 +3519,21 @@ function getActiveStatusMarkup(label = "Active") {
   return `<span class="booking-tag tag-success">${label}</span>`;
 }
 
+function getLifecycleBadgeMarkup(group, fallbackLabel = "Active") {
+  const lifecycleStatus = getGroupLifecycleStatus(group);
+  if (lifecycleStatus === "hold") {
+    const hasRemovedStatus = (group?.bookings || []).some((booking) => String(booking.status || "").toLowerCase() === "removed booking");
+    return `<span class="booking-tag tag-rejected">${hasRemovedStatus ? "Removed Booking" : "Hold Booking"}</span>`;
+  }
+  if (lifecycleStatus === "checked_out") {
+    return `<span class="booking-tag tag-rejected">Checked Out</span>`;
+  }
+  if (lifecycleStatus === "checked_in") {
+    return `<span class="booking-tag tag-success">Checked In</span>`;
+  }
+  return getActiveStatusMarkup(fallbackLabel);
+}
+
 function renderBookingGroupOverview(group, groupStatus) {
   const advanceInfo = getAdvancePaymentInfo(group.bookings);
   const customPriceTotal = getGroupCustomPriceTotal(group.bookings);
@@ -3969,7 +3984,7 @@ async function updateGroupLifecycle(groupKey, values = {}) {
       roomTypeLabel: booking.roomTypeLabel,
       roomNumber: booking.roomNumber,
       notes: "notes" in values ? values.notes : booking.notes,
-      status: booking.status,
+      status: values.status ?? booking.status,
       roomsNeeded: booking.roomsNeeded,
       offerPercentage: booking.offerPercentage,
       advancePaid: booking.advancePaid,
@@ -3996,15 +4011,31 @@ async function performGroupCheckIn(groupKey) {
   return true;
 }
 
-async function performGroupHold(groupKey, note = "") {
+async function performGroupHold(groupKey, note = "", bookingStatus = "Hold") {
   const group = getBookingGroupByKey(groupKey);
   if (!group) throw new Error("Booking group not found.");
   const holdNote = note || "Customer did not arrive. Booking moved to hold.";
   const mergedNotes = mergeNotesAndServices(holdNote, getGroupServices(group.bookings));
   await updateGroupLifecycle(groupKey, {
     lifecycleStatus: "hold",
+    status: bookingStatus,
     notes: mergedNotes,
   });
+}
+
+async function performGroupReactivate(groupKey) {
+  const group = getBookingGroupByKey(groupKey);
+  if (!group) throw new Error("Booking group not found.");
+  const confirmed = window.confirm(`Reactivate ${group.trackCode || "this booking"} and move it back to booked status?`);
+  if (!confirmed) return false;
+  await updateGroupLifecycle(groupKey, {
+    lifecycleStatus: "booked",
+    status: "Campaign",
+    checkedInAt: null,
+    checkedOutAt: null,
+    closeDetails: null,
+  });
+  return true;
 }
 
 async function performGroupDeleteFlow(groupKey) {
@@ -4028,7 +4059,7 @@ async function performGroupDeleteFlow(groupKey) {
       }
       return true;
     }
-    await performGroupHold(groupKey, "Customer requested cancellation, but payment is not being refunded.");
+    await performGroupHold(groupKey, "Customer requested cancellation, but payment is not being refunded.", "Removed Booking");
     return true;
   }
 
@@ -4053,7 +4084,7 @@ async function performGroupDeleteFlow(groupKey) {
     return true;
   }
 
-  await performGroupHold(groupKey, "Customer requested cancellation, but payment is not being refunded.");
+  await performGroupHold(groupKey, "Customer requested cancellation, but payment is not being refunded.", "Removed Booking");
   return true;
 }
 
@@ -4233,7 +4264,7 @@ function openBookingDetailsModal(groupKey) {
       <div><strong>Balance:</strong> ${formatMoney(balanceAmount)}</div>
       <div><strong>Total Price:</strong> ${formatMoney(group.totalPrice || 0)}</div>
     </div>
-    ${groupRequest ? `<div class="booking-details-request-banner">${getRequestStatusMarkup(groupRequest, "Latest request")}<span class="booking-history-meta">${formatRequestReason(groupRequest.reason)} · ${getRequestRequestedDate(groupRequest) || "-"}</span></div>` : `<div class="booking-details-request-banner">${getActiveStatusMarkup("Active")}<span class="booking-history-meta">No pending request.</span></div>`}
+    ${groupRequest ? `<div class="booking-details-request-banner">${getRequestStatusMarkup(groupRequest, "Latest request")}<span class="booking-history-meta">${formatRequestReason(groupRequest.reason)} · ${getRequestRequestedDate(groupRequest) || "-"}</span></div>` : `<div class="booking-details-request-banner">${getLifecycleBadgeMarkup(group)}<span class="booking-history-meta">No pending request.</span></div>`}
     ${customPriceItems.length ? `<div class="booking-details-services-panel"><div class="booking-details-panel-title">Custom Price</div>${getCustomPriceListMarkup(customPriceItems)}</div>` : ""}
     ${groupServices.length ? `<div class="booking-details-services-panel"><div class="booking-details-panel-title">Services</div>${renderServiceChips(groupServices)}</div>` : ""}
     <div class="booking-details-services-panel"><div class="booking-details-panel-title">Service Prices</div>${servicePricingMarkup}</div>
@@ -4246,8 +4277,9 @@ function openBookingDetailsModal(groupKey) {
       ${(directEditAllowed || canManageBookings()) ? `<button class="primary-btn" type="button" data-booking-group-action="manage">Edit Booking</button>` : ""}
       ${lifecycleStatus === "booked" ? `<button class="primary-btn" type="button" data-booking-group-action="checkin">Check In</button>` : ""}
       ${lifecycleStatus === "checked_in" ? `<button class="primary-btn" type="button" data-booking-group-action="checkout">Check Out</button>` : ""}
-      ${lifecycleStatus === "hold" ? `<span class="booking-tag tag-rejected">Hold Booking</span>` : ""}
+      ${lifecycleStatus === "hold" ? `${getLifecycleBadgeMarkup(group)}` : ""}
       ${lifecycleStatus === "checked_out" ? `<span class="booking-tag tag-rejected">Checked Out</span>` : ""}
+      ${lifecycleStatus === "hold" && state.currentProfile?.role === "owner" ? `<button class="action-btn" type="button" data-booking-group-action="reactivate">Reactivate</button>` : ""}
       ${(hasCheckInWindowStarted(group) && lifecycleStatus === "booked") ? `<button class="action-btn" type="button" data-booking-group-action="hold">Hold Room</button>` : ""}
       ${isPendingGroupRemovalRequest(groupRequest)
         ? `<span class="booking-tag tag-pending">Pending Remove</span>`
@@ -4352,6 +4384,20 @@ function openBookingDetailsModal(groupKey) {
         showToast("Booking moved to hold.");
         await refreshLiveViews();
         openBookingDetailsModal(group.key);
+      } catch (error) {
+        showToast(error.message, true);
+      }
+    });
+  }
+  const reactivateBtn = bookingDetailsBody.querySelector('[data-booking-group-action="reactivate"]');
+  if (reactivateBtn) {
+    reactivateBtn.addEventListener("click", async () => {
+      try {
+        const changed = await performGroupReactivate(group.key);
+        if (!changed) return;
+        closeBookingDetailsModal();
+        showToast("Booking reactivated.");
+        await refreshLiveViews();
       } catch (error) {
         showToast(error.message, true);
       }
@@ -4792,6 +4838,7 @@ function renderHoldBookings(bookings) {
     const card = document.createElement("div");
     card.className = "booking-card booking-group-card";
     const note = group.bookings.map((booking) => parseBookingNotes(booking.notes).otherNotes.join(" | ")).filter(Boolean).join(" | ");
+    const statusBadge = getLifecycleBadgeMarkup(group);
     card.innerHTML = `
       <div class="booking-group-head booking-group-head-dense">
         <div>
@@ -4799,11 +4846,16 @@ function renderHoldBookings(bookings) {
           <div class="booking-group-summary">${renderBookingHeaderSummary(group)}</div>
         </div>
         <div class="booking-group-statuses booking-group-controls booking-group-controls-stack">
-          <span class="booking-tag tag-rejected">Hold Booking</span>
+          ${statusBadge}
           <div class="booking-quick-actions">
             <button class="secondary-btn action-btn-icon action-btn-icon-view compact-control" type="button" data-hold-open="${group.key}" aria-label="Open Booking" title="Open Booking">
               <span class="compact-label">Open Booking</span>
             </button>
+            ${state.currentProfile?.role === "owner" ? `
+              <button class="secondary-btn compact-control" type="button" data-hold-reactivate="${group.key}" aria-label="Reactivate" title="Reactivate">
+                <span class="compact-label">Reactivate</span>
+              </button>
+            ` : ""}
           </div>
         </div>
       </div>
@@ -4812,6 +4864,16 @@ function renderHoldBookings(bookings) {
     `;
     card.querySelector('[data-hold-open]')?.addEventListener("click", () => {
       openBookingDetailsModal(group.key);
+    });
+    card.querySelector('[data-hold-reactivate]')?.addEventListener("click", async () => {
+      try {
+        const changed = await performGroupReactivate(group.key);
+        if (!changed) return;
+        showToast("Booking reactivated.");
+        await refreshLiveViews();
+      } catch (error) {
+        showToast(error.message, true);
+      }
     });
     holdBookingCards.appendChild(card);
   });
