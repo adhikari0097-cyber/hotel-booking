@@ -174,8 +174,9 @@ create table if not exists public.booking_runtime_settings (
   pdf_fields jsonb not null default '["trackCode","customer","phone","bookedBy","stay","notes","totalPax","rooms","totalPrice","customPrice","lifecycle","advance","advanceAmount","balance","checkInAt","checkOutAt","exportedAt","services","servicePrices","customPriceEntries","roomDetails"]'::jsonb,
   whatsapp_fields jsonb not null default '["trackCode","customer","phone","bookedBy","stay","notes","totalPax","rooms","totalPrice","customPrice","lifecycle","advance","advanceAmount","balance","checkInAt","checkOutAt","exportedAt","services","servicePrices","customPriceEntries","roomDetails"]'::jsonb,
   booking_view_fields jsonb not null default '["stay","rooms","totalPax","lifecycle","balance","trackCode","customer","bookedBy","phone","checkIn","checkOut","status","statusNote","checkInAt","checkOutAt","totalPrice","advance","customPrice","advanceAmount"]'::jsonb,
-  room_fix_section_order jsonb not null default '["pdf","whatsapp","bookingView","notifications"]'::jsonb,
+  room_fix_section_order jsonb not null default '["pdf","whatsapp","bookingView","notifications","systemUpdates"]'::jsonb,
   notification_roles jsonb not null default '["owner","admin"]'::jsonb,
+  system_update_roles jsonb not null default '["owner","admin"]'::jsonb,
   updated_at timestamptz not null default now(),
   constraint booking_runtime_settings_singleton check (id = true)
 );
@@ -193,10 +194,13 @@ alter table public.booking_runtime_settings
   add column if not exists room_fix_section_order jsonb not null default '["pdf","whatsapp","bookingView"]'::jsonb;
 
 alter table public.booking_runtime_settings
-  alter column room_fix_section_order set default '["pdf","whatsapp","bookingView","notifications"]'::jsonb;
+  alter column room_fix_section_order set default '["pdf","whatsapp","bookingView","notifications","systemUpdates"]'::jsonb;
 
 alter table public.booking_runtime_settings
   add column if not exists notification_roles jsonb not null default '["owner","admin"]'::jsonb;
+
+alter table public.booking_runtime_settings
+  add column if not exists system_update_roles jsonb not null default '["owner","admin"]'::jsonb;
 
 insert into public.booking_runtime_settings (id, check_in_time, check_out_time, pdf_fields, whatsapp_fields)
 values (
@@ -218,7 +222,7 @@ where booking_view_fields is null;
 update public.booking_runtime_settings
 set room_fix_section_order = coalesce(
   room_fix_section_order,
-  '["pdf","whatsapp","bookingView","notifications"]'::jsonb
+  '["pdf","whatsapp","bookingView","notifications","systemUpdates"]'::jsonb
 )
 where room_fix_section_order is null;
 
@@ -227,11 +231,22 @@ set room_fix_section_order = room_fix_section_order || '["notifications"]'::json
 where not coalesce(room_fix_section_order, '[]'::jsonb) @> '["notifications"]'::jsonb;
 
 update public.booking_runtime_settings
+set room_fix_section_order = room_fix_section_order || '["systemUpdates"]'::jsonb
+where not coalesce(room_fix_section_order, '[]'::jsonb) @> '["systemUpdates"]'::jsonb;
+
+update public.booking_runtime_settings
 set notification_roles = coalesce(
   notification_roles,
   '["owner","admin"]'::jsonb
 )
 where notification_roles is null;
+
+update public.booking_runtime_settings
+set system_update_roles = coalesce(
+  system_update_roles,
+  '["owner","admin"]'::jsonb
+)
+where system_update_roles is null;
 
 create table if not exists public.booking_change_requests (
   id uuid primary key default gen_random_uuid(),
@@ -315,6 +330,20 @@ create table if not exists public.booking_notification_reads (
   read_at timestamptz not null default now(),
   primary key (notification_id, user_id)
 );
+
+create table if not exists public.system_update_history (
+  id uuid primary key default gen_random_uuid(),
+  update_type text not null,
+  title text not null,
+  message text not null default '',
+  actor_user_id uuid references auth.users(id) on delete set null,
+  actor_name text not null default '',
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists system_update_history_created_idx
+  on public.system_update_history (created_at desc);
 
 create or replace function public.handle_new_user()
 returns trigger
@@ -454,6 +483,7 @@ alter table public.service_catalog enable row level security;
 alter table public.booking_runtime_settings enable row level security;
 alter table public.booking_notifications enable row level security;
 alter table public.booking_notification_reads enable row level security;
+alter table public.system_update_history enable row level security;
 
 drop policy if exists "anon can read bookings" on public.bookings;
 drop policy if exists "anon can insert bookings" on public.bookings;
@@ -605,6 +635,30 @@ for update
 to authenticated
 using (user_id = auth.uid())
 with check (user_id = auth.uid());
+
+drop policy if exists "system update readers can read history" on public.system_update_history;
+create policy "system update readers can read history"
+on public.system_update_history
+for select
+to authenticated
+using (public.is_approved_user());
+
+drop policy if exists "approved users can insert system update history" on public.system_update_history;
+create policy "approved users can insert system update history"
+on public.system_update_history
+for insert
+to authenticated
+with check (
+  public.is_approved_user()
+  and actor_user_id = auth.uid()
+);
+
+drop policy if exists "settings users can delete system update history" on public.system_update_history;
+create policy "settings users can delete system update history"
+on public.system_update_history
+for delete
+to authenticated
+using (public.has_profile_permission('manage_pricing'));
 
 drop policy if exists "owner admin can insert room inventory" on public.room_inventory;
 create policy "owner admin can insert room inventory"
@@ -762,3 +816,24 @@ end;
 $$;
 
 select public.add_notification_reads_to_realtime();
+
+create or replace function public.add_system_updates_to_realtime()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'system_update_history'
+  ) then
+    execute 'alter publication supabase_realtime add table public.system_update_history';
+  end if;
+end;
+$$;
+
+select public.add_system_updates_to_realtime();

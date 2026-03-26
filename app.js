@@ -10,6 +10,7 @@ const CONFIG = {
   SUPABASE_RUNTIME_SETTINGS_TABLE: "booking_runtime_settings",
   SUPABASE_NOTIFICATIONS_TABLE: "booking_notifications",
   SUPABASE_NOTIFICATION_READS_TABLE: "booking_notification_reads",
+  SUPABASE_SYSTEM_UPDATES_TABLE: "system_update_history",
   GOOGLE_SHEETS_BACKUP_URL: "/.netlify/functions/proxy",
 };
 
@@ -76,6 +77,7 @@ const ROOM_FIX_SECTION_DEFS = [
   { key: "whatsapp", label: "WhatsApp Message" },
   { key: "bookingView", label: "View By Date Booking Group" },
   { key: "notifications", label: "Notifications" },
+  { key: "systemUpdates", label: "System Updates" },
 ];
 
 const NOTIFICATION_ROLE_DEFS = [
@@ -163,11 +165,14 @@ const state = {
     whatsappFields: EXPORT_FIELD_DEFS.map((item) => item.key),
     bookingViewFields: BOOKING_VIEW_FIELD_DEFS.map((item) => item.key),
     notificationRoles: ["owner", "admin"],
+    systemUpdateRoles: ["owner", "admin"],
   },
   notifications: [],
   recentNotifications: [],
   notificationPreset: "this-week",
   notificationUnreadCount: 0,
+  systemUpdates: [],
+  systemUpdatePreset: "this-week",
   bookingRangePicker: null,
   plannerDragBookingId: null,
 };
@@ -598,6 +603,17 @@ const notificationPresetButtons = Array.from(document.querySelectorAll("[data-no
 const notificationRangeLabel = qs("#notification-range-label");
 const notificationTotalCount = qs("#notification-total-count");
 const notificationUnreadCount = qs("#notification-unread-count");
+const refreshSystemUpdatesBtn = qs("#refresh-system-updates");
+const systemUpdatePresetButtons = Array.from(document.querySelectorAll("[data-system-update-preset]"));
+const systemUpdateRangeLabel = qs("#system-update-range-label");
+const systemUpdateTotalCount = qs("#system-update-total-count");
+const systemUpdateLatestTime = qs("#system-update-latest-time");
+const systemUpdatesList = qs("#system-updates-list");
+const systemUpdatesEmpty = qs("#system-updates-empty");
+const systemUpdateDeleteFromInput = qs("#system-update-delete-from");
+const systemUpdateDeleteToInput = qs("#system-update-delete-to");
+const deleteSystemUpdatesRangeBtn = qs("#delete-system-updates-range");
+const deleteSystemUpdatesAllBtn = qs("#delete-system-updates-all");
 const settingsJumpButtons = Array.from(document.querySelectorAll("[data-settings-jump]"));
 const requestModal = qs("#request-modal");
 const closeModalBtn = qs("#close-modal");
@@ -683,6 +699,7 @@ const navButtons = {
   hold: qs("#tab-hold"),
   requests: qs("#tab-requests"),
   notifications: qs("#tab-notifications"),
+  systemUpdates: qs("#tab-system-updates"),
   accounts: qs("#tab-accounts"),
   pricing: qs("#tab-pricing"),
 };
@@ -698,6 +715,7 @@ const screens = {
   hold: qs("#screen-hold"),
   requests: qs("#screen-requests"),
   notifications: qs("#screen-notifications"),
+  systemUpdates: qs("#screen-system-updates"),
   accounts: qs("#screen-accounts"),
   pricing: qs("#screen-pricing"),
 };
@@ -983,6 +1001,28 @@ function normalizeNotificationRoleList(value, fallbackToDefaults = true) {
   return normalized.length ? normalized : (fallbackToDefaults ? ["owner", "admin"] : []);
 }
 
+function normalizeSystemUpdateRoleList(value, fallbackToDefaults = true) {
+  const validKeys = new Set(NOTIFICATION_ROLE_DEFS.map((item) => item.key));
+  const source = Array.isArray(value)
+    ? value
+    : (value == null
+        ? null
+        : typeof value === "string"
+          ? (() => {
+              try {
+                return JSON.parse(value);
+              } catch (error) {
+                return value.split(",").map((item) => item.trim());
+              }
+            })()
+          : []);
+  if (source == null) {
+    return fallbackToDefaults ? ["owner", "admin"] : [];
+  }
+  const normalized = Array.from(new Set(source.map((item) => String(item || "").trim()).filter((item) => validKeys.has(item))));
+  return normalized.length ? normalized : (fallbackToDefaults ? ["owner", "admin"] : []);
+}
+
 function getEditableServiceCatalogRows() {
   const source = (state.serviceCatalog?.length ? state.serviceCatalog : DEFAULT_SERVICE_DEFS);
   return source.map((item) => normalizeServiceCatalogRow(item));
@@ -1024,6 +1064,17 @@ function toggleRuntimeNotificationRole(roleKey, enabled) {
   state.runtimeSettings = {
     ...state.runtimeSettings,
     notificationRoles: next.length ? next : ["owner", "admin"],
+  };
+}
+
+function toggleRuntimeSystemUpdateRole(roleKey, enabled) {
+  const current = normalizeSystemUpdateRoleList(state.runtimeSettings?.systemUpdateRoles);
+  const next = enabled
+    ? Array.from(new Set([...current, roleKey]))
+    : current.filter((item) => item !== roleKey);
+  state.runtimeSettings = {
+    ...state.runtimeSettings,
+    systemUpdateRoles: next.length ? next : ["owner", "admin"],
   };
 }
 
@@ -1488,10 +1539,11 @@ async function saveServiceCatalog() {
   const existingIds = new Set(rows.map((row) => row.id).filter(Boolean));
   const { data: existingRows, error: fetchError } = await state.supabase
     .from(CONFIG.SUPABASE_SERVICES_TABLE)
-    .select("id, service_name");
+    .select("id, service_name, default_price, is_active, sort_order");
   if (fetchError) {
     throw new Error(fetchError.message || "Could not read current service catalog.");
   }
+  const savedRows = (existingRows || []).map((row) => normalizeServiceCatalogRow(row));
 
   const existingById = new Map((existingRows || []).map((row) => [row.id, row]));
   const updateRows = rows.filter((row) => row.id && existingById.has(row.id));
@@ -1538,6 +1590,20 @@ async function saveServiceCatalog() {
     }
   }
 
+  const changeSummary = getServiceCatalogChangeSummary(savedRows, rows);
+  if (changeSummary.added.length || changeSummary.removed.length || changeSummary.changed.length) {
+    await insertSystemUpdate({
+      updateType: "service_catalog_updated",
+      title: "Services Updated",
+      message: [
+        changeSummary.added.length ? `${changeSummary.added.length} added` : "",
+        changeSummary.removed.length ? `${changeSummary.removed.length} removed` : "",
+        changeSummary.changed.length ? `${changeSummary.changed.length} changed` : "",
+      ].filter(Boolean).join(" · ") || "Booking services were updated.",
+      metadata: changeSummary,
+    });
+  }
+
   await loadServiceCatalog();
 }
 
@@ -1580,6 +1646,7 @@ async function loadRuntimeSettings() {
       bookingViewFields: normalizeBookingViewFieldList(data?.booking_view_fields),
       roomFixSectionOrder: normalizeRoomFixSectionOrder(data?.room_fix_section_order),
       notificationRoles: normalizeNotificationRoleList(data?.notification_roles),
+      systemUpdateRoles: normalizeSystemUpdateRoleList(data?.system_update_roles),
     };
   } catch (error) {
     state.runtimeSettings = {
@@ -1590,6 +1657,7 @@ async function loadRuntimeSettings() {
       bookingViewFields: normalizeBookingViewFieldList(null),
       roomFixSectionOrder: normalizeRoomFixSectionOrder(null),
       notificationRoles: normalizeNotificationRoleList(null),
+      systemUpdateRoles: normalizeSystemUpdateRoleList(null),
     };
     if (canManagePricing()) {
       showToast("Booking runtime settings table is not ready. Run the updated Supabase schema.sql.", true);
@@ -1603,6 +1671,13 @@ async function loadRuntimeSettings() {
 
 async function saveRuntimeSettings() {
   if (!canManagePricing()) return;
+  const previousSettings = {
+    checkInTime: state.runtimeSettings?.checkInTime || "14:00",
+    checkOutTime: state.runtimeSettings?.checkOutTime || "11:00",
+    notificationRoles: normalizeNotificationRoleList(state.runtimeSettings?.notificationRoles),
+    systemUpdateRoles: normalizeSystemUpdateRoleList(state.runtimeSettings?.systemUpdateRoles),
+    bookingViewFields: normalizeBookingViewFieldList(state.runtimeSettings?.bookingViewFields),
+  };
   const row = {
     id: true,
     check_in_time: runtimeCheckInTimeInput?.value || "14:00",
@@ -1612,6 +1687,7 @@ async function saveRuntimeSettings() {
     booking_view_fields: normalizeBookingViewFieldList(state.runtimeSettings?.bookingViewFields),
     room_fix_section_order: normalizeRoomFixSectionOrder(state.runtimeSettings?.roomFixSectionOrder),
     notification_roles: normalizeNotificationRoleList(state.runtimeSettings?.notificationRoles),
+    system_update_roles: normalizeSystemUpdateRoleList(state.runtimeSettings?.systemUpdateRoles),
   };
   const { error } = await state.supabase
     .from(CONFIG.SUPABASE_RUNTIME_SETTINGS_TABLE)
@@ -1627,7 +1703,22 @@ async function saveRuntimeSettings() {
     bookingViewFields: normalizeBookingViewFieldList(row.booking_view_fields),
     roomFixSectionOrder: normalizeRoomFixSectionOrder(row.room_fix_section_order),
     notificationRoles: normalizeNotificationRoleList(row.notification_roles),
+    systemUpdateRoles: normalizeSystemUpdateRoleList(row.system_update_roles),
   };
+  const changedBits = [];
+  if (previousSettings.checkInTime !== state.runtimeSettings.checkInTime) changedBits.push(`Check-In ${previousSettings.checkInTime} -> ${state.runtimeSettings.checkInTime}`);
+  if (previousSettings.checkOutTime !== state.runtimeSettings.checkOutTime) changedBits.push(`Check-Out ${previousSettings.checkOutTime} -> ${state.runtimeSettings.checkOutTime}`);
+  if (previousSettings.notificationRoles.join("|") !== normalizeNotificationRoleList(state.runtimeSettings.notificationRoles).join("|")) changedBits.push("Notification Access");
+  if (previousSettings.systemUpdateRoles.join("|") !== normalizeSystemUpdateRoleList(state.runtimeSettings.systemUpdateRoles).join("|")) changedBits.push("System Updates Access");
+  if (previousSettings.bookingViewFields.join("|") !== normalizeBookingViewFieldList(state.runtimeSettings.bookingViewFields).join("|")) changedBits.push("Booking View Fields");
+  if (changedBits.length) {
+    await insertSystemUpdate({
+      updateType: "runtime_settings_updated",
+      title: "Settings Updated",
+      message: changedBits.join(" · "),
+      metadata: { changedBits },
+    });
+  }
   updateNavVisibility();
   updateNotificationBadge();
 }
@@ -1689,7 +1780,7 @@ async function saveRoomInventory() {
 
   const { data: existingRows, error: existingError } = await state.supabase
     .from(CONFIG.SUPABASE_ROOMS_TABLE)
-    .select("id, room_type, room_number");
+    .select("id, room_type, room_number, max_pax, is_active");
 
   if (existingError) {
     throw new Error(existingError.message || "Could not load saved room setup.");
@@ -1732,6 +1823,25 @@ async function saveRoomInventory() {
   }
 
   state.roomInventorySchemaReady = true;
+  const addedCount = rows.filter((room) => !(existingRows || []).some((saved) => normalizeRoomGroup(saved.room_type) === room.roomType && Number(saved.room_number) === Number(room.roomNumber))).length;
+  const removedCount = removedRows.length;
+  const changedCount = rows.filter((room) => {
+    const saved = (existingRows || []).find((item) => normalizeRoomGroup(item.room_type) === room.roomType && Number(item.room_number) === Number(room.roomNumber));
+    if (!saved) return false;
+    return Number(saved.max_pax || 0) !== Number(room.maxPax || 0) || Boolean(saved.is_active) !== Boolean(room.isActive);
+  }).length;
+  if (addedCount || removedCount || changedCount) {
+    await insertSystemUpdate({
+      updateType: "room_setup_updated",
+      title: "Room Setup Updated",
+      message: [
+        addedCount ? `${addedCount} added` : "",
+        removedCount ? `${removedCount} removed` : "",
+        changedCount ? `${changedCount} changed` : "",
+      ].filter(Boolean).join(" · ") || "Room setup was updated.",
+      metadata: { addedCount, removedCount, changedCount },
+    });
+  }
   await loadRoomInventory();
 }
 
@@ -2108,11 +2218,48 @@ function renderPricingScreen() {
     });
   });
 
+  const systemUpdateAccessCard = document.createElement("article");
+  systemUpdateAccessCard.className = "pricing-card room-fix-panel-card";
+  systemUpdateAccessCard.setAttribute("data-room-fix-panel", "systemUpdates");
+  systemUpdateAccessCard.setAttribute("draggable", "true");
+  systemUpdateAccessCard.innerHTML = `
+    <div class="pricing-card-head">
+      <button class="room-fix-drag-handle" type="button" aria-label="Drag panel to reorder" title="Drag panel to reorder">⋮⋮</button>
+      <div>
+        <h4>System Updates Access</h4>
+        <p>Choose which roles can open the System Updates page and review audit history.</p>
+      </div>
+    </div>
+    <div class="export-settings-grid">
+      ${NOTIFICATION_ROLE_DEFS.map((role) => `
+        <label class="export-field-option">
+          <input
+            type="checkbox"
+            data-system-update-role="${role.key}"
+            ${normalizeSystemUpdateRoleList(state.runtimeSettings?.systemUpdateRoles).includes(role.key) ? "checked" : ""}
+          />
+          <div>
+            <strong>${role.label}</strong>
+            <span>${role.note}</span>
+          </div>
+        </label>
+      `).join("")}
+    </div>
+  `;
+
+  systemUpdateAccessCard.querySelectorAll("[data-system-update-role]").forEach((input) => {
+    input.addEventListener("change", () => {
+      toggleRuntimeSystemUpdateRole(input.dataset.systemUpdateRole, input.checked);
+      updateNavVisibility();
+    });
+  });
+
   const roomFixPanels = new Map([
     ["pdf", pdfCard],
     ["whatsapp", whatsappCard],
     ["bookingView", bookingViewCard],
     ["notifications", notificationAccessCard],
+    ["systemUpdates", systemUpdateAccessCard],
   ]);
 
   normalizeRoomFixSectionOrder(state.runtimeSettings?.roomFixSectionOrder).forEach((key) => {
@@ -2319,6 +2466,14 @@ async function saveRoomPricing() {
         guestName: "Settings",
         changes: changedRows,
       },
+    });
+    await insertSystemUpdate({
+      updateType: "room_pricing_updated",
+      title: changedRows.length === 1 ? "Room Price Updated" : "Room Prices Updated",
+      message: changedRows.length === 1
+        ? `${firstChange.label} changed from ${formatMoney(firstChange.previousPrice)} to ${formatMoney(firstChange.nextPrice)}.`
+        : `${changedRows.length} room prices were changed in Settings.`,
+      metadata: { changes: changedRows },
     });
   }
   await loadRoomPricing();
@@ -3698,6 +3853,11 @@ function canAccessNotifications() {
   return normalizeNotificationRoleList(state.runtimeSettings?.notificationRoles).includes(state.currentProfile.role);
 }
 
+function canAccessSystemUpdates() {
+  if (!state.currentProfile?.approved) return false;
+  return normalizeSystemUpdateRoleList(state.runtimeSettings?.systemUpdateRoles).includes(state.currentProfile.role);
+}
+
 function updateNotificationBadge() {
   if (!notificationBellBtn || !notificationBellBadge) return;
   const canOpenNotifications = canAccessNotifications();
@@ -3730,6 +3890,7 @@ function updateNavVisibility() {
   const showAccounts = canManageAccounts();
   const showRequests = Boolean(state.currentProfile?.approved);
   const showNotifications = canAccessNotifications();
+  const showSystemUpdates = canAccessSystemUpdates();
   const showPricing = canManagePricing();
   navButtons.planner.classList.toggle("hidden", !showPlanner);
   navButtons.analytics.classList.toggle("hidden", !showAnalytics);
@@ -3737,9 +3898,10 @@ function updateNavVisibility() {
   navButtons.hold.classList.toggle("hidden", !showHold);
   navButtons.requests.classList.toggle("hidden", !showRequests);
   navButtons.notifications.classList.toggle("hidden", !showNotifications);
+  navButtons.systemUpdates.classList.toggle("hidden", !showSystemUpdates);
   navButtons.accounts.classList.toggle("hidden", !showAccounts);
   navButtons.pricing.classList.toggle("hidden", !showPricing);
-  const visibleTabs = 2 + Number(showPlanner) + Number(showAnalytics) + Number(showGuide) + Number(showHold) + Number(showRequests) + Number(showNotifications) + Number(showAccounts) + Number(showPricing);
+  const visibleTabs = 2 + Number(showPlanner) + Number(showAnalytics) + Number(showGuide) + Number(showHold) + Number(showRequests) + Number(showNotifications) + Number(showSystemUpdates) + Number(showAccounts) + Number(showPricing);
   const bottomNav = qs(".bottom-nav");
   const isDesktopNav = state.bookingViewMode === "desktop" && window.innerWidth >= 980;
   bottomNav.style.gridTemplateColumns = isDesktopNav
@@ -3761,6 +3923,9 @@ function updateNavVisibility() {
     setScreen("booking");
   }
   if (!showNotifications && screens.notifications.classList.contains("screen-active")) {
+    setScreen("booking");
+  }
+  if (!showSystemUpdates && screens.systemUpdates.classList.contains("screen-active")) {
     setScreen("booking");
   }
   if (!showAccounts && screens.accounts.classList.contains("screen-active")) {
@@ -3792,6 +3957,29 @@ function setScreen(target) {
   if (target === "notifications") {
     loadNotifications({ markVisibleRead: true });
   }
+  if (target === "systemUpdates") {
+    loadSystemUpdates();
+  }
+}
+
+function getServiceCatalogChangeSummary(beforeRows = [], afterRows = []) {
+  const beforeNames = beforeRows.map((row) => String(row.name || "").trim()).filter(Boolean);
+  const afterNames = afterRows.map((row) => String(row.name || "").trim()).filter(Boolean);
+  const added = afterNames.filter((name) => !beforeNames.includes(name));
+  const removed = beforeNames.filter((name) => !afterNames.includes(name));
+  const changed = [];
+  afterRows.forEach((row) => {
+    const before = beforeRows.find((item) => item.id && row.id && item.id === row.id);
+    if (!before) return;
+    if (
+      String(before.name || "") !== String(row.name || "")
+      || Number(before.defaultPrice || 0) !== Number(row.defaultPrice || 0)
+      || Boolean(before.isActive) !== Boolean(row.isActive)
+    ) {
+      changed.push(row.name || before.name || "Service");
+    }
+  });
+  return { added, removed, changed };
 }
 
 function getAnalyticsReservationGroups(bookings = []) {
@@ -4054,6 +4242,9 @@ async function applySession(session) {
   await refreshLiveViews();
   await loadRequests();
   await loadNotificationUnreadCount();
+  if (canAccessSystemUpdates() && screens.systemUpdates?.classList.contains("screen-active")) {
+    await loadSystemUpdates();
+  }
   if (canManageAccounts()) {
     await loadAccounts();
   }
@@ -8035,6 +8226,9 @@ async function refreshLiveViews() {
   } else if (canAccessNotifications()) {
     await loadNotificationUnreadCount();
   }
+  if (canAccessSystemUpdates() && screens.systemUpdates?.classList.contains("screen-active")) {
+    await loadSystemUpdates();
+  }
 }
 
 async function setupRealtime() {
@@ -8112,6 +8306,15 @@ async function setupRealtime() {
           await loadNotifications();
         } else if (canAccessNotifications()) {
           await loadNotificationUnreadCount();
+        }
+      }
+    )
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: CONFIG.SUPABASE_SYSTEM_UPDATES_TABLE },
+      async () => {
+        if (canAccessSystemUpdates() && screens.systemUpdates?.classList.contains("screen-active")) {
+          await loadSystemUpdates();
         }
       }
     )
@@ -8348,6 +8551,12 @@ function isNotificationSchemaMissing(message = "") {
     || text.includes("notification_roles");
 }
 
+function isSystemUpdateSchemaMissing(message = "") {
+  const text = String(message || "").toLowerCase();
+  return text.includes("system_update_history")
+    || text.includes("system_update_roles");
+}
+
 function getNotificationRangeLabel(presetKey, from, to) {
   switch (presetKey) {
     case "this-week":
@@ -8361,6 +8570,178 @@ function getNotificationRangeLabel(presetKey, from, to) {
     default:
       return `${formatDateKey(from)} -> ${formatDateKey(to)}`;
   }
+}
+
+function formatSystemUpdateTime(value) {
+  return formatNotificationTimestamp(value);
+}
+
+async function insertSystemUpdate(payload = {}) {
+  ensureSupabase();
+  if (!state.currentSession?.user?.id) return;
+  const row = {
+    update_type: payload.updateType || "settings_saved",
+    title: payload.title || "System Update",
+    message: payload.message || "",
+    actor_user_id: state.currentSession.user.id,
+    actor_name: payload.actorName || getNotificationActorName(),
+    metadata: payload.metadata || {},
+  };
+  const { error } = await state.supabase.from(CONFIG.SUPABASE_SYSTEM_UPDATES_TABLE).insert(row);
+  if (error) {
+    if (isSystemUpdateSchemaMissing(error.message)) return;
+    throw new Error(error.message || "Could not save system update.");
+  }
+}
+
+function normalizeSystemUpdateRow(row = {}) {
+  return {
+    id: row.id || "",
+    updateType: row.update_type || "",
+    title: row.title || "System Update",
+    message: row.message || "",
+    actorUserId: row.actor_user_id || "",
+    actorName: row.actor_name || "",
+    metadata: row.metadata && typeof row.metadata === "object" ? row.metadata : {},
+    createdAt: row.created_at || "",
+  };
+}
+
+async function fetchSystemUpdates({ from = null, to = null, limit = 300 } = {}) {
+  ensureSupabase();
+  let query = state.supabase
+    .from(CONFIG.SUPABASE_SYSTEM_UPDATES_TABLE)
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (from) {
+    const start = new Date(from.getFullYear(), from.getMonth(), from.getDate(), 0, 0, 0);
+    query = query.gte("created_at", start.toISOString());
+  }
+  if (to) {
+    const endExclusive = new Date(to.getFullYear(), to.getMonth(), to.getDate() + 1, 0, 0, 0);
+    query = query.lt("created_at", endExclusive.toISOString());
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message || "Could not load system updates.");
+  return (data || []).map(normalizeSystemUpdateRow);
+}
+
+function renderSystemUpdates() {
+  if (!systemUpdatesList || !systemUpdatesEmpty) return;
+
+  systemUpdatePresetButtons.forEach((button) => {
+    button.classList.toggle("filter-chip-active", button.dataset.systemUpdatePreset === state.systemUpdatePreset);
+  });
+
+  if (!canAccessSystemUpdates()) {
+    systemUpdatesList.innerHTML = "";
+    systemUpdatesEmpty.style.display = "block";
+    systemUpdatesEmpty.textContent = "System Updates page is not enabled for this role.";
+    if (systemUpdateRangeLabel) systemUpdateRangeLabel.textContent = "-";
+    if (systemUpdateTotalCount) systemUpdateTotalCount.textContent = "0";
+    if (systemUpdateLatestTime) systemUpdateLatestTime.textContent = "-";
+    return;
+  }
+
+  if (deleteSystemUpdatesRangeBtn) deleteSystemUpdatesRangeBtn.classList.toggle("hidden", !canManagePricing());
+  if (deleteSystemUpdatesAllBtn) deleteSystemUpdatesAllBtn.classList.toggle("hidden", !canManagePricing());
+  if (systemUpdateDeleteFromInput) systemUpdateDeleteFromInput.disabled = !canManagePricing();
+  if (systemUpdateDeleteToInput) systemUpdateDeleteToInput.disabled = !canManagePricing();
+
+  const { from, to } = getPresetRangeDates(state.systemUpdatePreset);
+  if (systemUpdateRangeLabel) systemUpdateRangeLabel.textContent = getNotificationRangeLabel(state.systemUpdatePreset, from, to);
+  if (systemUpdateTotalCount) systemUpdateTotalCount.textContent = String(state.systemUpdates.length);
+  if (systemUpdateLatestTime) systemUpdateLatestTime.textContent = state.systemUpdates[0]?.createdAt ? formatSystemUpdateTime(state.systemUpdates[0].createdAt) : "-";
+
+  if (!state.systemUpdates.length) {
+    systemUpdatesList.innerHTML = "";
+    systemUpdatesEmpty.style.display = "block";
+    systemUpdatesEmpty.textContent = "No system updates in this range.";
+    return;
+  }
+
+  systemUpdatesEmpty.style.display = "none";
+  systemUpdatesList.innerHTML = state.systemUpdates.map((item) => {
+    const metaBits = [
+      item.actorName || "System",
+      formatSystemUpdateTime(item.createdAt),
+    ];
+    return `
+      <article class="notification-card">
+        <div class="notification-card-head">
+          <span class="booking-tag tag-success">${escapeHtml(item.title)}</span>
+          <span class="notification-card-time">${escapeHtml(formatSystemUpdateTime(item.createdAt))}</span>
+        </div>
+        <strong class="notification-card-message">${escapeHtml(item.message)}</strong>
+        <span class="notification-card-meta">${escapeHtml(metaBits.join(" | "))}</span>
+      </article>
+    `;
+  }).join("");
+}
+
+async function loadSystemUpdates({ presetKey = state.systemUpdatePreset } = {}) {
+  if (!canAccessSystemUpdates()) {
+    state.systemUpdates = [];
+    renderSystemUpdates();
+    return;
+  }
+
+  try {
+    state.systemUpdatePreset = presetKey;
+    const { from, to } = getPresetRangeDates(presetKey);
+    state.systemUpdates = await fetchSystemUpdates({ from, to, limit: 300 });
+    renderSystemUpdates();
+  } catch (error) {
+    if (isSystemUpdateSchemaMissing(error.message)) {
+      state.systemUpdates = [];
+      renderSystemUpdates();
+      return;
+    }
+    showToast(error.message, true);
+  }
+}
+
+async function deleteSystemUpdatesRange() {
+  ensureSupabase();
+  const from = systemUpdateDeleteFromInput?.value || "";
+  const to = systemUpdateDeleteToInput?.value || "";
+  if (!from || !to) {
+    throw new Error("Select both from and to dates.");
+  }
+  if (from > to) {
+    throw new Error("Delete range end date must be after start date.");
+  }
+  const confirmed = window.confirm(`Delete system update history from ${from} to ${to}?`);
+  if (!confirmed) return false;
+
+  const start = new Date(parseDate(from));
+  start.setHours(0, 0, 0, 0);
+  const endExclusive = new Date(parseDate(to));
+  endExclusive.setDate(endExclusive.getDate() + 1);
+  endExclusive.setHours(0, 0, 0, 0);
+
+  const { error } = await state.supabase
+    .from(CONFIG.SUPABASE_SYSTEM_UPDATES_TABLE)
+    .delete()
+    .gte("created_at", start.toISOString())
+    .lt("created_at", endExclusive.toISOString());
+  if (error) throw new Error(error.message || "Could not delete system update range.");
+  return true;
+}
+
+async function deleteAllSystemUpdates() {
+  ensureSupabase();
+  const confirmed = window.confirm("Delete all system update history?");
+  if (!confirmed) return false;
+  const { error } = await state.supabase
+    .from(CONFIG.SUPABASE_SYSTEM_UPDATES_TABLE)
+    .delete()
+    .not("id", "is", null);
+  if (error) throw new Error(error.message || "Could not delete all system update history.");
+  return true;
 }
 
 async function insertNotification(payload = {}) {
@@ -9180,10 +9561,38 @@ notificationPresetButtons.forEach((button) => {
     loadNotifications({ presetKey: button.dataset.notificationPreset, markVisibleRead: true });
   });
 });
+systemUpdatePresetButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    loadSystemUpdates({ presetKey: button.dataset.systemUpdatePreset });
+  });
+});
 settingsJumpButtons.forEach((button) => {
   button.addEventListener("click", () => {
     jumpToSettingsSection(button.dataset.settingsJump);
   });
+});
+refreshSystemUpdatesBtn?.addEventListener("click", () => loadSystemUpdates());
+deleteSystemUpdatesRangeBtn?.addEventListener("click", async () => {
+  try {
+    if (!canManagePricing()) throw new Error("You do not have access to delete system update history.");
+    const changed = await deleteSystemUpdatesRange();
+    if (!changed) return;
+    showToast("System update range deleted.");
+    await loadSystemUpdates();
+  } catch (error) {
+    showToast(error.message, true);
+  }
+});
+deleteSystemUpdatesAllBtn?.addEventListener("click", async () => {
+  try {
+    if (!canManagePricing()) throw new Error("You do not have access to delete system update history.");
+    const changed = await deleteAllSystemUpdates();
+    if (!changed) return;
+    showToast("All system update history deleted.");
+    await loadSystemUpdates();
+  } catch (error) {
+    showToast(error.message, true);
+  }
 });
 refreshPricingBtn?.addEventListener("click", async () => {
   await loadRoomInventory();
@@ -9362,6 +9771,7 @@ navButtons.guide.addEventListener("click", () => setScreen("guide"));
 navButtons.hold.addEventListener("click", () => setScreen("hold"));
 navButtons.requests.addEventListener("click", () => setScreen("requests"));
 navButtons.notifications.addEventListener("click", () => setScreen("notifications"));
+navButtons.systemUpdates.addEventListener("click", () => setScreen("systemUpdates"));
 navButtons.accounts.addEventListener("click", () => setScreen("accounts"));
 navButtons.pricing.addEventListener("click", () => setScreen("pricing"));
 notificationBellBtn?.addEventListener("click", () => setScreen("notifications"));

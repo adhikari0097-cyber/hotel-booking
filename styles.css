@@ -4649,6 +4649,13 @@ h4 {
   color: var(--danger);
 }
 
+.secondary-btn.danger,
+.ghost-btn.danger {
+  background: #fff2f0;
+  border-color: #e5b7b2;
+  color: var(--danger);
+}
+
 @media (max-width: 640px) {
   .availability-stats-wide,
   .totals-grid,
