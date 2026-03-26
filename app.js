@@ -5329,60 +5329,60 @@ function buildBookingPdfMarkup(group) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>${escapeHtml(group.trackCode || "Reservation")} PDF</title>
         <style>
-          body { font-family: "Sora", Arial, sans-serif; margin: 0; background: linear-gradient(180deg, #f6efe3 0%, #efe8dc 100%); color: #173d35; }
-          .pdf-shell { max-width: 980px; margin: 0 auto; padding: 26px; }
-          .pdf-card { background: #fffdf9; border: 1px solid #eadfcd; border-radius: 26px; padding: 26px; box-shadow: 0 18px 42px rgba(57, 44, 24, 0.08); }
+          body { font-family: "Sora", Arial, sans-serif; margin: 0; background: linear-gradient(180deg, #f6efe3 0%, #efe8dc 100%); color: #173d35; font-size: 13px; }
+          .pdf-shell { max-width: 980px; margin: 0 auto; padding: 18px; }
+          .pdf-card { background: #fffdf9; border: 1px solid #eadfcd; border-radius: 22px; padding: 20px; box-shadow: 0 18px 42px rgba(57, 44, 24, 0.08); }
           .pdf-card.pdf-tone-invoice { border-top: 6px solid #0b3d2e; }
           .pdf-card.pdf-tone-advance { border-top: 6px solid #b88925; }
           .pdf-card.pdf-tone-final { border-top: 6px solid #215f9a; }
           .pdf-card.pdf-tone-hold { border-top: 6px solid #8c6a2d; }
-          .pdf-topline { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #85755f; margin-bottom: 18px; }
-          .pdf-hero { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(240px, 0.9fr); gap: 18px; margin-bottom: 18px; }
-          .pdf-hero-panel { border-radius: 24px; padding: 22px; background: linear-gradient(135deg, #0f4a38 0%, #114e3b 55%, #194f67 100%); color: #f8f5ef; }
+          .pdf-topline { display: flex; justify-content: space-between; gap: 10px; font-size: 9px; letter-spacing: 0.09em; text-transform: uppercase; color: #85755f; margin-bottom: 12px; }
+          .pdf-hero { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(220px, 0.9fr); gap: 14px; margin-bottom: 14px; }
+          .pdf-hero-panel { border-radius: 20px; padding: 18px; background: linear-gradient(135deg, #0f4a38 0%, #114e3b 55%, #194f67 100%); color: #f8f5ef; }
           .pdf-tone-advance .pdf-hero-panel { background: linear-gradient(135deg, #765514 0%, #b88925 52%, #d9b96d 100%); color: #fffaf1; }
           .pdf-tone-final .pdf-hero-panel { background: linear-gradient(135deg, #204868 0%, #2d6d97 55%, #5ea5cf 100%); }
           .pdf-tone-hold .pdf-hero-panel { background: linear-gradient(135deg, #6f5322 0%, #8c6a2d 50%, #b08d4e 100%); }
-          .pdf-track { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.78; margin-bottom: 10px; }
-          .pdf-hero-panel h1 { margin: 0; font-size: 34px; line-height: 1.05; letter-spacing: -0.04em; }
-          .pdf-hero-copy { margin: 10px 0 0; font-size: 15px; line-height: 1.6; max-width: 42ch; opacity: 0.92; }
-          .pdf-thankyou { margin-top: 16px; display: inline-flex; align-items: center; padding: 10px 14px; border-radius: 999px; background: rgba(255, 255, 255, 0.14); font-size: 12px; font-weight: 700; }
-          .pdf-status-panel { border: 1px solid #eadfcd; border-radius: 24px; padding: 18px; background: linear-gradient(180deg, #fff 0%, #fcf8f1 100%); display: grid; gap: 12px; align-content: start; }
-          .pdf-badge { display: inline-flex; width: fit-content; padding: 8px 12px; border-radius: 999px; background: #e9f3ee; color: #15533d; font-size: 12px; font-weight: 800; letter-spacing: 0.03em; }
+          .pdf-track { font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.78; margin-bottom: 8px; }
+          .pdf-hero-panel h1 { margin: 0; font-size: 28px; line-height: 1.04; letter-spacing: -0.04em; }
+          .pdf-hero-copy { margin: 8px 0 0; font-size: 12px; line-height: 1.45; max-width: 42ch; opacity: 0.92; }
+          .pdf-thankyou { margin-top: 12px; display: inline-flex; align-items: center; padding: 8px 12px; border-radius: 999px; background: rgba(255, 255, 255, 0.14); font-size: 10px; font-weight: 700; }
+          .pdf-status-panel { border: 1px solid #eadfcd; border-radius: 20px; padding: 14px; background: linear-gradient(180deg, #fff 0%, #fcf8f1 100%); display: grid; gap: 10px; align-content: start; }
+          .pdf-badge { display: inline-flex; width: fit-content; padding: 7px 10px; border-radius: 999px; background: #e9f3ee; color: #15533d; font-size: 10px; font-weight: 800; letter-spacing: 0.03em; }
           .pdf-tone-advance .pdf-badge { background: #fff4db; color: #8c6308; }
           .pdf-tone-final .pdf-badge { background: #e9f3fb; color: #1e5c86; }
           .pdf-tone-hold .pdf-badge { background: #f8edda; color: #7c5a18; }
-          .pdf-status-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #7a6c57; }
-          .pdf-status-title { font-size: 22px; font-weight: 800; color: #173d35; line-height: 1.15; }
-          .pdf-detail-list { display: grid; gap: 10px; }
-          .pdf-detail-row { display: flex; justify-content: space-between; gap: 12px; border-top: 1px solid #efe4d4; padding-top: 10px; }
+          .pdf-status-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: #7a6c57; }
+          .pdf-status-title { font-size: 18px; font-weight: 800; color: #173d35; line-height: 1.15; }
+          .pdf-detail-list { display: grid; gap: 8px; }
+          .pdf-detail-row { display: flex; justify-content: space-between; gap: 10px; border-top: 1px solid #efe4d4; padding-top: 8px; }
           .pdf-detail-row:first-child { border-top: 0; padding-top: 0; }
-          .pdf-detail-row strong { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #8c7b62; }
-          .pdf-detail-row span { font-size: 13px; font-weight: 700; color: #173d35; text-align: right; }
-          .pdf-quick-grid, .pdf-amount-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
-          .pdf-fact-card { border: 1px solid #eadfcd; border-radius: 18px; padding: 14px 16px; background: #fff; }
-          .pdf-fact-card strong { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #8b7d66; margin-bottom: 6px; }
-          .pdf-fact-card span { display: block; font-size: 18px; font-weight: 800; color: #173d35; line-height: 1.35; }
+          .pdf-detail-row strong { font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; color: #8c7b62; }
+          .pdf-detail-row span { font-size: 11px; font-weight: 700; color: #173d35; text-align: right; }
+          .pdf-quick-grid, .pdf-amount-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+          .pdf-fact-card { border: 1px solid #eadfcd; border-radius: 16px; padding: 11px 12px; background: #fff; }
+          .pdf-fact-card strong { display: block; font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; color: #8b7d66; margin-bottom: 4px; }
+          .pdf-fact-card span { display: block; font-size: 15px; font-weight: 800; color: #173d35; line-height: 1.25; }
           .pdf-fact-card-primary { background: linear-gradient(180deg, #f4faf6, #fff); border-color: #d9eadf; }
           .pdf-fact-card-success { background: linear-gradient(180deg, #f0f9f3, #fff); border-color: #d2e7d8; }
-          .pdf-section { margin-bottom: 18px; padding: 18px; border: 1px solid #eadfcd; border-radius: 22px; background: #fff; }
-          .pdf-section-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; margin-bottom: 12px; }
-          .pdf-section-head h3 { margin: 0; font-size: 18px; color: #173d35; }
-          .pdf-section-head span { font-size: 12px; color: #7e6f5a; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+          .pdf-section { margin-bottom: 14px; padding: 14px; border: 1px solid #eadfcd; border-radius: 18px; background: #fff; }
+          .pdf-section-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; margin-bottom: 10px; }
+          .pdf-section-head h3 { margin: 0; font-size: 15px; color: #173d35; }
+          .pdf-section-head span { font-size: 10px; color: #7e6f5a; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
           .pdf-chip-list { display: flex; flex-wrap: wrap; gap: 8px; }
-          .pdf-chip { border: 1px solid #e3d5b8; border-radius: 999px; padding: 8px 12px; background: #fff8eb; font-size: 12px; font-weight: 700; color: #7d5e19; }
+          .pdf-chip { border: 1px solid #e3d5b8; border-radius: 999px; padding: 6px 10px; background: #fff8eb; font-size: 10px; font-weight: 700; color: #7d5e19; }
           .pdf-note-list { display: grid; gap: 8px; }
-          .pdf-note-item, .pdf-notes { font-size: 13px; line-height: 1.6; color: #4d5f5a; }
-          .pdf-room-list { display: grid; gap: 14px; }
-          .pdf-room-card { border: 1px solid #eadfcd; border-radius: 20px; padding: 16px; background: linear-gradient(180deg, #fff 0%, #fcfaf5 100%); }
-          .pdf-room-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
-          .pdf-room-head h3 { margin: 0; font-size: 18px; color: #173d35; }
-          .pdf-room-head p { margin: 4px 0 0; color: #6d7a72; font-size: 12px; font-weight: 600; }
-          .pdf-room-head span { padding: 6px 10px; border-radius: 999px; background: #e7f0ea; color: #1f6c4d; font-size: 12px; font-weight: 700; }
-          .pdf-room-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-          .pdf-room-grid div { border: 1px solid #efe6d8; border-radius: 14px; padding: 10px 12px; background: #fff; }
-          .pdf-room-grid strong { display: block; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: #7f725d; margin-bottom: 4px; }
-          .pdf-room-grid span { font-size: 14px; font-weight: 700; color: #173d35; }
-          .pdf-room-meta { margin-top: 10px; font-size: 12px; color: #5f7068; line-height: 1.55; }
+          .pdf-note-item, .pdf-notes { font-size: 11px; line-height: 1.45; color: #4d5f5a; }
+          .pdf-room-list { display: grid; gap: 10px; }
+          .pdf-room-card { border: 1px solid #eadfcd; border-radius: 16px; padding: 12px; background: linear-gradient(180deg, #fff 0%, #fcfaf5 100%); break-inside: avoid; }
+          .pdf-room-head { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; margin-bottom: 8px; }
+          .pdf-room-head h3 { margin: 0; font-size: 15px; color: #173d35; }
+          .pdf-room-head p { margin: 2px 0 0; color: #6d7a72; font-size: 10px; font-weight: 600; }
+          .pdf-room-head span { padding: 5px 8px; border-radius: 999px; background: #e7f0ea; color: #1f6c4d; font-size: 10px; font-weight: 700; }
+          .pdf-room-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+          .pdf-room-grid div { border: 1px solid #efe6d8; border-radius: 12px; padding: 8px 10px; background: #fff; }
+          .pdf-room-grid strong { display: block; font-size: 8px; letter-spacing: 0.08em; text-transform: uppercase; color: #7f725d; margin-bottom: 3px; }
+          .pdf-room-grid span { font-size: 11px; font-weight: 700; color: #173d35; }
+          .pdf-room-meta { margin-top: 8px; font-size: 10px; color: #5f7068; line-height: 1.45; }
           @media (max-width: 720px) {
             .pdf-shell { padding: 12px; }
             .pdf-card { padding: 16px; border-radius: 18px; }
@@ -5390,9 +5390,14 @@ function buildBookingPdfMarkup(group) {
             .pdf-hero-panel h1 { font-size: 28px; }
           }
           @media print {
+            @page { size: A4; margin: 10mm; }
             body { background: #fff; }
             .pdf-shell { padding: 0; }
-            .pdf-card { border: 0; border-radius: 0; padding: 0; }
+            .pdf-card { border: 0; border-radius: 0; padding: 0; box-shadow: none; }
+            .pdf-section,
+            .pdf-room-card,
+            .pdf-status-panel,
+            .pdf-fact-card { break-inside: avoid; }
           }
         </style>
       </head>
@@ -7933,6 +7938,22 @@ function getPlannerMobileRoomLabel(room) {
   return `Normal ${room.number}`;
 }
 
+function getPlannerMobileBookingShortLabel(booking) {
+  const visibleCode = getVisibleTrackCode(booking.trackCode, booking.status) || "";
+  if (visibleCode) {
+    return visibleCode.replace(/[^A-Za-z0-9]/g, "").slice(-4).toUpperCase();
+  }
+  const guest = String(booking.guestName || "").trim();
+  if (!guest) return "BK";
+  const initials = guest
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
+  return initials || "BK";
+}
+
 function bindPlannerBookingButtons() {
   reservationPlannerBoard.querySelectorAll("[data-planner-group]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -8095,6 +8116,7 @@ function renderReservationPlannerMobile(bookings, plannerRooms, startDate, days,
     const displayTrackCode = getVisibleTrackCode(booking.trackCode, booking.status);
     const stayNights = Math.max(1, getNightCount(booking.checkIn, booking.checkOut));
     const lifecycleStatus = getBookingLifecycleStatus(booking);
+    const shortLabel = getPlannerMobileBookingShortLabel(booking);
     const noteText = pendingLabel
       ? "Req"
       : lifecycleStatus === "checked_in"
@@ -8117,12 +8139,28 @@ function renderReservationPlannerMobile(bookings, plannerRooms, startDate, days,
         label: labelParts.join(" | "),
         colors,
         pending: Boolean(pendingLabel),
+        shortLabel,
         paxText: `${Number(booking.guests || 0)}P`,
         stayText: `${stayNights}N`,
         noteText,
       });
     });
   });
+
+  const mobileGroupCards = groupBookingsForDisplay(bookings).map((group) => `
+    <button
+      class="reservation-planner-mobile-summary-card"
+      type="button"
+      data-planner-group="${escapeHtml(group.key)}"
+    >
+      <div class="reservation-planner-mobile-summary-head">
+        <strong>${escapeHtml(getVisibleTrackCode(group.trackCode, group.statuses.size === 1 ? Array.from(group.statuses)[0] : "Pending") || group.trackCode || "Booking")}</strong>
+        <span>${escapeHtml(`${group.bookings.length} Room${group.bookings.length === 1 ? "" : "s"} · ${group.totalGuests} Pax`)}</span>
+      </div>
+      <div class="reservation-planner-mobile-summary-name">${escapeHtml(group.guestName || "Guest")}</div>
+      <div class="reservation-planner-mobile-summary-meta">${escapeHtml(`${group.checkIn || "-"} -> ${group.checkOut || "-"} · ${Math.max(1, getNightCount(group.checkIn, group.checkOut))} Night${Math.max(1, getNightCount(group.checkIn, group.checkOut)) === 1 ? "" : "s"}`)}</div>
+    </button>
+  `).join("");
 
   const cells = dateList.map((_, rowIndex) => plannerRooms.map((_, columnIndex) => {
     const marker = bookingCells.get(`${rowIndex}:${columnIndex}`);
@@ -8141,6 +8179,7 @@ function renderReservationPlannerMobile(bookings, plannerRooms, startDate, days,
                 title="${escapeHtml(marker.label)}"
                 style="--planner-bg:${marker.colors.bg}; --planner-border:${marker.colors.border}; --planner-text:${marker.colors.text};"
               >
+                <span class="reservation-planner-mobile-marker-code">${escapeHtml(marker.shortLabel)}</span>
                 <span class="reservation-planner-mobile-marker-pax">${escapeHtml(marker.paxText)}</span>
                 <span class="reservation-planner-mobile-marker-stay">${escapeHtml(marker.stayText)}</span>
                 ${marker.noteText ? `<span class="reservation-planner-mobile-marker-note">${escapeHtml(marker.noteText)}</span>` : ""}
@@ -8163,14 +8202,17 @@ function renderReservationPlannerMobile(bookings, plannerRooms, startDate, days,
   }).join("")).join("");
 
   reservationPlannerBoard.innerHTML = `
-    <div
-      class="reservation-planner-mobile-grid"
-      style="grid-template-columns: 64px repeat(${plannerRooms.length}, 58px); grid-template-rows: 40px repeat(${safeDays}, 52px);"
-    >
-      <div class="reservation-planner-mobile-corner" style="grid-column:1; grid-row:1;">Dates</div>
-      ${roomHeaders}
-      ${dateLabels}
-      ${cells}
+    <div class="reservation-planner-mobile">
+      <div
+        class="reservation-planner-mobile-grid"
+        style="grid-template-columns: 64px repeat(${plannerRooms.length}, 58px); grid-template-rows: 40px repeat(${safeDays}, 52px);"
+      >
+        <div class="reservation-planner-mobile-corner" style="grid-column:1; grid-row:1;">Dates</div>
+        ${roomHeaders}
+        ${dateLabels}
+        ${cells}
+      </div>
+      ${mobileGroupCards ? `<div class="reservation-planner-mobile-summary-list">${mobileGroupCards}</div>` : ""}
     </div>
   `;
 
