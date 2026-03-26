@@ -1433,7 +1433,7 @@ function getServicePricingRows(bookings = []) {
   });
 }
 
-function getServicePricingMarkup(bookings = []) {
+function getServicePricingMarkup(bookings = [], { editable = false, groupKey = "" } = {}) {
   const rows = getServicePricingRows(bookings);
   if (!rows.length) {
     return '<p class="inline-note">No services added.</p>';
@@ -1441,9 +1441,9 @@ function getServicePricingMarkup(bookings = []) {
   return `
     <div class="payment-history-list">
       ${rows.map((row) => `
-        <div class="payment-history-item">
+        <div class="payment-history-item${editable ? " payment-history-item-editable" : ""}" ${editable ? `role="button" tabindex="0" data-booking-service-price-edit="${escapeHtml(groupKey)}" data-service-name="${escapeHtml(row.service)}"` : ""}>
           <strong>${escapeHtml(row.service)}</strong>
-          <span>${row.amount > 0 ? escapeHtml(formatMoney(row.amount)) : "-"}</span>
+          <span>${row.amount > 0 ? escapeHtml(formatMoney(row.amount)) : editable ? "Tap to add price" : "-"}</span>
         </div>
       `).join("")}
     </div>
@@ -3136,6 +3136,33 @@ function syncGroupCustomPaymentsWithServices(bookings = [], nextServices = []) {
   return [...linked, ...preserved];
 }
 
+function promptForServiceAmount(serviceName, currentAmount = 0) {
+  const amountInput = window.prompt(
+    `Enter price for ${serviceName}. Leave empty or 0 if not charged.`,
+    currentAmount ? String(currentAmount) : "",
+  );
+  if (amountInput === null) return null;
+  return roundCurrency(Math.max(0, Number(amountInput || 0)));
+}
+
+async function applyGroupServicesAndPayments(group, nextServices = [], nextCustomPayments = []) {
+  for (const booking of group.bookings) {
+    const bookingParsed = parseBookingNotes(booking.notes);
+    await updateBooking(booking.id, {
+      guestName: booking.guestName,
+      phone: booking.phone,
+      checkIn: booking.checkIn,
+      checkOut: booking.checkOut,
+      roomType: booking.roomType,
+      roomTypeLabel: booking.roomTypeLabel,
+      roomNumber: booking.roomNumber,
+      notes: mergeNotesAndServices(bookingParsed.otherNotes.join(" | "), nextServices),
+      status: booking.status,
+      customPayments: nextCustomPayments,
+    });
+  }
+}
+
 async function toggleGroupServiceDirect(groupKey, serviceName) {
   const group = getBookingGroupByKey(groupKey);
   if (!group?.bookings?.length) throw new Error("Booking group not found.");
@@ -3161,26 +3188,61 @@ async function toggleGroupServiceDirect(groupKey, serviceName) {
   }
   const linkedEntry = nextCustomPayments.find((item) => String(item.note || "").trim().toLowerCase() === String(serviceName || "").trim().toLowerCase());
   if (linkedEntry && next.has(serviceName)) {
-    const amountInput = window.prompt(`Enter price for ${serviceName}. Leave empty or 0 if not charged.`, linkedEntry.amount ? String(linkedEntry.amount) : "");
-    if (amountInput === null) return;
-    linkedEntry.amount = roundCurrency(Math.max(0, Number(amountInput || 0)));
+    const amount = promptForServiceAmount(serviceName, linkedEntry.amount || 0);
+    if (amount === null) return;
+    linkedEntry.amount = amount;
+  }
+  await applyGroupServicesAndPayments(group, nextServices, nextCustomPayments);
+}
+
+async function updateGroupServicePrice(groupKey, serviceName) {
+  const group = getBookingGroupByKey(groupKey);
+  if (!group?.bookings?.length) throw new Error("Booking group not found.");
+  const nextServices = getGroupServices(group.bookings);
+  if (!nextServices.includes(serviceName)) {
+    nextServices.push(serviceName);
+  }
+  const nextCustomPayments = syncGroupCustomPaymentsWithServices(group.bookings, nextServices);
+  const linkedEntry = nextCustomPayments.find((item) => String(item.note || "").trim().toLowerCase() === String(serviceName || "").trim().toLowerCase());
+  const amount = promptForServiceAmount(serviceName, linkedEntry?.amount || 0);
+  if (amount === null) return false;
+  if (linkedEntry) {
+    linkedEntry.amount = amount;
+  } else {
+    nextCustomPayments.push({ amount, note: serviceName });
+  }
+  await applyGroupServicesAndPayments(group, nextServices, nextCustomPayments);
+  return true;
+}
+
+async function promptGroupCustomServiceAdd(groupKey) {
+  const group = getBookingGroupByKey(groupKey);
+  if (!group?.bookings?.length) throw new Error("Booking group not found.");
+
+  const serviceInput = window.prompt("Custom service name. Example: BBQ / Boat Ride / Special Dinner.", "");
+  if (serviceInput == null) return false;
+  const serviceName = String(serviceInput || "").trim();
+  if (!serviceName) {
+    throw new Error("Enter a custom service name.");
   }
 
-  for (const booking of group.bookings) {
-    const bookingParsed = parseBookingNotes(booking.notes);
-    await updateBooking(booking.id, {
-      guestName: booking.guestName,
-      phone: booking.phone,
-      checkIn: booking.checkIn,
-      checkOut: booking.checkOut,
-      roomType: booking.roomType,
-      roomTypeLabel: booking.roomTypeLabel,
-      roomNumber: booking.roomNumber,
-      notes: mergeNotesAndServices(bookingParsed.otherNotes.join(" | "), nextServices),
-      status: booking.status,
-      customPayments: nextCustomPayments,
-    });
+  const amount = promptForServiceAmount(serviceName, 0);
+  if (amount === null) return false;
+
+  const nextServices = getGroupServices(group.bookings);
+  if (!nextServices.some((item) => item.toLowerCase() === serviceName.toLowerCase())) {
+    nextServices.push(serviceName);
   }
+  const nextCustomPayments = syncGroupCustomPaymentsWithServices(group.bookings, nextServices);
+  const existing = nextCustomPayments.find((item) => String(item.note || "").trim().toLowerCase() === serviceName.toLowerCase());
+  if (existing) {
+    existing.amount = amount;
+  } else {
+    nextCustomPayments.push({ amount, note: serviceName });
+  }
+
+  await applyGroupServicesAndPayments(group, nextServices, nextCustomPayments);
+  return true;
 }
 
 function getAdvancePaymentInfo(bookings = []) {
@@ -6793,7 +6855,10 @@ function openBookingDetailsModal(groupKey) {
   const customPriceTotal = getGroupCustomPriceTotal(group.bookings);
   const balanceAmount = getBookingBalanceAmount(group);
   const groupServices = getGroupServices(group.bookings);
-  const servicePricingMarkup = getServicePricingMarkup(group.bookings);
+  const servicePricingMarkup = getServicePricingMarkup(group.bookings, {
+    editable: lifecycleStatus === "checked_in",
+    groupKey: group.key,
+  });
   const roomRows = group.bookings
     .map((booking) => {
       const bookingRequest = pendingCollections.byBooking.get(booking.id);
@@ -6882,9 +6947,10 @@ function openBookingDetailsModal(groupKey) {
     ${lifecycleStatus === "checked_in" ? `
       <div class="booking-details-services-panel booking-details-service-manage-panel" data-booking-service-manage-panel>
         <div class="booking-details-panel-title">Add Services</div>
-        <p class="inline-note">Checked-in bookings can add services and custom charges here.</p>
+        <p class="inline-note">Tap a service to add it and enter the price immediately. You can also add custom services and custom charges here.</p>
         ${renderGroupServiceToggleButtons(group)}
         <div class="booking-details-service-manage-actions">
+          <button class="action-btn" type="button" data-booking-group-action="custom-service">Custom Service</button>
           <button class="action-btn" type="button" data-booking-group-action="custom-price">Add Custom Price</button>
         </div>
       </div>
@@ -7011,6 +7077,20 @@ function openBookingDetailsModal(groupKey) {
       }
     });
   }
+  const customServiceBtn = bookingDetailsBody.querySelector('[data-booking-group-action="custom-service"]');
+  if (customServiceBtn) {
+    customServiceBtn.addEventListener("click", async () => {
+      try {
+        const changed = await promptGroupCustomServiceAdd(group.key);
+        if (!changed) return;
+        showToast("Custom service added.");
+        await refreshLiveViews();
+        openBookingDetailsModal(group.key);
+      } catch (error) {
+        showToast(error.message || "Unable to add custom service.", true);
+      }
+    });
+  }
   const checkInBtn = bookingDetailsBody.querySelector('[data-booking-group-action="checkin"]');
   if (checkInBtn) {
     checkInBtn.addEventListener("click", async () => {
@@ -7061,6 +7141,26 @@ function openBookingDetailsModal(groupKey) {
         openBookingDetailsModal(group.key);
       } catch (error) {
         showToast(error.message, true);
+      }
+    });
+  });
+  bookingDetailsBody.querySelectorAll("[data-booking-service-price-edit]").forEach((item) => {
+    const runEdit = async () => {
+      try {
+        const changed = await updateGroupServicePrice(item.dataset.bookingServicePriceEdit, item.dataset.serviceName);
+        if (!changed) return;
+        showToast("Service price updated.");
+        await refreshLiveViews();
+        openBookingDetailsModal(group.key);
+      } catch (error) {
+        showToast(error.message, true);
+      }
+    };
+    item.addEventListener("click", runEdit);
+    item.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        runEdit();
       }
     });
   });

@@ -1043,6 +1043,17 @@ h4 {
   background: #fff;
 }
 
+.payment-history-item-editable {
+  cursor: pointer;
+}
+
+.payment-history-item-editable:hover,
+.payment-history-item-editable:focus-visible {
+  border-color: #d7be6b;
+  box-shadow: 0 0 0 3px rgba(215, 190, 107, 0.16);
+  outline: none;
+}
+
 .payment-history-item strong {
   color: var(--primary);
 }
