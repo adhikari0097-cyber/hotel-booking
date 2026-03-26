@@ -272,6 +272,8 @@ function getPresetRangeDates(presetKey) {
       const from = addDays(today, diff);
       return { from, to: addDays(from, 6) };
     }
+    case "two-weeks":
+      return { from: today, to: addDays(today, 13) };
     case "this-month":
       return { from: startOfMonth(today), to: endOfMonth(today) };
     case "last-month": {
@@ -4949,13 +4951,19 @@ function renderBookingGroupOverview(group, groupStatus) {
 function renderBookingHeaderSummary(group) {
   const enabledFields = normalizeBookingViewFieldList(state.runtimeSettings?.bookingViewFields);
   const hasField = (fieldKey) => enabledFields.includes(fieldKey);
+  const stayNights = Math.max(1, getNightCount(group.checkIn, group.checkOut));
+  const roomBreakdown = (group.bookings || []).map((booking) => {
+    const roomNights = Math.max(1, getNightCount(booking.checkIn, booking.checkOut));
+    return `${getRoomLabel(normalizeRoomGroup(booking.roomType), booking.roomNumber)} · ${Number(booking.guests || 0)} Pax · ${roomNights} Night${roomNights === 1 ? "" : "s"}`;
+  });
   return `
     <div class="booking-group-summary-grid">
-      ${hasField("stay") ? `<div class="booking-summary-chip booking-summary-chip-wide"><span>Stay</span><strong>${group.checkIn || "-"} -> ${group.checkOut || "-"}</strong></div>` : ""}
+      ${hasField("stay") ? `<div class="booking-summary-chip booking-summary-chip-wide"><span>Stay</span><strong>${group.checkIn || "-"} -> ${group.checkOut || "-"} · ${stayNights} Night${stayNights === 1 ? "" : "s"}</strong></div>` : ""}
       ${hasField("rooms") ? `<div class="booking-summary-chip"><span>Rooms</span><strong>${group.bookings.length}</strong></div>` : ""}
       ${hasField("totalPax") ? `<div class="booking-summary-chip"><span>Total Pax</span><strong>${group.totalGuests}</strong></div>` : ""}
       ${hasField("lifecycle") ? `<div class="booking-summary-chip"><span>Lifecycle</span><strong>${getLifecycleStatusLabel(getGroupLifecycleStatus(group))}</strong></div>` : ""}
       ${hasField("balance") ? `<div class="booking-summary-chip booking-summary-chip-strong"><span>Balance</span><strong>${formatMoney(getBookingBalanceAmount(group))}</strong></div>` : ""}
+      ${roomBreakdown.length ? `<div class="booking-summary-chip booking-summary-chip-wide booking-summary-chip-room-plan"><span>Room Plan</span><strong>${roomBreakdown.join(" | ")}</strong></div>` : ""}
     </div>
   `;
 }
@@ -7453,6 +7461,14 @@ function getPlannerPendingLabel(booking, pendingCollections) {
   return "";
 }
 
+function getPlannerLifecycleMeta(booking) {
+  const lifecycle = getBookingLifecycleStatus(booking);
+  if (lifecycle === "checked_out") return "Checked Out";
+  if (lifecycle === "checked_in") return "Checked In";
+  if (lifecycle === "hold") return "Hold";
+  return "";
+}
+
 function useDesktopPlannerLayout() {
   return state.bookingViewMode === "desktop" && window.innerWidth >= 980;
 }
@@ -7782,10 +7798,16 @@ function renderReservationPlanner(bookings, startDate, days) {
     const colors = getPlannerBookingColors(booking, pendingCollections);
     const pendingLabel = getPlannerPendingLabel(booking, pendingCollections);
     const displayTrackCode = getVisibleTrackCode(booking.trackCode, booking.status);
+    const lifecycleMeta = getPlannerLifecycleMeta(booking);
+    const phoneMeta = booking.phone ? `Phone: ${booking.phone}` : "";
+    const checkInMeta = booking.checkedInAt ? `Check In: ${new Date(booking.checkedInAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}` : "";
+    const checkOutMeta = booking.checkedOutAt ? `Check Out: ${new Date(booking.checkedOutAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}` : "";
+    const stayMeta = `${Math.max(1, getNightCount(booking.checkIn, booking.checkOut))} Night${Math.max(1, getNightCount(booking.checkIn, booking.checkOut)) === 1 ? "" : "s"}`;
     const detailBits = [
       displayTrackCode || pendingLabel || "Pending Booking",
       `${Number(booking.guests || 0)} Pax`,
       `${booking.guestName || "Guest"}`,
+      phoneMeta,
     ];
 
     return `
@@ -7800,8 +7822,12 @@ function renderReservationPlanner(bookings, startDate, days) {
       >
         ${displayTrackCode ? `<span class="reservation-planner-booking-track">${escapeHtml(displayTrackCode)}</span>` : ""}
         ${pendingLabel ? `<span class="reservation-planner-booking-pending-label">${escapeHtml(pendingLabel)}</span>` : ""}
-        <span class="reservation-planner-booking-meta">${escapeHtml(`${Number(booking.guests || 0)} Pax`)}</span>
+        <span class="reservation-planner-booking-meta">${escapeHtml(`${Number(booking.guests || 0)} Pax · ${stayMeta}`)}</span>
         <span class="reservation-planner-booking-name">${escapeHtml(booking.guestName || "Guest")}</span>
+        ${phoneMeta ? `<span class="reservation-planner-booking-submeta">${escapeHtml(phoneMeta)}</span>` : ""}
+        ${lifecycleMeta ? `<span class="reservation-planner-booking-submeta">${escapeHtml(lifecycleMeta)}</span>` : ""}
+        ${checkInMeta ? `<span class="reservation-planner-booking-submeta">${escapeHtml(checkInMeta)}</span>` : ""}
+        ${checkOutMeta ? `<span class="reservation-planner-booking-submeta">${escapeHtml(checkOutMeta)}</span>` : ""}
       </button>
     `;
   }).join("");
@@ -8458,6 +8484,22 @@ async function openNotificationTarget(notificationId) {
   if (!notification) return;
 
   await markNotificationsRead([notification.id]);
+
+  if (notification.eventType === "room_price_updated") {
+    setScreen("pricing");
+    jumpToSettingsSection("settings-prices");
+    return;
+  }
+
+  if (notification.eventType === "new_user_joined") {
+    if (canManageAccounts()) {
+      setScreen("accounts");
+      await loadAccounts();
+      return;
+    }
+    showToast("User join update opened.", false);
+    return;
+  }
 
   if (notification.requestId) {
     setScreen("requests");

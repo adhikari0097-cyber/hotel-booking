@@ -1272,6 +1272,15 @@ h4 {
   line-height: 1.35;
 }
 
+.booking-summary-chip-wide {
+  width: 100%;
+}
+
+.booking-summary-chip-room-plan strong {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .booking-summary-chip-strong {
   background: #fff8e9;
   border-color: #ead9a3;
@@ -2257,6 +2266,12 @@ h4 {
   font-size: 12px;
   line-height: 1.25;
   opacity: 0.92;
+}
+
+.reservation-planner-booking-submeta {
+  font-size: 11px;
+  line-height: 1.25;
+  opacity: 0.82;
 }
 
 .reservation-planner-booking-pending {

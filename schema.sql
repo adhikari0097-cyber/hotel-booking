@@ -341,6 +341,35 @@ begin
     full_name = excluded.full_name,
     phone = excluded.phone;
 
+  insert into public.booking_notifications (
+    track_code,
+    event_type,
+    title,
+    message,
+    actor_user_id,
+    actor_name,
+    target_user_id,
+    audience,
+    metadata
+  )
+  values (
+    '',
+    'new_user_joined',
+    'New User Joined',
+    coalesce(nullif(new.raw_user_meta_data->>'full_name', ''), split_part(new.email, '@', 1))
+      || ' joined as '
+      || case when first_user then 'owner' else 'user' end,
+    new.id,
+    coalesce(nullif(new.raw_user_meta_data->>'full_name', ''), split_part(new.email, '@', 1)),
+    new.id,
+    'owner_admin',
+    jsonb_build_object(
+      'guestName', coalesce(nullif(new.raw_user_meta_data->>'full_name', ''), split_part(new.email, '@', 1)),
+      'role', case when first_user then 'owner' else 'user' end,
+      'username', lower(coalesce(nullif(new.raw_user_meta_data->>'username', ''), split_part(new.email, '@', 1)))
+    )
+  );
+
   return new;
 end;
 $$;
