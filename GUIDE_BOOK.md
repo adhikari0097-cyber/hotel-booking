@@ -197,7 +197,7 @@ Use hold when payment, arrival, refund, or approval is still unclear. Delete onl
 The booking becomes active again and the full edit panel opens with the old data already loaded, so you can fix dates, rooms, pax, and prices in one place.
 
 ### Can I change A/C and Non A/C pricing from Settings?
-Yes. In `Settings`, update the normal room price rows for `A/C` and `Non A/C`. Booking totals will follow the selected room mode.
+Yes. In `Settings`, update the room price rows for `A/C` and `Non A/C`. Normal rooms and kitchen rooms will follow the selected room mode.
 
 ### Where can I see what changed in the system?
 Open `System Updates`. The detail pills show who changed something, what changed, and when it happened.

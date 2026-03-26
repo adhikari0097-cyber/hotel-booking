@@ -3281,10 +3281,23 @@ h4 {
   gap: 14px;
 }
 
+.request-room-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
 .request-section-card .booking-room-edit-option,
 .request-section-card .extra-room-option {
   border-radius: 18px;
   padding: 14px 16px;
+}
+
+.booking-room-edit-head {
+  justify-content: space-between;
 }
 
 .request-section-card .extra-room-option-head {
@@ -5507,6 +5520,14 @@ h4 {
   .analytics-table-item span,
   .analytics-insight-card strong {
     font-size: 12px;
+  }
+
+  .request-room-editor-head {
+    align-items: stretch;
+  }
+
+  .request-room-editor-head .secondary-btn {
+    width: 100%;
   }
 
   .guide-section-card {

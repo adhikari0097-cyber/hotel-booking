@@ -99,13 +99,14 @@ const ROOM_DEFS = [
   { type: "driver", label: "Driver Room", count: 1, maxPax: 4 },
 ];
 
-const NORMAL_ROOM_CLIMATE_OPTIONS = [
+const ROOM_CLIMATE_OPTIONS = [
   { key: "ac", label: "A/C Room", acEnabled: true },
   { key: "non_ac", label: "Non A/C Room", acEnabled: false },
 ];
 
 const ROOM_PRICING_DEFS = [
-  { roomType: "kitchen", pax: 0, acEnabled: true, label: "Kitchen Room", note: "Kitchen room uses one fixed price. Pax does not change the rate." },
+  { roomType: "kitchen", pax: 0, acEnabled: true, label: "Kitchen Room · A/C", note: "Kitchen room uses one fixed price with A/C. Pax does not change the rate." },
+  { roomType: "kitchen", pax: 0, acEnabled: false, label: "Kitchen Room · Non A/C", note: "Kitchen room uses one fixed price without A/C. Pax does not change the rate." },
   { roomType: "driver", pax: 0, acEnabled: true, label: "Driver Room", note: "Driver room uses one fixed price." },
   { roomType: "normal", pax: 1, acEnabled: true, label: "Normal Room · 1 Pax · A/C", note: "Fixed room price for 1 guest with A/C." },
   { roomType: "normal", pax: 1, acEnabled: false, label: "Normal Room · 1 Pax · Non A/C", note: "Fixed room price for 1 guest without A/C." },
@@ -1458,7 +1459,8 @@ function getGroupOtherNotes(bookings = []) {
 }
 
 function normalizeAcEnabled(roomType, value = true) {
-  if (normalizeRoomGroup(roomType) !== "normal") return true;
+  const normalizedType = normalizeRoomGroup(roomType);
+  if (!["normal", "kitchen"].includes(normalizedType)) return true;
   if (typeof value === "string") {
     const normalized = value.trim().toLowerCase();
     if (normalized === "false" || normalized === "0" || normalized === "off" || normalized === "non_ac") return false;
@@ -1468,7 +1470,7 @@ function normalizeAcEnabled(roomType, value = true) {
 }
 
 function getRoomClimateLabel(roomType, acEnabled = true) {
-  if (normalizeRoomGroup(roomType) !== "normal") return "";
+  if (!["normal", "kitchen"].includes(normalizeRoomGroup(roomType))) return "";
   return normalizeAcEnabled(roomType, acEnabled) ? "A/C Room" : "Non A/C Room";
 }
 
@@ -2929,7 +2931,7 @@ function renderPricingSummary() {
     roomTotal += finalPrice;
     const pricingLabel = room.type === "normal"
       ? `${getRoomPricingLabel(room.type, pricing.pricingPax, plan.acEnabled)}`
-      : getRoomPricingLabel(room.type, 0, true);
+      : getRoomPricingLabel(room.type, 0, plan.acEnabled);
     return `
       <div class="pricing-summary-row">
         <div>
@@ -3783,24 +3785,45 @@ function renderRemoveRoomOptions(booking) {
 function buildBookingRoomEditOptions(booking) {
   const parsed = parseBookingNotes(booking.notes);
   return {
+    key: String(booking.id),
     bookingId: booking.id,
     roomType: normalizeRoomGroup(booking.roomType),
     roomNumber: Number(booking.roomNumber),
     guests: Number(booking.guests || 1),
     acEnabled: normalizeAcEnabled(booking.roomType, booking.acEnabled),
     services: [...parsed.services],
+    isNew: false,
   };
 }
 
 function serializeBookingRoomEdits() {
   return Array.from(state.modalBookingRoomEdits.values()).map((item) => ({
+    key: item.key || String(item.bookingId || ""),
     bookingId: item.bookingId,
     roomType: normalizeRoomGroup(item.roomType),
     roomNumber: Number(item.roomNumber),
     guests: Number(item.guests || 1),
     acEnabled: normalizeAcEnabled(item.roomType, item.acEnabled),
     services: Array.isArray(item.services) ? [...item.services] : [],
+    isNew: Boolean(item.isNew || !item.bookingId),
   }));
+}
+
+function createNewBookingRoomEditEntry(seed = Date.now()) {
+  const usedRoomKeys = new Set(
+    Array.from(state.modalBookingRoomEdits.values()).map((item) => `${normalizeRoomGroup(item.roomType)}-${Number(item.roomNumber)}`)
+  );
+  const preferredRoomNumber = getRoomNumbersForType("normal", { selectedNumber: 1 }).find((number) => !usedRoomKeys.has(`normal-${number}`)) || 1;
+  return {
+    key: `new-room-${seed}`,
+    bookingId: null,
+    roomType: "normal",
+    roomNumber: preferredRoomNumber,
+    guests: 1,
+    acEnabled: true,
+    services: [],
+    isNew: true,
+  };
 }
 
 function renderBookingRoomEditors(booking) {
@@ -3814,167 +3837,217 @@ function renderBookingRoomEditors(booking) {
     return;
   }
 
-  group.forEach((item) => {
-    const roomEdit = buildBookingRoomEditOptions(item);
-    state.modalBookingRoomEdits.set(String(item.id), roomEdit);
-    const roomDef = getRoomDef(roomEdit.roomType) || getRoomDef(normalizeRoomGroup(item.roomType));
-    const paxOptions = Array.from({ length: roomDef?.maxPax || 6 }, (_, index) => {
-      const pax = index + 1;
-      return `<option value="${pax}" ${pax === roomEdit.guests ? "selected" : ""}>${pax} Pax</option>`;
-    }).join("");
+  const renderEditors = () => {
+    const rows = Array.from(state.modalBookingRoomEdits.values());
+    requestBookingRooms.innerHTML = `
+      <div class="request-room-editor-head">
+        <p class="inline-note">Update room, pax, room mode, and services. Add extra rooms directly here if the same customer needs more rooms.</p>
+        <button class="secondary-btn small-btn" type="button" data-add-booking-room>Edit + Add Room</button>
+      </div>
+      <div class="extra-room-grid" data-booking-room-editor-list></div>
+    `;
 
-    const option = document.createElement("div");
-    option.className = "extra-room-option booking-room-edit-option";
-    option.innerHTML = `
-      <div class="extra-room-option-head">
-        <div>
-          <strong>${getRoomLabel(roomEdit.roomType, roomEdit.roomNumber)}</strong>
-          <span>${item.roomTypeLabel || getRoomTypeDisplay(item.roomType)} · Current: ${item.guests} guests</span>
+    const list = requestBookingRooms.querySelector("[data-booking-room-editor-list]");
+    if (!list) return;
+
+    rows.forEach((roomEdit) => {
+      const item = group.find((row) => String(row.id) === String(roomEdit.bookingId)) || null;
+      const roomDef = getRoomDef(roomEdit.roomType) || getRoomDef(normalizeRoomGroup(item?.roomType));
+      const paxOptions = Array.from({ length: roomDef?.maxPax || 6 }, (_, index) => {
+        const pax = index + 1;
+        return `<option value="${pax}" ${pax === roomEdit.guests ? "selected" : ""}>${pax} Pax</option>`;
+      }).join("");
+
+      const option = document.createElement("div");
+      option.className = "extra-room-option booking-room-edit-option";
+      option.innerHTML = `
+        <div class="extra-room-option-head booking-room-edit-head">
+          <div>
+            <strong>${roomEdit.isNew ? "New Room" : getRoomLabel(roomEdit.roomType, roomEdit.roomNumber)}</strong>
+            <span>${roomEdit.isNew
+              ? "This room will be added to the same booking when you save."
+              : `${item?.roomTypeLabel || getRoomTypeDisplay(item?.roomType)} · Current: ${item?.guests || roomEdit.guests} guests`}</span>
+          </div>
+          ${roomEdit.isNew ? `<button class="ghost-btn small-btn" type="button" data-remove-booking-room="${escapeHtml(roomEdit.key)}">Remove</button>` : ""}
         </div>
-      </div>
-      <div class="field grid-2 compact-grid">
-        <div>
-          <label>Room Group</label>
-          <select data-booking-room-type>
-            ${ROOM_DEFS.map((def) => `<option value="${def.type}" ${def.type === roomEdit.roomType ? "selected" : ""}>${def.label}</option>`).join("")}
-          </select>
+        <div class="field grid-2 compact-grid">
+          <div>
+            <label>Room Group</label>
+            <select data-booking-room-type>
+              ${ROOM_DEFS.map((def) => `<option value="${def.type}" ${def.type === roomEdit.roomType ? "selected" : ""}>${def.label}</option>`).join("")}
+            </select>
+          </div>
+          <div>
+            <label>Room Number</label>
+            <select data-booking-room-number></select>
+          </div>
         </div>
-        <div>
-          <label>Room Number</label>
-          <select data-booking-room-number></select>
+        <div class="field compact-field">
+          <label>Pax Count</label>
+          <select data-booking-room-guests>${paxOptions}</select>
         </div>
-      </div>
-      <div class="field compact-field">
-        <label>Pax Count</label>
-        <select data-booking-room-guests>${paxOptions}</select>
-      </div>
-      <div class="field compact-field${roomEdit.roomType === "normal" ? "" : " hidden"}" data-booking-room-climate-field>
-        <label>Room Mode</label>
-        <div class="planner-climate-toggle booking-room-climate-toggle">
-          ${NORMAL_ROOM_CLIMATE_OPTIONS.map((optionDef) => `
-            <button
-              class="planner-climate-btn${normalizeAcEnabled(roomEdit.roomType, roomEdit.acEnabled) === optionDef.acEnabled ? " active" : ""}"
-              type="button"
-              data-booking-room-ac
-              data-ac-enabled="${optionDef.acEnabled ? "true" : "false"}"
-            >${optionDef.label}</button>
-          `).join("")}
+      <div class="field compact-field${["normal", "kitchen"].includes(roomEdit.roomType) ? "" : " hidden"}" data-booking-room-climate-field>
+          <label>Room Mode</label>
+          <div class="planner-climate-toggle booking-room-climate-toggle">
+            ${ROOM_CLIMATE_OPTIONS.map((optionDef) => `
+              <button
+                class="planner-climate-btn${normalizeAcEnabled(roomEdit.roomType, roomEdit.acEnabled) === optionDef.acEnabled ? " active" : ""}"
+                type="button"
+                data-booking-room-ac
+                data-ac-enabled="${optionDef.acEnabled ? "true" : "false"}"
+              >${optionDef.label}</button>
+            `).join("")}
+          </div>
         </div>
-      </div>
         <div class="booking-room-service-editor">
           <span class="booking-room-row-label">Services</span>
           <div class="service-chip-list service-chip-list-editable">
-          ${getServiceOptionNames(roomEdit.services).map((service) => `
-            <button
-              class="service-chip service-chip-toggle ${roomEdit.services.includes(service) ? "service-chip-active" : "service-chip-inactive"}"
-              type="button"
-              data-booking-room-service
-              data-service-name="${service}"
-              aria-pressed="${roomEdit.services.includes(service) ? "true" : "false"}"
-            >
-              <span class="service-chip-icon">${serviceIconLabel(service)}</span>
-              <span>${service}</span>
-            </button>
-          `).join("")}
+            ${getServiceOptionNames(roomEdit.services).map((service) => `
+              <button
+                class="service-chip service-chip-toggle ${roomEdit.services.includes(service) ? "service-chip-active" : "service-chip-inactive"}"
+                type="button"
+                data-booking-room-service
+                data-service-name="${service}"
+                aria-pressed="${roomEdit.services.includes(service) ? "true" : "false"}"
+              >
+                <span class="service-chip-icon">${serviceIconLabel(service)}</span>
+                <span>${service}</span>
+              </button>
+            `).join("")}
+          </div>
         </div>
-      </div>
-    `;
+      `;
 
-    const roomTypeSelect = option.querySelector("[data-booking-room-type]");
-    const roomNumberSelect = option.querySelector("[data-booking-room-number]");
-    const paxSelect = option.querySelector("[data-booking-room-guests]");
-    const climateField = option.querySelector("[data-booking-room-climate-field]");
-    const acButtons = option.querySelectorAll("[data-booking-room-ac]");
+      const roomTypeSelect = option.querySelector("[data-booking-room-type]");
+      const roomNumberSelect = option.querySelector("[data-booking-room-number]");
+      const paxSelect = option.querySelector("[data-booking-room-guests]");
+      const climateField = option.querySelector("[data-booking-room-climate-field]");
+      const acButtons = option.querySelectorAll("[data-booking-room-ac]");
+      const titleNode = option.querySelector("strong");
+      const subtitleNode = option.querySelector(".extra-room-option-head span");
 
-    const syncRoomNumbers = () => {
-      if (!roomTypeSelect || !roomNumberSelect || !paxSelect) return;
-      const selectedType = roomTypeSelect.value;
-      const def = getRoomDef(selectedType);
-      const selectedRoomNumber = Number(state.modalBookingRoomEdits.get(String(item.id))?.roomNumber || 1);
-      setHTML(roomNumberSelect, getRoomNumbersForType(selectedType, { selectedNumber: selectedRoomNumber }).map((number) => {
-        const selected = number === selectedRoomNumber ? "selected" : "";
-        return `<option value="${number}" ${selected}>Room ${number}</option>`;
-      }).join(""));
-      setHTML(paxSelect, Array.from({ length: def?.maxPax || 6 }, (_, index) => {
-        const pax = index + 1;
-        const selected = pax === Number(state.modalBookingRoomEdits.get(String(item.id))?.guests || 1) ? "selected" : "";
-        return `<option value="${pax}" ${selected}>${pax} Pax</option>`;
-      }).join(""));
-      toggleHidden(climateField, selectedType !== "normal");
-      const currentAcEnabled = normalizeAcEnabled(selectedType, state.modalBookingRoomEdits.get(String(item.id))?.acEnabled);
-      acButtons.forEach((button) => {
-        button.classList.toggle("active", normalizeAcEnabled(selectedType, button.dataset.acEnabled) === currentAcEnabled);
-      });
-    };
+      const syncRoomNumbers = () => {
+        if (!roomTypeSelect || !roomNumberSelect || !paxSelect) return;
+        const selectedType = roomTypeSelect.value;
+        const currentEdit = state.modalBookingRoomEdits.get(roomEdit.key) || roomEdit;
+        const def = getRoomDef(selectedType);
+        const selectedRoomNumber = Number(currentEdit?.roomNumber || 1);
+        setHTML(roomNumberSelect, getRoomNumbersForType(selectedType, { selectedNumber: selectedRoomNumber }).map((number) => {
+          const selected = number === selectedRoomNumber ? "selected" : "";
+          return `<option value="${number}" ${selected}>Room ${number}</option>`;
+        }).join(""));
+        setHTML(paxSelect, Array.from({ length: def?.maxPax || 6 }, (_, index) => {
+          const pax = index + 1;
+          const selected = pax === Number(currentEdit?.guests || 1) ? "selected" : "";
+          return `<option value="${pax}" ${selected}>${pax} Pax</option>`;
+        }).join(""));
+        toggleHidden(climateField, !["normal", "kitchen"].includes(selectedType));
+        const currentAcEnabled = normalizeAcEnabled(selectedType, currentEdit?.acEnabled);
+        acButtons.forEach((button) => {
+          button.classList.toggle("active", normalizeAcEnabled(selectedType, button.dataset.acEnabled) === currentAcEnabled);
+        });
+        if (titleNode) {
+          titleNode.textContent = currentEdit?.isNew ? `New Room · ${getRoomLabel(selectedType, selectedRoomNumber)}` : getRoomLabel(selectedType, selectedRoomNumber);
+        }
+        if (subtitleNode) {
+          subtitleNode.textContent = currentEdit?.isNew
+            ? "This room will be added to the same booking when you save."
+            : `${getRoomTypeLabelForGuests(selectedType, currentEdit?.guests || 1, currentAcEnabled)} · Current: ${item?.guests || currentEdit?.guests || 1} guests`;
+        }
+      };
 
-    syncRoomNumbers();
-
-    roomTypeSelect?.addEventListener("change", () => {
-      const current = state.modalBookingRoomEdits.get(String(item.id));
-      const def = getRoomDef(roomTypeSelect.value);
-      const nextRoomNumbers = getRoomNumbersForType(roomTypeSelect.value, { selectedNumber: 1 });
-      state.modalBookingRoomEdits.set(String(item.id), {
-        ...current,
-        roomType: roomTypeSelect.value,
-        roomNumber: nextRoomNumbers[0] || 1,
-        guests: Math.min(Number(current?.guests || 1), def?.maxPax || 1),
-        acEnabled: normalizeAcEnabled(roomTypeSelect.value, current?.acEnabled),
-      });
       syncRoomNumbers();
-      renderRequestOfferPreview();
-    });
 
-    roomNumberSelect?.addEventListener("change", () => {
-      const current = state.modalBookingRoomEdits.get(String(item.id));
-      state.modalBookingRoomEdits.set(String(item.id), {
-        ...current,
-        roomNumber: Number(roomNumberSelect.value),
-      });
-    });
-
-    paxSelect?.addEventListener("change", () => {
-      const current = state.modalBookingRoomEdits.get(String(item.id));
-      state.modalBookingRoomEdits.set(String(item.id), {
-        ...current,
-        guests: Number(paxSelect.value),
-      });
-      renderRequestOfferPreview();
-    });
-
-    acButtons.forEach((button) => {
-      button.addEventListener("click", () => {
-        const current = state.modalBookingRoomEdits.get(String(item.id));
-        const nextAcEnabled = normalizeAcEnabled(current?.roomType, button.dataset.acEnabled);
-        state.modalBookingRoomEdits.set(String(item.id), {
+      roomTypeSelect?.addEventListener("change", () => {
+        const current = state.modalBookingRoomEdits.get(roomEdit.key);
+        const def = getRoomDef(roomTypeSelect.value);
+        const nextRoomNumbers = getRoomNumbersForType(roomTypeSelect.value, { selectedNumber: 1 });
+        state.modalBookingRoomEdits.set(roomEdit.key, {
           ...current,
-          acEnabled: nextAcEnabled,
+          roomType: roomTypeSelect.value,
+          roomNumber: nextRoomNumbers[0] || 1,
+          guests: Math.min(Number(current?.guests || 1), def?.maxPax || 1),
+          acEnabled: normalizeAcEnabled(roomTypeSelect.value, current?.acEnabled),
         });
-        acButtons.forEach((itemButton) => {
-          itemButton.classList.toggle("active", itemButton === button);
-        });
+        syncRoomNumbers();
         renderRequestOfferPreview();
       });
-    });
 
-    option.querySelectorAll(`[data-booking-room-service]`).forEach((button) => {
-      button.addEventListener("click", () => {
-        const current = state.modalBookingRoomEdits.get(String(item.id));
-        const nextServices = new Set(current?.services || []);
-        const serviceName = button.dataset.serviceName;
-        if (nextServices.has(serviceName)) nextServices.delete(serviceName);
-        else nextServices.add(serviceName);
-        state.modalBookingRoomEdits.set(String(item.id), {
+      roomNumberSelect?.addEventListener("change", () => {
+        const current = state.modalBookingRoomEdits.get(roomEdit.key);
+        state.modalBookingRoomEdits.set(roomEdit.key, {
           ...current,
-          services: Array.from(nextServices),
+          roomNumber: Number(roomNumberSelect.value),
         });
-        button.classList.toggle("service-chip-active", nextServices.has(serviceName));
-        button.classList.toggle("service-chip-inactive", !nextServices.has(serviceName));
-        button.setAttribute("aria-pressed", nextServices.has(serviceName) ? "true" : "false");
+        syncRoomNumbers();
       });
+
+      paxSelect?.addEventListener("change", () => {
+        const current = state.modalBookingRoomEdits.get(roomEdit.key);
+        state.modalBookingRoomEdits.set(roomEdit.key, {
+          ...current,
+          guests: Number(paxSelect.value),
+        });
+        syncRoomNumbers();
+        renderRequestOfferPreview();
+      });
+
+      acButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          const current = state.modalBookingRoomEdits.get(roomEdit.key);
+          const nextAcEnabled = normalizeAcEnabled(current?.roomType, button.dataset.acEnabled);
+          state.modalBookingRoomEdits.set(roomEdit.key, {
+            ...current,
+            acEnabled: nextAcEnabled,
+          });
+          acButtons.forEach((itemButton) => {
+            itemButton.classList.toggle("active", itemButton === button);
+          });
+          syncRoomNumbers();
+          renderRequestOfferPreview();
+        });
+      });
+
+      option.querySelectorAll("[data-booking-room-service]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const current = state.modalBookingRoomEdits.get(roomEdit.key);
+          const nextServices = new Set(current?.services || []);
+          const serviceName = button.dataset.serviceName;
+          if (nextServices.has(serviceName)) nextServices.delete(serviceName);
+          else nextServices.add(serviceName);
+          state.modalBookingRoomEdits.set(roomEdit.key, {
+            ...current,
+            services: Array.from(nextServices),
+          });
+          button.classList.toggle("service-chip-active", nextServices.has(serviceName));
+          button.classList.toggle("service-chip-inactive", !nextServices.has(serviceName));
+          button.setAttribute("aria-pressed", nextServices.has(serviceName) ? "true" : "false");
+        });
+      });
+
+      option.querySelector("[data-remove-booking-room]")?.addEventListener("click", () => {
+        state.modalBookingRoomEdits.delete(roomEdit.key);
+        renderEditors();
+        renderRequestOfferPreview();
+      });
+
+      list.appendChild(option);
     });
 
-    requestBookingRooms.appendChild(option);
+    requestBookingRooms.querySelector("[data-add-booking-room]")?.addEventListener("click", () => {
+      const nextRoom = createNewBookingRoomEditEntry(Date.now() + state.modalBookingRoomEdits.size);
+      state.modalBookingRoomEdits.set(nextRoom.key, nextRoom);
+      renderEditors();
+      renderRequestOfferPreview();
+    });
+  };
+
+  group.forEach((item) => {
+    const roomEdit = buildBookingRoomEditOptions(item);
+    state.modalBookingRoomEdits.set(roomEdit.key, roomEdit);
   });
+
+  renderEditors();
 }
 
 async function ensureBookingAvailabilityForUpdate(bookingId, values, excludedBookingIds = []) {
@@ -4019,13 +4092,19 @@ async function ensureRequestedBookingRoomsAvailability(roomEdits, excludedBookin
 }
 
 async function applyGroupedBookingEdits(targetBookings, roomEdits, commonValues) {
-  const editsByBookingId = new Map(roomEdits.map((item) => [String(item.bookingId), item]));
+  const editsByBookingId = new Map(
+    roomEdits
+      .filter((item) => item.bookingId)
+      .map((item) => [String(item.bookingId), item])
+  );
+  const newRoomEdits = roomEdits.filter((item) => !item.bookingId || !targetBookings.some((booking) => String(booking.id) === String(item.bookingId)));
   const excludedBookingIds = targetBookings.map((booking) => booking.id);
   const sharedTrackCode = await resolveBookingTrackCode(
     targetBookings,
     commonValues.status,
     targetBookings[0]?.trackCode || "",
   );
+  const totalRoomsNeeded = targetBookings.length + newRoomEdits.length;
 
   await ensureRequestedBookingRoomsAvailability(
     roomEdits,
@@ -4050,6 +4129,30 @@ async function applyGroupedBookingEdits(targetBookings, roomEdits, commonValues)
       notes: mergeNotesAndServices(commonValues.notes, roomEdit.services || []),
       status: commonValues.status,
       trackCode: sharedTrackCode,
+      roomsNeeded: totalRoomsNeeded,
+      offerPercentage: commonValues.offerPercentage,
+      advancePaid: commonValues.advancePaid,
+      advanceAmount: commonValues.advanceAmount,
+      customPayments: commonValues.customPayments,
+    });
+  }
+
+  for (const roomEdit of newRoomEdits) {
+    await insertBooking({
+      trackCode: sharedTrackCode,
+      guestName: commonValues.guestName,
+      phone: commonValues.phone,
+      createdByName: targetBookings[0]?.createdByName || state.currentProfile?.full_name || state.currentProfile?.username || "",
+      checkIn: commonValues.checkIn,
+      checkOut: commonValues.checkOut,
+      guests: String(roomEdit.guests),
+      roomType: roomEdit.roomType,
+      roomTypeLabel: getRoomTypeLabelForGuests(roomEdit.roomType, roomEdit.guests, roomEdit.acEnabled),
+      roomNumber: roomEdit.roomNumber,
+      acEnabled: normalizeAcEnabled(roomEdit.roomType, roomEdit.acEnabled),
+      roomsNeeded: totalRoomsNeeded,
+      notes: mergeNotesAndServices(commonValues.notes, roomEdit.services || []),
+      status: commonValues.status,
       offerPercentage: commonValues.offerPercentage,
       advancePaid: commonValues.advancePaid,
       advanceAmount: commonValues.advanceAmount,
@@ -5348,11 +5451,11 @@ function renderPlannerCard(room, isAvailable, booking, plan, defaultNights) {
         <label>Extra pax / Kids</label>
         <select data-role="extra-pax" ${isAvailable ? "" : "disabled"}>${buildPaxOptions(4, Number(plan.extraPax || 0))}</select>
       </div>
-      ${room.type === "normal" ? `
+      ${["normal", "kitchen"].includes(room.type) ? `
         <div class="planner-control planner-control-climate">
           <label>Room Mode</label>
           <div class="planner-climate-toggle">
-            ${NORMAL_ROOM_CLIMATE_OPTIONS.map((option) => `
+            ${ROOM_CLIMATE_OPTIONS.map((option) => `
               <button
                 class="planner-climate-btn${normalizeAcEnabled(room.type, plan.acEnabled) === option.acEnabled ? " active" : ""}"
                 type="button"
@@ -5488,7 +5591,7 @@ function updateAvailabilityUI(availability) {
   bookedKitchen.textContent = `${kitchen.booked} booked`;
   availDriver.textContent = `${driver.available.length} / ${driver.total}`;
   bookedDriver.textContent = `${driver.booked} booked`;
-  availabilityHint.textContent = `Nights default from selected dates: ${defaultNights}. Per-room pax, extra pax / kids, driver count, and Normal Room A/C mode can be adjusted.`;
+  availabilityHint.textContent = `Nights default from selected dates: ${defaultNights}. Per-room pax, extra pax / kids, driver count, and room mode can be adjusted.`;
 
   buildRoomList().forEach((room) => {
     const groupAvailability = availability[room.type];
@@ -6436,39 +6539,11 @@ async function performGroupHold(groupKey, note = "", bookingStatus = "Hold") {
 async function performGroupReactivate(groupKey) {
   const group = getBookingGroupByKey(groupKey);
   if (!group) throw new Error("Booking group not found.");
-  const confirmed = window.confirm(`Reactivate ${group.trackCode || "this booking"} and move it back to booked status?`);
+  const confirmed = window.confirm(`Reactivate ${group.trackCode || "this booking"} and open the edit panel?`);
   if (!confirmed) return false;
-  const stayNights = Math.max(1, getNightCount(group.checkIn, group.checkOut));
-  const todayKey = formatDateKey(new Date());
-  const useToday = window.confirm(
-    `Press OK to reactivate with today's date (${todayKey}) for ${stayNights} night${stayNights === 1 ? "" : "s"}. Press Cancel to choose another option.`,
-  );
-  let nextCheckIn = group.checkIn || todayKey;
-  let nextCheckOut = group.checkOut || formatDateKey(addDays(parseDate(todayKey), stayNights));
-  let reactivationMode = "current_date";
-
-  if (useToday) {
-    nextCheckIn = todayKey;
-    nextCheckOut = formatDateKey(addDays(parseDate(todayKey), stayNights));
-  } else {
-    const customInput = window.prompt(
-      `Enter a new check-in date in YYYY-MM-DD. Leave empty to keep the old stay (${group.checkIn || "-"} -> ${group.checkOut || "-"})`,
-      group.checkIn || todayKey,
-    );
-    if (customInput == null) return false;
-    const trimmedInput = String(customInput || "").trim();
-    if (trimmedInput) {
-      const parsedDate = parseDate(trimmedInput);
-      if (!parsedDate) {
-        throw new Error("Enter a valid reactivation date in YYYY-MM-DD format.");
-      }
-      nextCheckIn = formatDateKey(parsedDate);
-      nextCheckOut = formatDateKey(addDays(parsedDate, stayNights));
-      reactivationMode = "custom_date";
-    } else {
-      reactivationMode = "keep_old_date";
-    }
-  }
+  const nextCheckIn = group.checkIn || formatDateKey(new Date());
+  const nextCheckOut = group.checkOut || formatDateKey(addDays(parseDate(nextCheckIn), Math.max(1, getNightCount(group.checkIn, group.checkOut))));
+  const reactivationMode = "edit_panel";
   await updateGroupLifecycle(groupKey, {
     lifecycleStatus: "booked",
     status: "Campaign",
@@ -9615,6 +9690,8 @@ function normalizeSystemUpdateRow(row = {}) {
 
 function getReactivateModeLabel(mode) {
   switch (String(mode || "")) {
+    case "edit_panel":
+      return "Reactivated and opened edit panel";
     case "current_date":
       return "Moved to today";
     case "custom_date":
