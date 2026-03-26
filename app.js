@@ -2090,8 +2090,12 @@ function renderPricingScreen() {
       <button class="room-fix-drag-handle" type="button" aria-label="Drag panel to reorder" title="Drag panel to reorder">⋮⋮</button>
       <div>
         <h4>PDF Export</h4>
-        <p>Choose which booking details should appear in PDF exports.</p>
+        <p>Modern PDF with highlighted customer name, small track code, and automatic invoice / advance / hold heading.</p>
       </div>
+    </div>
+    <div class="export-share-note">
+      <strong>Current PDF style</strong>
+      <span>Top focus is the customer name. Track code stays small. The header changes automatically for invoice, advance payment, checkout, and hold bookings.</span>
     </div>
     <div class="export-field-list">
       ${EXPORT_FIELD_DEFS.map((field) => `
@@ -2121,8 +2125,12 @@ function renderPricingScreen() {
       <button class="room-fix-drag-handle" type="button" aria-label="Drag panel to reorder" title="Drag panel to reorder">⋮⋮</button>
       <div>
         <h4>WhatsApp Message</h4>
-        <p>Choose which booking details should appear in WhatsApp share text and email body.</p>
+        <p>Modern WhatsApp text with clear customer-first summary, payment block, and automatic invoice / advance / hold heading.</p>
       </div>
+    </div>
+    <div class="export-share-note">
+      <strong>Current WhatsApp style</strong>
+      <span>Message starts with the customer, status, and thank-you note. Payment summary and room details are shown in a short easy-to-read order.</span>
     </div>
     <div class="export-field-list">
       ${EXPORT_FIELD_DEFS.map((field) => `
@@ -5189,58 +5197,125 @@ function renderBookingRoomFacts(booking) {
   `;
 }
 
-function buildBookingPdfMarkup(group) {
+function getReservationShareMeta(group) {
   const advanceInfo = getAdvancePaymentInfo(group.bookings);
+  const balanceAmount = getBookingBalanceAmount(group);
+  const lifecycleStatus = getGroupLifecycleStatus(group);
+  const lifecycleLabel = getLifecycleStatusLabel(lifecycleStatus);
+  const stayNights = Math.max(1, getNightCount(group.checkIn, group.checkOut));
+  const bookingSourceLabel = group.statuses.size === 1
+    ? getBookingStatusLabel(Array.from(group.statuses)[0])
+    : "Mixed Booking";
+
+  let documentLabel = "Reservation Invoice";
+  let badgeLabel = lifecycleLabel;
+  let tone = "invoice";
+  let heroNote = "Current reservation summary for this guest.";
+  let thankYouMessage = "Thank you for choosing Muthugala Resort.";
+
+  if (lifecycleStatus === "hold") {
+    documentLabel = "Hold Notice";
+    badgeLabel = "Hold";
+    tone = "hold";
+    heroNote = "This reservation is currently on hold for the guest.";
+    thankYouMessage = "Thank you. This room is being kept on hold until the next update.";
+  } else if (lifecycleStatus === "checked_out") {
+    documentLabel = "Final Invoice";
+    badgeLabel = "Checked Out";
+    tone = "final";
+    heroNote = "Final stay summary prepared after checkout.";
+    thankYouMessage = "Thank you for staying with Muthugala Resort.";
+  } else if (advanceInfo.amount > 0 || advanceInfo.allPaid || advanceInfo.partiallyPaid) {
+    documentLabel = "Advance Payment Receipt";
+    badgeLabel = advanceInfo.partiallyPaid ? "Advance Partial" : "Advance Received";
+    tone = "advance";
+    heroNote = advanceInfo.partiallyPaid
+      ? "Part of the advance payment has been received for this reservation."
+      : "Advance payment has been received for this reservation.";
+    thankYouMessage = "Thank you for your payment. We look forward to welcoming you.";
+  }
+
+  return {
+    advanceInfo,
+    balanceAmount,
+    lifecycleStatus,
+    lifecycleLabel,
+    stayNights,
+    bookingSourceLabel,
+    documentLabel,
+    badgeLabel,
+    tone,
+    heroNote,
+    thankYouMessage,
+  };
+}
+
+function buildBookingPdfMarkup(group) {
+  const shareMeta = getReservationShareMeta(group);
+  const advanceInfo = shareMeta.advanceInfo;
   const customPriceItems = getGroupCustomPriceEntries(group.bookings);
   const customPriceTotal = getGroupCustomPriceTotal(group.bookings);
-  const balanceAmount = getBookingBalanceAmount(group);
+  const balanceAmount = shareMeta.balanceAmount;
   const allServices = getGroupServices(group.bookings);
   const servicePricingRows = getServicePricingRows(group.bookings);
-  const lifecycleLabel = getLifecycleStatusLabel(getGroupLifecycleStatus(group));
+  const lifecycleLabel = shareMeta.lifecycleLabel;
+  const lifecycleStatus = shareMeta.lifecycleStatus;
   const groupNotes = getGroupOtherNotes(group.bookings);
   const enabledFields = normalizeExportFieldList(state.runtimeSettings?.pdfFields);
   const hasField = (fieldKey) => enabledFields.includes(fieldKey);
-  const summaryItems = [
-    hasField("customer") ? { label: "Customer", value: group.guestName || "Guest" } : null,
-    hasField("bookedBy") ? { label: "Booked By", value: group.bookings[0]?.createdByName || "-" } : null,
+  const customerName = group.guestName || "Guest";
+  const totalCardLabel = shareMeta.documentLabel === "Advance Payment Receipt"
+    ? "Reservation Total"
+    : shareMeta.documentLabel === "Hold Notice"
+      ? "Held Amount"
+      : "Invoice Total";
+  const topFacts = [
+    hasField("stay") ? { label: "Stay", value: `${group.checkIn || "-"} -> ${group.checkOut || "-"} · ${shareMeta.stayNights} Night${shareMeta.stayNights === 1 ? "" : "s"}` } : null,
     hasField("phone") ? { label: "Phone", value: group.phone || "-" } : null,
-    hasField("stay") ? { label: "Stay", value: `${group.checkIn || "-"} -> ${group.checkOut || "-"}` } : null,
-    hasField("totalPax") ? { label: "Total Pax", value: String(group.totalGuests || 0) } : null,
-    hasField("rooms") ? { label: "Rooms", value: String(group.bookings.length || 0) } : null,
-    hasField("totalPrice") ? { label: "Total Price", value: formatMoney(group.totalPrice || 0) } : null,
-    hasField("customPrice") ? { label: "Custom Price", value: formatMoney(customPriceTotal) } : null,
+    hasField("rooms") ? { label: "Rooms", value: `${group.bookings.length || 0} Room${Number(group.bookings.length || 0) === 1 ? "" : "s"}` } : null,
+    hasField("totalPax") ? { label: "Total Pax", value: `${group.totalGuests || 0} Pax` } : null,
+  ].filter(Boolean);
+  const amountFacts = [
+    hasField("totalPrice") ? { label: totalCardLabel, value: formatMoney(group.totalPrice || 0), tone: "primary" } : null,
+    hasField("advanceAmount") ? { label: shareMeta.documentLabel === "Advance Payment Receipt" ? "Advance Paid" : "Advance Amount", value: formatMoney(advanceInfo.amount || 0), tone: "soft" } : null,
+    hasField("balance") ? { label: lifecycleStatus === "hold" ? "Balance To Confirm" : "Balance", value: formatMoney(balanceAmount), tone: balanceAmount > 0 ? "soft" : "success" } : null,
+    hasField("customPrice") ? { label: "Custom Price", value: formatMoney(customPriceTotal), tone: "soft" } : null,
+  ].filter(Boolean);
+  const detailFacts = [
+    hasField("bookedBy") ? { label: "Booked By", value: group.bookings[0]?.createdByName || "-" } : null,
+    hasField("trackCode") ? { label: "Track Code", value: group.trackCode || "-" } : null,
+    hasField("advance") ? { label: "Advance Status", value: advanceInfo.label } : null,
     hasField("lifecycle") ? { label: "Lifecycle", value: lifecycleLabel } : null,
-    hasField("advance") ? { label: "Advance", value: advanceInfo.label } : null,
-    hasField("advanceAmount") ? { label: "Advance Amount", value: formatMoney(advanceInfo.amount || 0) } : null,
-    hasField("balance") ? { label: "Balance", value: formatMoney(balanceAmount) } : null,
-    hasField("checkInAt") ? { label: "Check In At", value: group.bookings[0]?.checkedInAt ? new Date(group.bookings[0].checkedInAt).toLocaleString("en-GB") : "-" } : null,
-    hasField("checkOutAt") ? { label: "Check Out At", value: group.bookings[0]?.checkedOutAt ? new Date(group.bookings[0].checkedOutAt).toLocaleString("en-GB") : "-" } : null,
+    hasField("checkInAt") ? { label: "Checked In At", value: group.bookings[0]?.checkedInAt ? new Date(group.bookings[0].checkedInAt).toLocaleString("en-GB") : "-" } : null,
+    hasField("checkOutAt") ? { label: "Checked Out At", value: group.bookings[0]?.checkedOutAt ? new Date(group.bookings[0].checkedOutAt).toLocaleString("en-GB") : "-" } : null,
     hasField("exportedAt") ? { label: "Exported At", value: new Date().toLocaleString("en-GB") } : null,
+    { label: "Booking Type", value: shareMeta.bookingSourceLabel },
   ].filter(Boolean);
   const roomCards = group.bookings.map((booking) => {
     const noteMeta = parseBookingNotes(booking.notes);
-    const details = [
-      booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType),
-      `${Number(booking.guests || 0)} guest(s)`,
-      `${booking.checkIn || "-"} -> ${booking.checkOut || "-"}`,
-      formatMoney(booking.roomTotal || 0),
-    ];
-    if (noteMeta.extraGuests) details.push(`Extra pax / kids: ${noteMeta.extraGuests}`);
-    if (noteMeta.drivers) details.push(`Drivers: ${noteMeta.drivers}`);
+    const roomNights = Math.max(1, getNightCount(booking.checkIn, booking.checkOut));
+    const roomLifecycleLabel = getLifecycleStatusLabel(getBookingLifecycleStatus(booking));
 
     return `
       <section class="pdf-room-card">
         <div class="pdf-room-head">
-          <h3>${escapeHtml(getRoomLabel(normalizeRoomGroup(booking.roomType), booking.roomNumber))}</h3>
+          <div>
+            <h3>${escapeHtml(getRoomLabel(normalizeRoomGroup(booking.roomType), booking.roomNumber))}</h3>
+            <p>${escapeHtml(roomLifecycleLabel)}</p>
+          </div>
           <span>${escapeHtml(booking.status || "Active")}</span>
         </div>
         <div class="pdf-room-grid">
           <div><strong>Room Type</strong><span>${escapeHtml(booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType))}</span></div>
-          <div><strong>Pax Count</strong><span>${escapeHtml(`${Number(booking.guests || 0)} guest(s)`)}</span></div>
+          <div><strong>Pax Count</strong><span>${escapeHtml(`${Number(booking.guests || 0)} Pax`)}</span></div>
+          <div><strong>Nights</strong><span>${escapeHtml(`${roomNights} Night${roomNights === 1 ? "" : "s"}`)}</span></div>
           <div><strong>Room Price</strong><span>${escapeHtml(formatMoney(booking.roomTotal || 0))}</span></div>
           <div><strong>Stay</strong><span>${escapeHtml(`${booking.checkIn || "-"} -> ${booking.checkOut || "-"}`)}</span></div>
         </div>
-        <div class="pdf-room-meta">${escapeHtml(details.join(" | "))}</div>
+        ${noteMeta.extraGuests || noteMeta.drivers ? `<div class="pdf-room-meta">${escapeHtml([
+          noteMeta.extraGuests ? `Extra pax / kids: ${noteMeta.extraGuests}` : "",
+          noteMeta.drivers ? `Drivers: ${noteMeta.drivers}` : "",
+        ].filter(Boolean).join(" | "))}</div>` : ""}
         ${noteMeta.otherNotes.length ? `<div class="pdf-notes"><strong>Notes:</strong> ${escapeHtml(noteMeta.otherNotes.join(" | "))}</div>` : ""}
       </section>
     `;
@@ -5254,32 +5329,66 @@ function buildBookingPdfMarkup(group) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>${escapeHtml(group.trackCode || "Reservation")} PDF</title>
         <style>
-          body { font-family: Arial, sans-serif; margin: 0; background: #f6f1e7; color: #173d35; }
-          .pdf-shell { max-width: 900px; margin: 0 auto; padding: 28px; }
-          .pdf-card { background: #fff; border: 1px solid #e8ddc9; border-radius: 18px; padding: 22px; }
-          .pdf-kicker { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #7f725d; margin: 0 0 6px; }
-          .pdf-title-row { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 18px; }
-          .pdf-title-row h1 { margin: 0 0 6px; font-size: 28px; }
-          .pdf-title-row p { margin: 0; color: #5f6f6b; }
-          .pdf-badge { border: 1px solid #d7cab2; border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 700; background: #f9f3e4; }
-          .pdf-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
-          .pdf-summary div { border: 1px solid #e8ddc9; border-radius: 14px; padding: 12px 14px; background: #fcfaf6; }
-          .pdf-summary strong { display: block; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #7f725d; margin-bottom: 6px; }
-          .pdf-summary span { font-size: 17px; font-weight: 700; color: #173d35; word-break: break-word; }
-          .pdf-services { margin-bottom: 18px; }
-          .pdf-services strong { display: block; margin-bottom: 8px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #7f725d; }
+          body { font-family: "Sora", Arial, sans-serif; margin: 0; background: linear-gradient(180deg, #f6efe3 0%, #efe8dc 100%); color: #173d35; }
+          .pdf-shell { max-width: 980px; margin: 0 auto; padding: 26px; }
+          .pdf-card { background: #fffdf9; border: 1px solid #eadfcd; border-radius: 26px; padding: 26px; box-shadow: 0 18px 42px rgba(57, 44, 24, 0.08); }
+          .pdf-card.pdf-tone-invoice { border-top: 6px solid #0b3d2e; }
+          .pdf-card.pdf-tone-advance { border-top: 6px solid #b88925; }
+          .pdf-card.pdf-tone-final { border-top: 6px solid #215f9a; }
+          .pdf-card.pdf-tone-hold { border-top: 6px solid #8c6a2d; }
+          .pdf-topline { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #85755f; margin-bottom: 18px; }
+          .pdf-hero { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(240px, 0.9fr); gap: 18px; margin-bottom: 18px; }
+          .pdf-hero-panel { border-radius: 24px; padding: 22px; background: linear-gradient(135deg, #0f4a38 0%, #114e3b 55%, #194f67 100%); color: #f8f5ef; }
+          .pdf-tone-advance .pdf-hero-panel { background: linear-gradient(135deg, #765514 0%, #b88925 52%, #d9b96d 100%); color: #fffaf1; }
+          .pdf-tone-final .pdf-hero-panel { background: linear-gradient(135deg, #204868 0%, #2d6d97 55%, #5ea5cf 100%); }
+          .pdf-tone-hold .pdf-hero-panel { background: linear-gradient(135deg, #6f5322 0%, #8c6a2d 50%, #b08d4e 100%); }
+          .pdf-track { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.78; margin-bottom: 10px; }
+          .pdf-hero-panel h1 { margin: 0; font-size: 34px; line-height: 1.05; letter-spacing: -0.04em; }
+          .pdf-hero-copy { margin: 10px 0 0; font-size: 15px; line-height: 1.6; max-width: 42ch; opacity: 0.92; }
+          .pdf-thankyou { margin-top: 16px; display: inline-flex; align-items: center; padding: 10px 14px; border-radius: 999px; background: rgba(255, 255, 255, 0.14); font-size: 12px; font-weight: 700; }
+          .pdf-status-panel { border: 1px solid #eadfcd; border-radius: 24px; padding: 18px; background: linear-gradient(180deg, #fff 0%, #fcf8f1 100%); display: grid; gap: 12px; align-content: start; }
+          .pdf-badge { display: inline-flex; width: fit-content; padding: 8px 12px; border-radius: 999px; background: #e9f3ee; color: #15533d; font-size: 12px; font-weight: 800; letter-spacing: 0.03em; }
+          .pdf-tone-advance .pdf-badge { background: #fff4db; color: #8c6308; }
+          .pdf-tone-final .pdf-badge { background: #e9f3fb; color: #1e5c86; }
+          .pdf-tone-hold .pdf-badge { background: #f8edda; color: #7c5a18; }
+          .pdf-status-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #7a6c57; }
+          .pdf-status-title { font-size: 22px; font-weight: 800; color: #173d35; line-height: 1.15; }
+          .pdf-detail-list { display: grid; gap: 10px; }
+          .pdf-detail-row { display: flex; justify-content: space-between; gap: 12px; border-top: 1px solid #efe4d4; padding-top: 10px; }
+          .pdf-detail-row:first-child { border-top: 0; padding-top: 0; }
+          .pdf-detail-row strong { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #8c7b62; }
+          .pdf-detail-row span { font-size: 13px; font-weight: 700; color: #173d35; text-align: right; }
+          .pdf-quick-grid, .pdf-amount-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+          .pdf-fact-card { border: 1px solid #eadfcd; border-radius: 18px; padding: 14px 16px; background: #fff; }
+          .pdf-fact-card strong { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #8b7d66; margin-bottom: 6px; }
+          .pdf-fact-card span { display: block; font-size: 18px; font-weight: 800; color: #173d35; line-height: 1.35; }
+          .pdf-fact-card-primary { background: linear-gradient(180deg, #f4faf6, #fff); border-color: #d9eadf; }
+          .pdf-fact-card-success { background: linear-gradient(180deg, #f0f9f3, #fff); border-color: #d2e7d8; }
+          .pdf-section { margin-bottom: 18px; padding: 18px; border: 1px solid #eadfcd; border-radius: 22px; background: #fff; }
+          .pdf-section-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; margin-bottom: 12px; }
+          .pdf-section-head h3 { margin: 0; font-size: 18px; color: #173d35; }
+          .pdf-section-head span { font-size: 12px; color: #7e6f5a; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
           .pdf-chip-list { display: flex; flex-wrap: wrap; gap: 8px; }
-          .pdf-chip { border: 1px solid #e0d1b0; border-radius: 999px; padding: 8px 12px; background: #fff9ed; font-size: 12px; font-weight: 700; color: #8b6d2a; }
+          .pdf-chip { border: 1px solid #e3d5b8; border-radius: 999px; padding: 8px 12px; background: #fff8eb; font-size: 12px; font-weight: 700; color: #7d5e19; }
+          .pdf-note-list { display: grid; gap: 8px; }
+          .pdf-note-item, .pdf-notes { font-size: 13px; line-height: 1.6; color: #4d5f5a; }
           .pdf-room-list { display: grid; gap: 14px; }
-          .pdf-room-card { border: 1px solid #e8ddc9; border-radius: 16px; padding: 16px; background: #fff; }
-          .pdf-room-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 12px; }
-          .pdf-room-head h3 { margin: 0; font-size: 18px; }
+          .pdf-room-card { border: 1px solid #eadfcd; border-radius: 20px; padding: 16px; background: linear-gradient(180deg, #fff 0%, #fcfaf5 100%); }
+          .pdf-room-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
+          .pdf-room-head h3 { margin: 0; font-size: 18px; color: #173d35; }
+          .pdf-room-head p { margin: 4px 0 0; color: #6d7a72; font-size: 12px; font-weight: 600; }
           .pdf-room-head span { padding: 6px 10px; border-radius: 999px; background: #e7f0ea; color: #1f6c4d; font-size: 12px; font-weight: 700; }
           .pdf-room-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-          .pdf-room-grid div { border: 1px solid #eee5d6; border-radius: 12px; padding: 10px 12px; background: #fcfaf6; }
-          .pdf-room-grid strong { display: block; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #7f725d; margin-bottom: 4px; }
+          .pdf-room-grid div { border: 1px solid #efe6d8; border-radius: 14px; padding: 10px 12px; background: #fff; }
+          .pdf-room-grid strong { display: block; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: #7f725d; margin-bottom: 4px; }
           .pdf-room-grid span { font-size: 14px; font-weight: 700; color: #173d35; }
-          .pdf-room-meta, .pdf-notes { margin-top: 10px; font-size: 13px; color: #4d5f5a; line-height: 1.5; }
+          .pdf-room-meta { margin-top: 10px; font-size: 12px; color: #5f7068; line-height: 1.55; }
+          @media (max-width: 720px) {
+            .pdf-shell { padding: 12px; }
+            .pdf-card { padding: 16px; border-radius: 18px; }
+            .pdf-hero, .pdf-quick-grid, .pdf-amount-grid, .pdf-room-grid { grid-template-columns: 1fr; }
+            .pdf-hero-panel h1 { font-size: 28px; }
+          }
           @media print {
             body { background: #fff; }
             .pdf-shell { padding: 0; }
@@ -5289,56 +5398,109 @@ function buildBookingPdfMarkup(group) {
       </head>
       <body>
         <div class="pdf-shell">
-          <div class="pdf-card">
-            <p class="pdf-kicker">Reservation Export</p>
-            <div class="pdf-title-row">
-              <div>
-                <h1>${escapeHtml(hasField("trackCode") ? (group.trackCode || "-") : "Reservation Export")}</h1>
-                <p>${escapeHtml([
-                  hasField("customer") ? (group.guestName || "Guest") : "",
-                  hasField("phone") ? (group.phone || "-") : "",
-                ].filter(Boolean).join(" · ") || "Booking details export")}</p>
-              </div>
-              <div class="pdf-badge">${escapeHtml(group.statuses.size === 1 ? Array.from(group.statuses)[0] : "Mixed")}</div>
+          <div class="pdf-card pdf-tone-${escapeHtml(shareMeta.tone)}">
+            <div class="pdf-topline">
+              <span>${escapeHtml(new Date().toLocaleString("en-GB"))}</span>
+              <span>${escapeHtml(shareMeta.documentLabel)}</span>
             </div>
-            ${summaryItems.length ? `
-              <div class="pdf-summary">
-                ${summaryItems.map((item) => `
-                  <div><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(item.value)}</span></div>
+            <section class="pdf-hero">
+              <div class="pdf-hero-panel">
+                ${hasField("trackCode") ? `<div class="pdf-track">${escapeHtml(group.trackCode || "-")}</div>` : ""}
+                <h1>${escapeHtml(hasField("customer") ? customerName : shareMeta.documentLabel)}</h1>
+                <p class="pdf-hero-copy">${escapeHtml(shareMeta.heroNote)}</p>
+                <div class="pdf-thankyou">${escapeHtml(shareMeta.thankYouMessage)}</div>
+              </div>
+              <aside class="pdf-status-panel">
+                <div class="pdf-badge">${escapeHtml(shareMeta.badgeLabel)}</div>
+                <div>
+                  <div class="pdf-status-label">Document Type</div>
+                  <div class="pdf-status-title">${escapeHtml(shareMeta.documentLabel)}</div>
+                </div>
+                <div class="pdf-detail-list">
+                  ${detailFacts.map((item) => `
+                    <div class="pdf-detail-row">
+                      <strong>${escapeHtml(item.label)}</strong>
+                      <span>${escapeHtml(item.value)}</span>
+                    </div>
+                  `).join("")}
+                </div>
+              </aside>
+            </section>
+            ${topFacts.length ? `
+              <div class="pdf-quick-grid">
+                ${topFacts.map((item) => `
+                  <div class="pdf-fact-card">
+                    <strong>${escapeHtml(item.label)}</strong>
+                    <span>${escapeHtml(item.value)}</span>
+                  </div>
+                `).join("")}
+              </div>
+            ` : ""}
+            ${amountFacts.length ? `
+              <div class="pdf-amount-grid">
+                ${amountFacts.map((item) => `
+                  <div class="pdf-fact-card${item.tone === "primary" ? " pdf-fact-card-primary" : item.tone === "success" ? " pdf-fact-card-success" : ""}">
+                    <strong>${escapeHtml(item.label)}</strong>
+                    <span>${escapeHtml(item.value)}</span>
+                  </div>
                 `).join("")}
               </div>
             ` : ""}
             ${hasField("customPriceEntries") && customPriceItems.length ? `
-              <div class="pdf-services">
-                <strong>Custom Price Entries</strong>
+              <section class="pdf-section">
+                <div class="pdf-section-head">
+                  <h3>Custom Price Entries</h3>
+                  <span>${escapeHtml(`${customPriceItems.length} Item${customPriceItems.length === 1 ? "" : "s"}`)}</span>
+                </div>
+                <div class="pdf-note-list">
                 ${customPriceItems.map((payment, index) => `
-                  <div class="pdf-notes">${index + 1}. ${escapeHtml(formatMoney(payment.amount || 0))}${payment.note ? ` · ${escapeHtml(payment.note)}` : ""}</div>
+                  <div class="pdf-note-item">${index + 1}. ${escapeHtml(formatMoney(payment.amount || 0))}${payment.note ? ` · ${escapeHtml(payment.note)}` : ""}</div>
                 `).join("")}
-              </div>
+                </div>
+              </section>
             ` : ""}
             ${hasField("services") && allServices.length ? `
-              <div class="pdf-services">
-                <strong>Services</strong>
+              <section class="pdf-section">
+                <div class="pdf-section-head">
+                  <h3>Services</h3>
+                  <span>${escapeHtml(`${allServices.length} Selected`)}</span>
+                </div>
                 <div class="pdf-chip-list">${allServices.map((service) => `<span class="pdf-chip">${escapeHtml(service)}</span>`).join("")}</div>
-              </div>
+              </section>
             ` : ""}
             ${hasField("notes") ? `
-              <div class="pdf-services">
-                <strong>Notes</strong>
+              <section class="pdf-section">
+                <div class="pdf-section-head">
+                  <h3>Notes</h3>
+                  <span>Reservation Notes</span>
+                </div>
                 <div class="pdf-notes">${escapeHtml(groupNotes || "-")}</div>
-              </div>
+              </section>
             ` : ""}
             ${hasField("servicePrices") ? `
-              <div class="pdf-services">
-                <strong>Service Prices</strong>
+              <section class="pdf-section">
+                <div class="pdf-section-head">
+                  <h3>Service Prices</h3>
+                  <span>${escapeHtml(servicePricingRows.length ? "Added Prices" : "No Added Prices")}</span>
+                </div>
+                <div class="pdf-note-list">
                 ${
                   servicePricingRows.length
-                    ? servicePricingRows.map((row) => `<div class="pdf-notes">${escapeHtml(row.service)}: ${escapeHtml(row.amount > 0 ? formatMoney(row.amount) : "-")}</div>`).join("")
-                    : `<div class="pdf-notes">No services added.</div>`
+                    ? servicePricingRows.map((row) => `<div class="pdf-note-item">${escapeHtml(row.service)}: ${escapeHtml(row.amount > 0 ? formatMoney(row.amount) : "-")}</div>`).join("")
+                    : `<div class="pdf-note-item">No services added.</div>`
                 }
-              </div>
+                </div>
+              </section>
             ` : ""}
-            ${hasField("roomDetails") ? `<div class="pdf-room-list">${roomCards}</div>` : ""}
+            ${hasField("roomDetails") ? `
+              <section class="pdf-section">
+                <div class="pdf-section-head">
+                  <h3>Room Breakdown</h3>
+                  <span>${escapeHtml(`${group.bookings.length || 0} Room${Number(group.bookings.length || 0) === 1 ? "" : "s"}`)}</span>
+                </div>
+                <div class="pdf-room-list">${roomCards}</div>
+              </section>
+            ` : ""}
           </div>
         </div>
       </body>
@@ -5408,15 +5570,22 @@ function normalizeWhatsappPhone(value) {
 }
 
 function buildReservationWhatsappMessage(group) {
+  const shareMeta = getReservationShareMeta(group);
   const customerName = group.guestName || group.bookings?.[0]?.guestName || "Guest";
   const groupNotes = getGroupOtherNotes(group.bookings);
-  const advanceInfo = getAdvancePaymentInfo(group.bookings);
+  const advanceInfo = shareMeta.advanceInfo;
   const customPriceItems = getGroupCustomPriceEntries(group.bookings);
   const customPriceTotal = getGroupCustomPriceTotal(group.bookings);
-  const balanceAmount = getBookingBalanceAmount(group);
+  const balanceAmount = shareMeta.balanceAmount;
   const servicePricingRows = getServicePricingRows(group.bookings);
   const enabledFields = normalizeExportFieldList(state.runtimeSettings?.whatsappFields);
   const hasField = (fieldKey) => enabledFields.includes(fieldKey);
+  const paymentLines = [
+    hasField("totalPrice") ? `Total: ${formatMoney(group.totalPrice || 0)}` : "",
+    hasField("advanceAmount") ? `Advance Paid: ${formatMoney(advanceInfo.amount || 0)}` : "",
+    hasField("balance") ? `Balance: ${formatMoney(balanceAmount)}` : "",
+    hasField("customPrice") ? `Custom Price: ${formatMoney(customPriceTotal)}` : "",
+  ].filter(Boolean);
   const roomLines = group.bookings.map((booking) => {
     const noteMeta = parseBookingNotes(booking.notes);
     const extraBits = [];
@@ -5426,30 +5595,32 @@ function buildReservationWhatsappMessage(group) {
       `${getRoomLabel(normalizeRoomGroup(booking.roomType), booking.roomNumber)}`,
       booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType),
       `${Number(booking.guests || 0)} pax`,
+      `${Math.max(1, getNightCount(booking.checkIn, booking.checkOut))} night${Math.max(1, getNightCount(booking.checkIn, booking.checkOut)) === 1 ? "" : "s"}`,
       formatMoney(booking.roomTotal || 0),
       extraBits.join(" | "),
     ].filter(Boolean).join(" | ");
   });
 
   return [
-    `Reservation Details`,
+    `MUTHUGALA RESORT`,
+    `${shareMeta.documentLabel}`,
     ``,
-    ...(hasField("trackCode") ? [`Track Code: ${group.trackCode || "-"}`] : []),
     `Customer: ${customerName}`,
+    ...(hasField("trackCode") ? [`Track Code: ${group.trackCode || "-"}`] : []),
+    `Status: ${shareMeta.badgeLabel}`,
+    `${shareMeta.heroNote}`,
+    `${shareMeta.thankYouMessage}`,
+    ``,
     ...(hasField("phone") ? [`Phone: ${group.phone || "-"}`] : []),
     ...(hasField("bookedBy") ? [`Booked By: ${group.bookings[0]?.createdByName || "-"}`] : []),
-    ...(hasField("stay") ? [`Stay: ${group.checkIn || "-"} -> ${group.checkOut || "-"}`] : []),
-    ...(hasField("notes") ? [`Notes: ${groupNotes || "-"}`] : []),
-    ...(hasField("totalPax") ? [`Total Pax: ${group.totalGuests || 0}`] : []),
+    ...(hasField("stay") ? [`Stay: ${group.checkIn || "-"} -> ${group.checkOut || "-"} · ${shareMeta.stayNights} night${shareMeta.stayNights === 1 ? "" : "s"}`] : []),
     ...(hasField("rooms") ? [`Rooms: ${group.bookings.length || 0}`] : []),
-    ...(hasField("totalPrice") ? [`Total Price: ${formatMoney(group.totalPrice || 0)}`] : []),
-    ...(hasField("lifecycle") ? [`Lifecycle: ${getLifecycleStatusLabel(getGroupLifecycleStatus(group))}`] : []),
-    ...(hasField("customPrice") ? [`Custom Price: ${formatMoney(customPriceTotal)}`] : []),
-    ...(hasField("advance") ? [`Advance Payment: ${advanceInfo.label}`] : []),
-    ...(hasField("advanceAmount") ? [`Advance Amount: ${formatMoney(advanceInfo.amount || 0)}`] : []),
-    ...(hasField("balance") ? [`Balance: ${formatMoney(balanceAmount)}`] : []),
+    ...(hasField("totalPax") ? [`Total Pax: ${group.totalGuests || 0}`] : []),
+    ...(hasField("lifecycle") ? [`Lifecycle: ${shareMeta.lifecycleLabel}`] : []),
+    ...(hasField("advance") ? [`Advance Status: ${advanceInfo.label}`] : []),
     ...(hasField("checkInAt") ? [`Check In At: ${group.bookings[0]?.checkedInAt ? new Date(group.bookings[0].checkedInAt).toLocaleString("en-GB") : "-"}`] : []),
     ...(hasField("checkOutAt") ? [`Check Out At: ${group.bookings[0]?.checkedOutAt ? new Date(group.bookings[0].checkedOutAt).toLocaleString("en-GB") : "-"}`] : []),
+    ...(paymentLines.length ? ["", "Payment Summary", ...paymentLines] : []),
     ...(hasField("servicePrices") && servicePricingRows.length
       ? ["", "Service Prices:", ...servicePricingRows.map((row) => `${row.service}: ${row.amount > 0 ? formatMoney(row.amount) : "-"}`)]
       : []),
@@ -5457,6 +5628,7 @@ function buildReservationWhatsappMessage(group) {
       ? ["", "Custom Price Entries:", ...customPriceItems.map((payment, index) => `${index + 1}. ${formatMoney(payment.amount || 0)}${payment.note ? ` | ${payment.note}` : ""}`)]
       : []),
     ...(hasField("services") && getGroupServices(group.bookings).length ? ["", `Services: ${getGroupServices(group.bookings).join(", ")}`] : []),
+    ...(hasField("notes") ? ["", `Notes: ${groupNotes || "-"}`] : []),
     ...(hasField("roomDetails") ? ["", `Room Details:`, ...roomLines.map((line, index) => `${index + 1}. ${line}`)] : []),
   ].join("\n");
 }
