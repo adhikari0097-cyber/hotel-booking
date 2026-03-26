@@ -174,7 +174,8 @@ create table if not exists public.booking_runtime_settings (
   pdf_fields jsonb not null default '["trackCode","customer","phone","bookedBy","stay","notes","totalPax","rooms","totalPrice","customPrice","lifecycle","advance","advanceAmount","balance","checkInAt","checkOutAt","exportedAt","services","servicePrices","customPriceEntries","roomDetails"]'::jsonb,
   whatsapp_fields jsonb not null default '["trackCode","customer","phone","bookedBy","stay","notes","totalPax","rooms","totalPrice","customPrice","lifecycle","advance","advanceAmount","balance","checkInAt","checkOutAt","exportedAt","services","servicePrices","customPriceEntries","roomDetails"]'::jsonb,
   booking_view_fields jsonb not null default '["stay","rooms","totalPax","lifecycle","balance","trackCode","customer","bookedBy","phone","checkIn","checkOut","status","statusNote","checkInAt","checkOutAt","totalPrice","advance","customPrice","advanceAmount"]'::jsonb,
-  room_fix_section_order jsonb not null default '["pdf","whatsapp","bookingView"]'::jsonb,
+  room_fix_section_order jsonb not null default '["pdf","whatsapp","bookingView","notifications"]'::jsonb,
+  notification_roles jsonb not null default '["owner","admin"]'::jsonb,
   updated_at timestamptz not null default now(),
   constraint booking_runtime_settings_singleton check (id = true)
 );
@@ -190,6 +191,12 @@ alter table public.booking_runtime_settings
 
 alter table public.booking_runtime_settings
   add column if not exists room_fix_section_order jsonb not null default '["pdf","whatsapp","bookingView"]'::jsonb;
+
+alter table public.booking_runtime_settings
+  alter column room_fix_section_order set default '["pdf","whatsapp","bookingView","notifications"]'::jsonb;
+
+alter table public.booking_runtime_settings
+  add column if not exists notification_roles jsonb not null default '["owner","admin"]'::jsonb;
 
 insert into public.booking_runtime_settings (id, check_in_time, check_out_time, pdf_fields, whatsapp_fields)
 values (
@@ -207,6 +214,24 @@ set booking_view_fields = coalesce(
   '["stay","rooms","totalPax","lifecycle","balance","trackCode","customer","bookedBy","phone","checkIn","checkOut","status","statusNote","checkInAt","checkOutAt","totalPrice","advance","customPrice","advanceAmount"]'::jsonb
 )
 where booking_view_fields is null;
+
+update public.booking_runtime_settings
+set room_fix_section_order = coalesce(
+  room_fix_section_order,
+  '["pdf","whatsapp","bookingView","notifications"]'::jsonb
+)
+where room_fix_section_order is null;
+
+update public.booking_runtime_settings
+set room_fix_section_order = room_fix_section_order || '["notifications"]'::jsonb
+where not coalesce(room_fix_section_order, '[]'::jsonb) @> '["notifications"]'::jsonb;
+
+update public.booking_runtime_settings
+set notification_roles = coalesce(
+  notification_roles,
+  '["owner","admin"]'::jsonb
+)
+where notification_roles is null;
 
 create table if not exists public.booking_change_requests (
   id uuid primary key default gen_random_uuid(),
@@ -258,6 +283,38 @@ alter table public.booking_change_requests drop constraint if exists booking_cha
 alter table public.booking_change_requests
   add constraint booking_change_requests_reason_check
   check (reason in ('cancel', 'hold', 'change_date', 'edit_booking_data', 'change_room_price', 'additional_rooms', 'additional_services', 'remove_rooms', 'delete_booking', 'wrong_data'));
+
+create table if not exists public.booking_notifications (
+  id uuid primary key default gen_random_uuid(),
+  booking_id uuid references public.bookings(id) on delete set null,
+  track_code text not null default '',
+  request_id uuid references public.booking_change_requests(id) on delete set null,
+  event_type text not null,
+  title text not null,
+  message text not null default '',
+  actor_user_id uuid references auth.users(id) on delete set null,
+  actor_name text not null default '',
+  target_user_id uuid references auth.users(id) on delete set null,
+  audience text not null default 'owner_admin' check (audience in ('owner_admin', 'requester', 'all')),
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists booking_notifications_created_idx
+  on public.booking_notifications (created_at desc);
+
+create index if not exists booking_notifications_track_idx
+  on public.booking_notifications (track_code, created_at desc);
+
+create index if not exists booking_notifications_target_user_idx
+  on public.booking_notifications (target_user_id, created_at desc);
+
+create table if not exists public.booking_notification_reads (
+  notification_id uuid not null references public.booking_notifications(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  read_at timestamptz not null default now(),
+  primary key (notification_id, user_id)
+);
 
 create or replace function public.handle_new_user()
 returns trigger
@@ -366,6 +423,8 @@ alter table public.room_pricing enable row level security;
 alter table public.room_inventory enable row level security;
 alter table public.service_catalog enable row level security;
 alter table public.booking_runtime_settings enable row level security;
+alter table public.booking_notifications enable row level security;
+alter table public.booking_notification_reads enable row level security;
 
 drop policy if exists "anon can read bookings" on public.bookings;
 drop policy if exists "anon can insert bookings" on public.bookings;
@@ -473,6 +532,50 @@ for update
 to authenticated
 using (public.has_profile_permission('manage_pricing'))
 with check (public.has_profile_permission('manage_pricing'));
+
+drop policy if exists "notification readers can read booking notifications" on public.booking_notifications;
+create policy "notification readers can read booking notifications"
+on public.booking_notifications
+for select
+to authenticated
+using (
+  public.is_owner_or_admin()
+  or actor_user_id = auth.uid()
+  or target_user_id = auth.uid()
+  or audience = 'all'
+);
+
+drop policy if exists "approved users can insert booking notifications" on public.booking_notifications;
+create policy "approved users can insert booking notifications"
+on public.booking_notifications
+for insert
+to authenticated
+with check (
+  public.is_approved_user()
+  and actor_user_id = auth.uid()
+);
+
+drop policy if exists "users can read own notification reads" on public.booking_notification_reads;
+create policy "users can read own notification reads"
+on public.booking_notification_reads
+for select
+to authenticated
+using (user_id = auth.uid());
+
+drop policy if exists "users can insert own notification reads" on public.booking_notification_reads;
+create policy "users can insert own notification reads"
+on public.booking_notification_reads
+for insert
+to authenticated
+with check (user_id = auth.uid());
+
+drop policy if exists "users can update own notification reads" on public.booking_notification_reads;
+create policy "users can update own notification reads"
+on public.booking_notification_reads
+for update
+to authenticated
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
 
 drop policy if exists "owner admin can insert room inventory" on public.room_inventory;
 create policy "owner admin can insert room inventory"
@@ -588,3 +691,45 @@ end;
 $$;
 
 select public.add_change_requests_to_realtime();
+
+create or replace function public.add_notifications_to_realtime()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'booking_notifications'
+  ) then
+    execute 'alter publication supabase_realtime add table public.booking_notifications';
+  end if;
+end;
+$$;
+
+select public.add_notifications_to_realtime();
+
+create or replace function public.add_notification_reads_to_realtime()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'booking_notification_reads'
+  ) then
+    execute 'alter publication supabase_realtime add table public.booking_notification_reads';
+  end if;
+end;
+$$;
+
+select public.add_notification_reads_to_realtime();

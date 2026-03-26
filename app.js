@@ -8,6 +8,8 @@ const CONFIG = {
   SUPABASE_ROOMS_TABLE: "room_inventory",
   SUPABASE_SERVICES_TABLE: "service_catalog",
   SUPABASE_RUNTIME_SETTINGS_TABLE: "booking_runtime_settings",
+  SUPABASE_NOTIFICATIONS_TABLE: "booking_notifications",
+  SUPABASE_NOTIFICATION_READS_TABLE: "booking_notification_reads",
   GOOGLE_SHEETS_BACKUP_URL: "/.netlify/functions/proxy",
 };
 
@@ -73,6 +75,13 @@ const ROOM_FIX_SECTION_DEFS = [
   { key: "pdf", label: "PDF Export" },
   { key: "whatsapp", label: "WhatsApp Message" },
   { key: "bookingView", label: "View By Date Booking Group" },
+  { key: "notifications", label: "Notifications" },
+];
+
+const NOTIFICATION_ROLE_DEFS = [
+  { key: "owner", label: "Owner", note: "Owner can open the Notifications page and see all booking activity." },
+  { key: "admin", label: "Admin", note: "Admin can open the Notifications page and see all booking activity." },
+  { key: "user", label: "User", note: "Normal users can open the Notifications page and see only their own relevant updates." },
 ];
 
 const ROOM_DEFS = [
@@ -153,7 +162,12 @@ const state = {
     pdfFields: EXPORT_FIELD_DEFS.map((item) => item.key),
     whatsappFields: EXPORT_FIELD_DEFS.map((item) => item.key),
     bookingViewFields: BOOKING_VIEW_FIELD_DEFS.map((item) => item.key),
+    notificationRoles: ["owner", "admin"],
   },
+  notifications: [],
+  recentNotifications: [],
+  notificationPreset: "this-week",
+  notificationUnreadCount: 0,
   bookingRangePicker: null,
   plannerDragBookingId: null,
 };
@@ -252,6 +266,12 @@ function getPresetRangeDates(presetKey) {
   const currentMonth = today.getMonth();
 
   switch (presetKey) {
+    case "this-week": {
+      const day = today.getDay();
+      const diff = day === 0 ? -6 : 1 - day;
+      const from = addDays(today, diff);
+      return { from, to: addDays(from, 6) };
+    }
     case "this-month":
       return { from: startOfMonth(today), to: endOfMonth(today) };
     case "last-month": {
@@ -541,6 +561,8 @@ const bookingCustomPaymentsField = qs("#customPaymentsField");
 const bookingCustomPaymentList = qs("#customPaymentList");
 const bookingAddCustomPaymentBtn = qs("#addCustomPayment");
 const bookingCustomPaymentsTotal = qs("#customPaymentsTotal");
+const notificationBellBtn = qs("#notification-bell");
+const notificationBellBadge = qs("#notification-bell-badge");
 const accountsList = qs("#accounts-list");
 const accountsEmpty = qs("#accounts-empty");
 const refreshAccountsBtn = qs("#refresh-accounts");
@@ -561,6 +583,13 @@ const requestsRequestedByFilter = qs("#requests-requested-by-filter");
 const requestsDateFromFilter = qs("#requests-date-from");
 const requestsDateToFilter = qs("#requests-date-to");
 const requestFilterButtons = Array.from(document.querySelectorAll("[data-filter-mode], [data-filter-status]"));
+const notificationsList = qs("#notifications-list");
+const notificationsEmpty = qs("#notifications-empty");
+const refreshNotificationsBtn = qs("#refresh-notifications");
+const notificationPresetButtons = Array.from(document.querySelectorAll("[data-notification-preset]"));
+const notificationRangeLabel = qs("#notification-range-label");
+const notificationTotalCount = qs("#notification-total-count");
+const notificationUnreadCount = qs("#notification-unread-count");
 const requestModal = qs("#request-modal");
 const closeModalBtn = qs("#close-modal");
 const requestForm = qs("#request-form");
@@ -644,6 +673,7 @@ const navButtons = {
   guide: qs("#tab-guide"),
   hold: qs("#tab-hold"),
   requests: qs("#tab-requests"),
+  notifications: qs("#tab-notifications"),
   accounts: qs("#tab-accounts"),
   pricing: qs("#tab-pricing"),
 };
@@ -658,6 +688,7 @@ const screens = {
   guide: qs("#screen-guide"),
   hold: qs("#screen-hold"),
   requests: qs("#screen-requests"),
+  notifications: qs("#screen-notifications"),
   accounts: qs("#screen-accounts"),
   pricing: qs("#screen-pricing"),
 };
@@ -921,6 +952,28 @@ function normalizeRoomFixSectionOrder(value, fallbackToAll = true) {
   return [...ordered, ...missing];
 }
 
+function normalizeNotificationRoleList(value, fallbackToDefaults = true) {
+  const validKeys = new Set(NOTIFICATION_ROLE_DEFS.map((item) => item.key));
+  const source = Array.isArray(value)
+    ? value
+    : (value == null
+        ? null
+        : typeof value === "string"
+          ? (() => {
+              try {
+                return JSON.parse(value);
+              } catch (error) {
+                return value.split(",").map((item) => item.trim());
+              }
+            })()
+          : []);
+  if (source == null) {
+    return fallbackToDefaults ? ["owner", "admin"] : [];
+  }
+  const normalized = Array.from(new Set(source.map((item) => String(item || "").trim()).filter((item) => validKeys.has(item))));
+  return normalized.length ? normalized : (fallbackToDefaults ? ["owner", "admin"] : []);
+}
+
 function getEditableServiceCatalogRows() {
   const source = (state.serviceCatalog?.length ? state.serviceCatalog : DEFAULT_SERVICE_DEFS);
   return source.map((item) => normalizeServiceCatalogRow(item));
@@ -951,6 +1004,17 @@ function toggleRuntimeBookingViewField(fieldKey, enabled) {
   state.runtimeSettings = {
     ...state.runtimeSettings,
     bookingViewFields: next,
+  };
+}
+
+function toggleRuntimeNotificationRole(roleKey, enabled) {
+  const current = normalizeNotificationRoleList(state.runtimeSettings?.notificationRoles);
+  const next = enabled
+    ? Array.from(new Set([...current, roleKey]))
+    : current.filter((item) => item !== roleKey);
+  state.runtimeSettings = {
+    ...state.runtimeSettings,
+    notificationRoles: next.length ? next : ["owner", "admin"],
   };
 }
 
@@ -1506,6 +1570,7 @@ async function loadRuntimeSettings() {
       whatsappFields: normalizeExportFieldList(data?.whatsapp_fields),
       bookingViewFields: normalizeBookingViewFieldList(data?.booking_view_fields),
       roomFixSectionOrder: normalizeRoomFixSectionOrder(data?.room_fix_section_order),
+      notificationRoles: normalizeNotificationRoleList(data?.notification_roles),
     };
   } catch (error) {
     state.runtimeSettings = {
@@ -1515,6 +1580,7 @@ async function loadRuntimeSettings() {
       whatsappFields: normalizeExportFieldList(null),
       bookingViewFields: normalizeBookingViewFieldList(null),
       roomFixSectionOrder: normalizeRoomFixSectionOrder(null),
+      notificationRoles: normalizeNotificationRoleList(null),
     };
     if (canManagePricing()) {
       showToast("Booking runtime settings table is not ready. Run the updated Supabase schema.sql.", true);
@@ -1522,6 +1588,8 @@ async function loadRuntimeSettings() {
   }
   if (runtimeCheckInTimeInput) runtimeCheckInTimeInput.value = getRuntimeCheckInTime();
   if (runtimeCheckOutTimeInput) runtimeCheckOutTimeInput.value = getRuntimeCheckOutTime();
+  updateNavVisibility();
+  updateNotificationBadge();
 }
 
 async function saveRuntimeSettings() {
@@ -1534,6 +1602,7 @@ async function saveRuntimeSettings() {
     whatsapp_fields: normalizeExportFieldList(state.runtimeSettings?.whatsappFields),
     booking_view_fields: normalizeBookingViewFieldList(state.runtimeSettings?.bookingViewFields),
     room_fix_section_order: normalizeRoomFixSectionOrder(state.runtimeSettings?.roomFixSectionOrder),
+    notification_roles: normalizeNotificationRoleList(state.runtimeSettings?.notificationRoles),
   };
   const { error } = await state.supabase
     .from(CONFIG.SUPABASE_RUNTIME_SETTINGS_TABLE)
@@ -1548,7 +1617,10 @@ async function saveRuntimeSettings() {
     whatsappFields: normalizeExportFieldList(row.whatsapp_fields),
     bookingViewFields: normalizeBookingViewFieldList(row.booking_view_fields),
     roomFixSectionOrder: normalizeRoomFixSectionOrder(row.room_fix_section_order),
+    notificationRoles: normalizeNotificationRoleList(row.notification_roles),
   };
+  updateNavVisibility();
+  updateNotificationBadge();
 }
 
 function moveRoomFixSection(fromKey, toKey) {
@@ -1973,10 +2045,48 @@ function renderPricingScreen() {
     });
   });
 
+  const notificationAccessCard = document.createElement("article");
+  notificationAccessCard.className = "pricing-card room-fix-panel-card";
+  notificationAccessCard.setAttribute("data-room-fix-panel", "notifications");
+  notificationAccessCard.setAttribute("draggable", "true");
+  notificationAccessCard.innerHTML = `
+    <div class="pricing-card-head">
+      <button class="room-fix-drag-handle" type="button" aria-label="Drag panel to reorder" title="Drag panel to reorder">⋮⋮</button>
+      <div>
+        <h4>Notification Access</h4>
+        <p>Choose which roles can open the Notifications page. Normal users only see their own related updates.</p>
+      </div>
+    </div>
+    <div class="export-settings-grid">
+      ${NOTIFICATION_ROLE_DEFS.map((role) => `
+        <label class="export-field-option">
+          <input
+            type="checkbox"
+            data-notification-role="${role.key}"
+            ${normalizeNotificationRoleList(state.runtimeSettings?.notificationRoles).includes(role.key) ? "checked" : ""}
+          />
+          <div>
+            <strong>${role.label}</strong>
+            <span>${role.note}</span>
+          </div>
+        </label>
+      `).join("")}
+    </div>
+  `;
+
+  notificationAccessCard.querySelectorAll("[data-notification-role]").forEach((input) => {
+    input.addEventListener("change", () => {
+      toggleRuntimeNotificationRole(input.dataset.notificationRole, input.checked);
+      updateNavVisibility();
+      updateNotificationBadge();
+    });
+  });
+
   const roomFixPanels = new Map([
     ["pdf", pdfCard],
     ["whatsapp", whatsappCard],
     ["bookingView", bookingViewCard],
+    ["notifications", notificationAccessCard],
   ]);
 
   normalizeRoomFixSectionOrder(state.runtimeSettings?.roomFixSectionOrder).forEach((key) => {
@@ -3521,12 +3631,37 @@ function canManageRequests() {
   return profileHasPermission(state.currentProfile, "manage_requests");
 }
 
+function isOwnerOrAdminRole(profile = state.currentProfile) {
+  return profile?.approved && ["owner", "admin"].includes(profile.role);
+}
+
+function canAccessNotifications() {
+  if (!state.currentProfile?.approved) return false;
+  return normalizeNotificationRoleList(state.runtimeSettings?.notificationRoles).includes(state.currentProfile.role);
+}
+
+function updateNotificationBadge() {
+  if (!notificationBellBtn || !notificationBellBadge) return;
+  const canOpenNotifications = canAccessNotifications();
+  notificationBellBtn.classList.toggle("hidden", !canOpenNotifications);
+  if (!canOpenNotifications) {
+    notificationBellBadge.classList.add("hidden");
+    notificationBellBadge.textContent = "0";
+    return;
+  }
+  const unreadCount = Number(state.notificationUnreadCount || 0);
+  notificationBellBadge.textContent = unreadCount > 99 ? "99+" : String(unreadCount);
+  notificationBellBadge.classList.toggle("hidden", unreadCount <= 0);
+}
+
 function updateHeaderProfile() {
   if (!state.currentProfile) {
     userChip.textContent = "";
+    updateNotificationBadge();
     return;
   }
   userChip.textContent = `${state.currentProfile.full_name || state.currentProfile.username} · ${state.currentProfile.role}`;
+  updateNotificationBadge();
 }
 
 function updateNavVisibility() {
@@ -3536,15 +3671,17 @@ function updateNavVisibility() {
   const showHold = Boolean(state.currentProfile?.approved);
   const showAccounts = canManageAccounts();
   const showRequests = Boolean(state.currentProfile?.approved);
+  const showNotifications = canAccessNotifications();
   const showPricing = canManagePricing();
   navButtons.planner.classList.toggle("hidden", !showPlanner);
   navButtons.analytics.classList.toggle("hidden", !showAnalytics);
   navButtons.guide.classList.toggle("hidden", !showGuide);
   navButtons.hold.classList.toggle("hidden", !showHold);
   navButtons.requests.classList.toggle("hidden", !showRequests);
+  navButtons.notifications.classList.toggle("hidden", !showNotifications);
   navButtons.accounts.classList.toggle("hidden", !showAccounts);
   navButtons.pricing.classList.toggle("hidden", !showPricing);
-  const visibleTabs = 2 + Number(showPlanner) + Number(showAnalytics) + Number(showGuide) + Number(showHold) + Number(showRequests) + Number(showAccounts) + Number(showPricing);
+  const visibleTabs = 2 + Number(showPlanner) + Number(showAnalytics) + Number(showGuide) + Number(showHold) + Number(showRequests) + Number(showNotifications) + Number(showAccounts) + Number(showPricing);
   const bottomNav = qs(".bottom-nav");
   const isDesktopNav = state.bookingViewMode === "desktop" && window.innerWidth >= 980;
   bottomNav.style.gridTemplateColumns = isDesktopNav
@@ -3563,6 +3700,9 @@ function updateNavVisibility() {
     setScreen("booking");
   }
   if (!showRequests && screens.requests.classList.contains("screen-active")) {
+    setScreen("booking");
+  }
+  if (!showNotifications && screens.notifications.classList.contains("screen-active")) {
     setScreen("booking");
   }
   if (!showAccounts && screens.accounts.classList.contains("screen-active")) {
@@ -3590,6 +3730,9 @@ function setScreen(target) {
   }
   if (target === "hold") {
     loadHoldBookings();
+  }
+  if (target === "notifications") {
+    loadNotifications({ markVisibleRead: true });
   }
 }
 
@@ -3812,6 +3955,9 @@ async function applySession(session) {
 
   if (!session) {
     state.currentProfile = null;
+    state.notifications = [];
+    state.recentNotifications = [];
+    state.notificationUnreadCount = 0;
     if (state.realtimeChannel) {
       await state.supabase.removeChannel(state.realtimeChannel);
       state.realtimeChannel = null;
@@ -3849,6 +3995,7 @@ async function applySession(session) {
   await setupRealtime();
   await refreshLiveViews();
   await loadRequests();
+  await loadNotificationUnreadCount();
   if (canManageAccounts()) {
     await loadAccounts();
   }
@@ -5137,6 +5284,15 @@ async function performGroupCheckIn(groupKey) {
     checkedInAt: new Date().toISOString(),
     checkedOutAt: null,
   });
+  await insertNotification({
+    bookingId: group.bookings[0]?.id || null,
+    trackCode: group.trackCode || group.key,
+    eventType: "checked_in",
+    title: "Checked In",
+    message: `${group.guestName || "Guest"} was marked as checked in.`,
+    audience: "owner_admin",
+    metadata: { guestName: group.guestName || "Guest" },
+  });
   return true;
 }
 
@@ -5149,6 +5305,15 @@ async function performGroupHold(groupKey, note = "", bookingStatus = "Hold") {
     lifecycleStatus: "hold",
     status: bookingStatus,
     notes: mergedNotes,
+  });
+  await insertNotification({
+    bookingId: group.bookings[0]?.id || null,
+    trackCode: group.trackCode || group.key,
+    eventType: "hold",
+    title: "Hold Booking",
+    message: `${group.guestName || "Guest"} was moved to hold.`,
+    audience: "owner_admin",
+    metadata: { guestName: group.guestName || "Guest" },
   });
 }
 
@@ -5163,6 +5328,38 @@ async function performGroupReactivate(groupKey) {
     checkedInAt: null,
     checkedOutAt: null,
     closeDetails: null,
+  });
+  await insertNotification({
+    bookingId: group.bookings[0]?.id || null,
+    trackCode: group.trackCode || group.key,
+    eventType: "reactivated",
+    title: "Booking Reactivated",
+    message: `${group.guestName || "Guest"} was moved back to active booking state.`,
+    audience: "owner_admin",
+    metadata: { guestName: group.guestName || "Guest" },
+  });
+  return true;
+}
+
+async function performGroupFreshBooking(groupKey) {
+  const group = getBookingGroupByKey(groupKey);
+  if (!group) throw new Error("Booking group not found.");
+  const confirmed = window.confirm(`Reset ${group.trackCode || "this booking"} back to fresh booking state?`);
+  if (!confirmed) return false;
+  await updateGroupLifecycle(groupKey, {
+    lifecycleStatus: "booked",
+    checkedInAt: null,
+    checkedOutAt: null,
+    closeDetails: {},
+  });
+  await insertNotification({
+    bookingId: group.bookings[0]?.id || null,
+    trackCode: group.trackCode || group.key,
+    eventType: "fresh_booking",
+    title: "Fresh Booking",
+    message: `${group.guestName || "Guest"} was reset back to fresh booking state.`,
+    audience: "owner_admin",
+    metadata: { guestName: group.guestName || "Guest" },
   });
   return true;
 }
@@ -5253,6 +5450,15 @@ async function performGroupCheckOut(groupKey) {
     customPayments: mergedCustomPayments,
     notes: notesValue,
     closeDetails: buildCloseDetailsPayload(group, serviceRows),
+  });
+  await insertNotification({
+    bookingId: group.bookings[0]?.id || null,
+    trackCode: group.trackCode || group.key,
+    eventType: "checked_out",
+    title: "Checked Out",
+    message: `${group.guestName || "Guest"} was marked as checked out.`,
+    audience: "owner_admin",
+    metadata: { guestName: group.guestName || "Guest" },
   });
   return true;
 }
@@ -5423,6 +5629,7 @@ function openBookingDetailsModal(groupKey) {
       ${lifecycleStatus === "checked_in" ? `<button class="action-btn" type="button" data-booking-group-action="services">Add Services</button>` : ""}
       ${lifecycleStatus === "booked" ? `<button class="primary-btn" type="button" data-booking-group-action="checkin">Check In</button>` : ""}
       ${lifecycleStatus === "checked_in" ? `<button class="primary-btn" type="button" data-booking-group-action="checkout">Check Out</button>` : ""}
+      ${(isOwnerOrAdminRole() && ["checked_in", "checked_out"].includes(lifecycleStatus)) ? `<button class="action-btn" type="button" data-booking-group-action="fresh-booking">Fresh Booking</button>` : ""}
       ${lifecycleStatus === "hold" ? `${getLifecycleBadgeMarkup(group)}` : ""}
       ${lifecycleStatus === "checked_out" ? `<span class="booking-tag tag-rejected">Checked Out</span>` : ""}
       ${lifecycleStatus === "hold" && state.currentProfile?.role === "owner" ? `<button class="action-btn" type="button" data-booking-group-action="reactivate">Reactivate</button>` : ""}
@@ -5554,6 +5761,20 @@ function openBookingDetailsModal(groupKey) {
         const changed = await performGroupCheckOut(group.key);
         if (!changed) return;
         showToast("Booking checked out.");
+        await refreshLiveViews();
+        openBookingDetailsModal(group.key);
+      } catch (error) {
+        showToast(error.message, true);
+      }
+    });
+  }
+  const freshBookingBtn = bookingDetailsBody.querySelector('[data-booking-group-action="fresh-booking"]');
+  if (freshBookingBtn) {
+    freshBookingBtn.addEventListener("click", async () => {
+      try {
+        const changed = await performGroupFreshBooking(group.key);
+        if (!changed) return;
+        showToast("Booking reset to fresh state.");
         await refreshLiveViews();
         openBookingDetailsModal(group.key);
       } catch (error) {
@@ -6554,6 +6775,25 @@ async function updateRequestStatus(requestId, values) {
   if (error) throw new Error(error.message);
 }
 
+async function finalizeRequestStatus(request, status, adminNote = "") {
+  await updateRequestStatus(request.id, { status, adminNote });
+  await insertNotification({
+    bookingId: request.bookingId,
+    trackCode: request.booking?.trackCode || "",
+    requestId: request.id,
+    eventType: status === "approved" ? "request_approved" : "request_rejected",
+    title: status === "approved" ? "Request Approved" : "Request Rejected",
+    message: `${request.requestedGuestName || request.booking?.guestName || "Guest"} request was ${status}.`,
+    audience: "owner_admin",
+    targetUserId: request.requestedBy || null,
+    metadata: {
+      guestName: request.requestedGuestName || request.booking?.guestName || "Guest",
+      reason: request.reason,
+      adminNote,
+    },
+  });
+}
+
 async function approveRequest(requestId) {
   const request = state.requestMap.get(requestId);
   if (!request) throw new Error("Request not found.");
@@ -6596,7 +6836,7 @@ async function approveRequest(requestId) {
       });
     }
 
-    await updateRequestStatus(requestId, { status: "approved" });
+    await finalizeRequestStatus(request, "approved");
     return;
   }
 
@@ -6624,7 +6864,7 @@ async function approveRequest(requestId) {
       });
     }
 
-    await updateRequestStatus(requestId, { status: "approved" });
+    await finalizeRequestStatus(request, "approved");
     return;
   }
 
@@ -6655,7 +6895,7 @@ async function approveRequest(requestId) {
       });
     }
 
-    await updateRequestStatus(requestId, { status: "approved" });
+    await finalizeRequestStatus(request, "approved");
     return;
   }
 
@@ -6676,7 +6916,7 @@ async function approveRequest(requestId) {
       offerPercentage: request.requestedOfferPercentage ?? request.booking?.offerPercentage ?? 0,
     });
 
-    await updateRequestStatus(requestId, { status: "approved" });
+    await finalizeRequestStatus(request, "approved");
     return;
   }
 
@@ -6717,7 +6957,7 @@ async function approveRequest(requestId) {
       status: targetStatus,
     });
 
-    await updateRequestStatus(requestId, { status: "approved" });
+    await finalizeRequestStatus(request, "approved");
     return;
   }
 
@@ -6774,12 +7014,14 @@ async function approveRequest(requestId) {
       trackCode: await resolveBookingTrackCode([request.booking], targetStatus, request.booking?.trackCode || ""),
     });
   }
-  await updateRequestStatus(requestId, { status: "approved" });
+  await finalizeRequestStatus(request, "approved");
 }
 
 async function rejectRequest(requestId) {
   const adminNote = window.prompt("Reject reason (optional):", "") || "";
-  await updateRequestStatus(requestId, { status: "rejected", adminNote });
+  const request = state.requestMap.get(requestId);
+  if (!request) throw new Error("Request not found.");
+  await finalizeRequestStatus(request, "rejected", adminNote);
 }
 
 function getRequestRequestedDate(request) {
@@ -7706,6 +7948,11 @@ async function refreshLiveViews() {
   if (screens.analytics?.classList.contains("screen-active")) {
     await loadAnalytics();
   }
+  if (canAccessNotifications() && screens.notifications?.classList.contains("screen-active")) {
+    await loadNotifications({ markVisibleRead: true });
+  } else if (canAccessNotifications()) {
+    await loadNotificationUnreadCount();
+  }
 }
 
 async function setupRealtime() {
@@ -7761,6 +8008,29 @@ async function setupRealtime() {
         setSyncState("live");
         await loadRoomPricing();
         await refreshLiveViews();
+      }
+    )
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: CONFIG.SUPABASE_NOTIFICATIONS_TABLE },
+      async () => {
+        setSyncState("live");
+        if (canAccessNotifications() && screens.notifications?.classList.contains("screen-active")) {
+          await loadNotifications({ markVisibleRead: true });
+        } else if (canAccessNotifications()) {
+          await loadNotificationUnreadCount();
+        }
+      }
+    )
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: CONFIG.SUPABASE_NOTIFICATION_READS_TABLE },
+      async () => {
+        if (canAccessNotifications() && screens.notifications?.classList.contains("screen-active")) {
+          await loadNotifications();
+        } else if (canAccessNotifications()) {
+          await loadNotificationUnreadCount();
+        }
       }
     )
     .subscribe((status) => {
@@ -7951,6 +8221,309 @@ async function loadRequests() {
     const requests = await fetchRequests();
     renderRequests(requests);
   } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+function normalizeNotificationRow(row = {}) {
+  return {
+    id: row.id || "",
+    bookingId: row.booking_id || "",
+    trackCode: row.track_code || "",
+    requestId: row.request_id || "",
+    eventType: row.event_type || "",
+    title: row.title || "Booking Update",
+    message: row.message || "",
+    actorUserId: row.actor_user_id || "",
+    actorName: row.actor_name || "",
+    targetUserId: row.target_user_id || "",
+    audience: row.audience || "owner_admin",
+    metadata: row.metadata && typeof row.metadata === "object" ? row.metadata : {},
+    createdAt: row.created_at || "",
+    isRead: Boolean(row.isRead),
+  };
+}
+
+function getNotificationActorName() {
+  return state.currentProfile?.full_name || state.currentProfile?.username || "System";
+}
+
+function formatNotificationTimestamp(value) {
+  if (!value) return "-";
+  return new Date(value).toLocaleString("en-GB", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function isNotificationSchemaMissing(message = "") {
+  const text = String(message || "").toLowerCase();
+  return text.includes("booking_notifications")
+    || text.includes("booking_notification_reads")
+    || text.includes("notification_roles");
+}
+
+function getNotificationRangeLabel(presetKey, from, to) {
+  switch (presetKey) {
+    case "this-week":
+      return `${formatDateKey(from)} -> ${formatDateKey(to)}`;
+    case "this-month":
+      return "This Month";
+    case "this-year":
+      return "This Year";
+    case "last-month":
+      return "Last Month";
+    default:
+      return `${formatDateKey(from)} -> ${formatDateKey(to)}`;
+  }
+}
+
+async function insertNotification(payload = {}) {
+  ensureSupabase();
+  if (!state.currentSession?.user?.id) return;
+  const row = {
+    booking_id: payload.bookingId || null,
+    track_code: payload.trackCode || null,
+    request_id: payload.requestId || null,
+    event_type: payload.eventType || "booking_updated",
+    title: payload.title || "Booking Update",
+    message: payload.message || "",
+    actor_user_id: state.currentSession.user.id,
+    actor_name: payload.actorName || getNotificationActorName(),
+    target_user_id: payload.targetUserId || null,
+    audience: payload.audience || "owner_admin",
+    metadata: payload.metadata || {},
+  };
+  const { error } = await state.supabase.from(CONFIG.SUPABASE_NOTIFICATIONS_TABLE).insert(row);
+  if (error) {
+    if (isNotificationSchemaMissing(error.message)) return;
+    throw new Error(error.message || "Could not save notification.");
+  }
+}
+
+async function fetchNotifications({ from = null, to = null, limit = 300 } = {}) {
+  ensureSupabase();
+  let query = state.supabase
+    .from(CONFIG.SUPABASE_NOTIFICATIONS_TABLE)
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (from) {
+    const start = new Date(from.getFullYear(), from.getMonth(), from.getDate(), 0, 0, 0);
+    query = query.gte("created_at", start.toISOString());
+  }
+  if (to) {
+    const endExclusive = new Date(to.getFullYear(), to.getMonth(), to.getDate() + 1, 0, 0, 0);
+    query = query.lt("created_at", endExclusive.toISOString());
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message || "Could not load notifications.");
+  return (data || []).map(normalizeNotificationRow);
+}
+
+async function fetchNotificationReadIds(notificationIds = []) {
+  ensureSupabase();
+  if (!notificationIds.length || !state.currentSession?.user?.id) return new Set();
+  const { data, error } = await state.supabase
+    .from(CONFIG.SUPABASE_NOTIFICATION_READS_TABLE)
+    .select("notification_id")
+    .eq("user_id", state.currentSession.user.id)
+    .in("notification_id", notificationIds);
+  if (error) throw new Error(error.message || "Could not load notification reads.");
+  return new Set((data || []).map((row) => row.notification_id));
+}
+
+function syncNotificationReadState(readIds = new Set()) {
+  state.notifications = state.notifications.map((notification) => ({
+    ...notification,
+    isRead: readIds.has(notification.id) || notification.isRead,
+  }));
+  state.recentNotifications = state.recentNotifications.map((notification) => ({
+    ...notification,
+    isRead: readIds.has(notification.id) || notification.isRead,
+  }));
+  state.notificationUnreadCount = state.recentNotifications.filter((notification) => !notification.isRead).length;
+  updateNotificationBadge();
+}
+
+async function markNotificationsRead(notificationIds = []) {
+  ensureSupabase();
+  const unreadIds = Array.from(new Set((notificationIds || []).filter(Boolean))).filter((id) => {
+    const current = state.notifications.find((item) => item.id === id) || state.recentNotifications.find((item) => item.id === id);
+    return !current?.isRead;
+  });
+  if (!unreadIds.length || !state.currentSession?.user?.id) return;
+  const rows = unreadIds.map((notificationId) => ({
+    notification_id: notificationId,
+    user_id: state.currentSession.user.id,
+    read_at: new Date().toISOString(),
+  }));
+  const { error } = await state.supabase
+    .from(CONFIG.SUPABASE_NOTIFICATION_READS_TABLE)
+    .upsert(rows, { onConflict: "notification_id,user_id" });
+  if (error) throw new Error(error.message || "Could not mark notifications as read.");
+  syncNotificationReadState(new Set(unreadIds));
+}
+
+async function loadNotificationUnreadCount() {
+  if (!canAccessNotifications()) {
+    state.recentNotifications = [];
+    state.notificationUnreadCount = 0;
+    updateNotificationBadge();
+    return;
+  }
+  try {
+    const notifications = await fetchNotifications({ limit: 120 });
+    const readIds = await fetchNotificationReadIds(notifications.map((item) => item.id));
+    state.recentNotifications = notifications.map((notification) => ({
+      ...notification,
+      isRead: readIds.has(notification.id),
+    }));
+    state.notificationUnreadCount = state.recentNotifications.filter((notification) => !notification.isRead).length;
+    updateNotificationBadge();
+  } catch (error) {
+    state.recentNotifications = [];
+    state.notificationUnreadCount = 0;
+    updateNotificationBadge();
+    if (!isNotificationSchemaMissing(error.message)) {
+      throw error;
+    }
+  }
+}
+
+async function openNotificationTarget(notificationId) {
+  const notification = state.notifications.find((item) => item.id === notificationId)
+    || state.recentNotifications.find((item) => item.id === notificationId);
+  if (!notification) return;
+
+  await markNotificationsRead([notification.id]);
+
+  if (notification.requestId) {
+    setScreen("requests");
+    state.requestsFilterStatus = "all";
+    requestsTrackFilter.value = notification.trackCode || "";
+    await loadRequests();
+    return;
+  }
+
+  if (notification.trackCode) {
+    const bookings = await fetchBookingsByTrackCode(notification.trackCode);
+    if (bookings.length) {
+      mergeBookingsIntoStateMap(bookings);
+      const grouped = groupBookingsForDisplay(bookings);
+      const group = grouped[0];
+      if (group) {
+        state.bookingGroups = new Map([...state.bookingGroups, [group.key, group]]);
+        setScreen("view");
+        openBookingDetailsModal(group.key);
+        return;
+      }
+    }
+  }
+
+  showToast("Related booking could not be opened.", true);
+}
+
+function renderNotifications() {
+  if (!notificationsList || !notificationsEmpty) return;
+
+  notificationPresetButtons.forEach((button) => {
+    button.classList.toggle("filter-chip-active", button.dataset.notificationPreset === state.notificationPreset);
+  });
+
+  if (!canAccessNotifications()) {
+    notificationsList.innerHTML = "";
+    notificationsEmpty.style.display = "block";
+    notificationsEmpty.textContent = "Notifications are not enabled for this role.";
+    if (notificationRangeLabel) notificationRangeLabel.textContent = "-";
+    if (notificationTotalCount) notificationTotalCount.textContent = "0";
+    if (notificationUnreadCount) notificationUnreadCount.textContent = "0";
+    return;
+  }
+
+  const { from, to } = getPresetRangeDates(state.notificationPreset);
+  const unreadInRange = state.notifications.filter((notification) => !notification.isRead).length;
+  if (notificationRangeLabel) notificationRangeLabel.textContent = getNotificationRangeLabel(state.notificationPreset, from, to);
+  if (notificationTotalCount) notificationTotalCount.textContent = String(state.notifications.length);
+  if (notificationUnreadCount) notificationUnreadCount.textContent = String(unreadInRange);
+
+  if (!state.notifications.length) {
+    notificationsList.innerHTML = "";
+    notificationsEmpty.style.display = "block";
+    notificationsEmpty.textContent = "No notifications in this range.";
+    return;
+  }
+
+  notificationsEmpty.style.display = "none";
+  notificationsList.innerHTML = state.notifications.map((notification) => {
+    const guestName = notification.metadata?.guestName || "Guest";
+    const metaBits = [
+      notification.trackCode || "-",
+      guestName,
+      notification.actorName || "System",
+      formatNotificationTimestamp(notification.createdAt),
+    ];
+    return `
+      <button class="notification-card${notification.isRead ? "" : " notification-card-unread"}" type="button" data-notification-open="${notification.id}">
+        <div class="notification-card-head">
+          <span class="booking-tag ${notification.isRead ? "tag-success" : "tag-pending"}">${escapeHtml(notification.title)}</span>
+          <span class="notification-card-time">${escapeHtml(formatNotificationTimestamp(notification.createdAt))}</span>
+        </div>
+        <strong class="notification-card-message">${escapeHtml(notification.message)}</strong>
+        <span class="notification-card-meta">${escapeHtml(metaBits.join(" | "))}</span>
+      </button>
+    `;
+  }).join("");
+
+  notificationsList.querySelectorAll("[data-notification-open]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        await openNotificationTarget(button.dataset.notificationOpen);
+      } catch (error) {
+        showToast(error.message || "Could not open the notification target.", true);
+      }
+    });
+  });
+}
+
+async function loadNotifications({ presetKey = state.notificationPreset, markVisibleRead = false } = {}) {
+  if (!canAccessNotifications()) {
+    state.notifications = [];
+    renderNotifications();
+    return;
+  }
+
+  try {
+    state.notificationPreset = presetKey;
+    const { from, to } = getPresetRangeDates(presetKey);
+    const notifications = await fetchNotifications({ from, to, limit: 300 });
+    const readIds = await fetchNotificationReadIds(notifications.map((item) => item.id));
+    state.notifications = notifications.map((notification) => ({
+      ...notification,
+      isRead: readIds.has(notification.id),
+    }));
+    renderNotifications();
+
+    if (markVisibleRead) {
+      const unreadIds = state.notifications.filter((notification) => !notification.isRead).map((notification) => notification.id);
+      if (unreadIds.length) {
+        await markNotificationsRead(unreadIds);
+        renderNotifications();
+      }
+    }
+
+    await loadNotificationUnreadCount();
+  } catch (error) {
+    if (isNotificationSchemaMissing(error.message)) {
+      state.notifications = [];
+      renderNotifications();
+      return;
+    }
     showToast(error.message, true);
   }
 }
@@ -8248,6 +8821,26 @@ async function handleRequestSubmit(event) {
         reviewedBy: state.currentSession.user.id,
         reviewedAt: new Date().toISOString(),
       });
+      await insertNotification({
+        bookingId: state.activeBooking.id,
+        trackCode: state.activeBooking.trackCode || "",
+        eventType: "booking_updated",
+        title: reason === "additional_rooms"
+          ? "Rooms Added"
+          : reason === "additional_services"
+            ? "Services Updated"
+            : reason === "remove_rooms"
+              ? "Rooms Removed"
+              : reason === "change_room_price"
+                ? "Room Price Updated"
+                : "Booking Updated",
+        message: `${payload.guestName || state.activeBooking.guestName || "Guest"} booking details were updated.`,
+        audience: "owner_admin",
+        metadata: {
+          guestName: payload.guestName || state.activeBooking.guestName || "Guest",
+          reason,
+        },
+      });
       showToast(
         reason === "additional_rooms"
           ? "Additional rooms added."
@@ -8265,6 +8858,18 @@ async function handleRequestSubmit(event) {
         reason,
         requestScope: effectiveScope,
         ...payload,
+      });
+      await insertNotification({
+        bookingId: state.activeBooking.id,
+        trackCode: state.activeBooking.trackCode || "",
+        eventType: "request_created",
+        title: "Request Submitted",
+        message: `${payload.guestName || state.activeBooking.guestName || "Guest"} requested ${formatRequestReason(reason).toLowerCase()}.`,
+        audience: "owner_admin",
+        metadata: {
+          guestName: payload.guestName || state.activeBooking.guestName || "Guest",
+          reason,
+        },
       });
       showToast("Request submitted.");
     }
@@ -8395,6 +9000,18 @@ bookingForm.addEventListener("submit", async (event) => {
       }
     }
 
+    await insertNotification({
+      trackCode: sharedTrackCode,
+      eventType: "new_booking",
+      title: "New Booking",
+      message: `${payload.guestName || "Guest"} placed a new booking.`,
+      audience: "owner_admin",
+      metadata: {
+        guestName: payload.guestName || "Guest",
+        roomCount: selectedPlans.length,
+      },
+    });
+
     bookingForm.reset();
     const today = new Date();
     const tomorrow = addDays(today, 1);
@@ -8455,9 +9072,15 @@ plannerPresetButtons.forEach((button) => {
 });
 refreshAccountsBtn.addEventListener("click", () => loadAccounts());
 refreshRequestsBtn.addEventListener("click", () => loadRequests());
+refreshNotificationsBtn?.addEventListener("click", () => loadNotifications({ markVisibleRead: true }));
 loadAnalyticsBtn?.addEventListener("click", () => loadAnalytics());
 analyticsPresetButtons.forEach((button) => {
   button.addEventListener("click", () => applyAnalyticsPreset(button.dataset.analyticsPreset));
+});
+notificationPresetButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    loadNotifications({ presetKey: button.dataset.notificationPreset, markVisibleRead: true });
+  });
 });
 refreshPricingBtn?.addEventListener("click", async () => {
   await loadRoomInventory();
@@ -8634,8 +9257,10 @@ navButtons.analytics.addEventListener("click", () => setScreen("analytics"));
 navButtons.guide.addEventListener("click", () => setScreen("guide"));
 navButtons.hold.addEventListener("click", () => setScreen("hold"));
 navButtons.requests.addEventListener("click", () => setScreen("requests"));
+navButtons.notifications.addEventListener("click", () => setScreen("notifications"));
 navButtons.accounts.addEventListener("click", () => setScreen("accounts"));
 navButtons.pricing.addEventListener("click", () => setScreen("pricing"));
+notificationBellBtn?.addEventListener("click", () => setScreen("notifications"));
 refreshGuideBtn?.addEventListener("click", () => loadGuideBook());
 plannerLoadBtn?.addEventListener("click", () => loadReservationPlanner());
 
