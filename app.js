@@ -5145,8 +5145,13 @@ function renderBookingHeaderSummary(group) {
   const stayNights = Math.max(1, getNightCount(group.checkIn, group.checkOut));
   const roomBreakdown = (group.bookings || []).map((booking) => {
     const roomNights = Math.max(1, getNightCount(booking.checkIn, booking.checkOut));
-    return `${getRoomLabel(normalizeRoomGroup(booking.roomType), booking.roomNumber)} · ${Number(booking.guests || 0)} Pax · ${roomNights} Night${roomNights === 1 ? "" : "s"}`;
-  });
+    return `
+      <div class="booking-room-plan-item">
+        <strong>${getRoomLabel(normalizeRoomGroup(booking.roomType), booking.roomNumber)} · ${Number(booking.guests || 0)} Pax</strong>
+        <span>${roomNights} Night${roomNights === 1 ? "" : "s"} · ${booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType)}</span>
+      </div>
+    `;
+  }).join("");
   return `
     <div class="booking-group-summary-grid">
       ${hasField("stay") ? `<div class="booking-summary-chip booking-summary-chip-wide"><span>Stay</span><strong>${group.checkIn || "-"} -> ${group.checkOut || "-"} · ${stayNights} Night${stayNights === 1 ? "" : "s"}</strong></div>` : ""}
@@ -5154,13 +5159,14 @@ function renderBookingHeaderSummary(group) {
       ${hasField("totalPax") ? `<div class="booking-summary-chip"><span>Total Pax</span><strong>${group.totalGuests}</strong></div>` : ""}
       ${hasField("lifecycle") ? `<div class="booking-summary-chip"><span>Lifecycle</span><strong>${getLifecycleStatusLabel(getGroupLifecycleStatus(group))}</strong></div>` : ""}
       ${hasField("balance") ? `<div class="booking-summary-chip booking-summary-chip-strong"><span>Balance</span><strong>${formatMoney(getBookingBalanceAmount(group))}</strong></div>` : ""}
-      ${roomBreakdown.length ? `<div class="booking-summary-chip booking-summary-chip-wide booking-summary-chip-room-plan"><span>Room Plan</span><strong>${roomBreakdown.join(" | ")}</strong></div>` : ""}
+      ${roomBreakdown ? `<div class="booking-summary-chip booking-summary-chip-wide booking-summary-chip-room-plan"><span>Room Plan</span><div class="booking-room-plan-list">${roomBreakdown}</div></div>` : ""}
     </div>
   `;
 }
 
 function renderBookingRoomFacts(booking) {
   const pricing = getBookingPricingSnapshot(booking);
+  const stayNights = Math.max(1, getNightCount(booking.checkIn, booking.checkOut));
   return `
     <div class="booking-room-facts">
       <div class="booking-room-fact">
@@ -5169,7 +5175,11 @@ function renderBookingRoomFacts(booking) {
       </div>
       <div class="booking-room-fact">
         <span>Pax Count</span>
-        <strong>${booking.guests} guest(s)</strong>
+        <strong>${booking.guests} Pax</strong>
+      </div>
+      <div class="booking-room-fact">
+        <span>Stay</span>
+        <strong>${stayNights} Night${stayNights === 1 ? "" : "s"}</strong>
       </div>
       <div class="booking-room-fact booking-room-fact-total">
         <span>Room Price</span>
@@ -6168,6 +6178,7 @@ function renderBookings(bookings) {
         const bookingRequest = pendingCollections.byBooking.get(booking.id);
         const roomGroup = normalizeRoomGroup(booking.roomType);
         const pricing = getBookingPricingSnapshot(booking);
+        const stayNights = Math.max(1, getNightCount(booking.checkIn, booking.checkOut));
         const noteMeta = parseBookingNotes(booking.notes);
         const roomNotes = [];
         if (noteMeta.extraGuests) roomNotes.push(`Extra pax / kids: ${noteMeta.extraGuests}`);
@@ -6184,7 +6195,7 @@ function renderBookings(bookings) {
               <div class="booking-room-row-head">
                 <div>
                   <div class="booking-room-row-title">${getRoomLabel(roomGroup, booking.roomNumber)} (#${booking.roomNumber})</div>
-                  <div class="booking-room-row-subtitle">${booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType)} · ${booking.guests} guest(s) · ${formatMoney(pricing.roomTotal)}</div>
+                  <div class="booking-room-row-subtitle">${booking.roomTypeLabel || getRoomTypeDisplay(booking.roomType)} · ${booking.guests} Pax · ${stayNights} Night${stayNights === 1 ? "" : "s"} · ${formatMoney(pricing.roomTotal)}</div>
                 </div>
               </div>
               ${renderBookingRoomFacts(booking)}
@@ -7831,10 +7842,20 @@ function renderReservationPlannerMobile(bookings, plannerRooms, startDate, days,
     const colors = getPlannerBookingColors(booking, pendingCollections);
     const pendingLabel = getPlannerPendingLabel(booking, pendingCollections);
     const displayTrackCode = getVisibleTrackCode(booking.trackCode, booking.status);
+    const stayNights = Math.max(1, getNightCount(booking.checkIn, booking.checkOut));
+    const lifecycleStatus = getBookingLifecycleStatus(booking);
+    const noteText = pendingLabel
+      ? "Req"
+      : lifecycleStatus === "checked_in"
+        ? "In"
+        : lifecycleStatus === "checked_out"
+          ? "Out"
+          : "";
     const labelParts = [
       displayTrackCode || pendingLabel || "Pending Booking",
       getRoomLabel(normalizeRoomGroup(booking.roomType), booking.roomNumber),
       `${Number(booking.guests || 0)} Pax`,
+      `${stayNights} Night${stayNights === 1 ? "" : "s"}`,
       pendingLabel || booking.guestName || "Booking",
     ].filter(Boolean);
 
@@ -7845,6 +7866,9 @@ function renderReservationPlannerMobile(bookings, plannerRooms, startDate, days,
         label: labelParts.join(" | "),
         colors,
         pending: Boolean(pendingLabel),
+        paxText: `${Number(booking.guests || 0)}P`,
+        stayText: `${stayNights}N`,
+        noteText,
       });
     });
   });
@@ -7865,7 +7889,11 @@ function renderReservationPlannerMobile(bookings, plannerRooms, startDate, days,
                 aria-label="${escapeHtml(marker.label)}"
                 title="${escapeHtml(marker.label)}"
                 style="--planner-bg:${marker.colors.bg}; --planner-border:${marker.colors.border}; --planner-text:${marker.colors.text};"
-              ></button>
+              >
+                <span class="reservation-planner-mobile-marker-pax">${escapeHtml(marker.paxText)}</span>
+                <span class="reservation-planner-mobile-marker-stay">${escapeHtml(marker.stayText)}</span>
+                ${marker.noteText ? `<span class="reservation-planner-mobile-marker-note">${escapeHtml(marker.noteText)}</span>` : ""}
+              </button>
             `
             : `
               <button
@@ -7886,7 +7914,7 @@ function renderReservationPlannerMobile(bookings, plannerRooms, startDate, days,
   reservationPlannerBoard.innerHTML = `
     <div
       class="reservation-planner-mobile-grid"
-      style="grid-template-columns: 54px repeat(${plannerRooms.length}, 34px); grid-template-rows: 38px repeat(${safeDays}, 34px);"
+      style="grid-template-columns: 64px repeat(${plannerRooms.length}, 58px); grid-template-rows: 40px repeat(${safeDays}, 52px);"
     >
       <div class="reservation-planner-mobile-corner" style="grid-column:1; grid-row:1;">Dates</div>
       ${roomHeaders}
