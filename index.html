@@ -109,6 +109,10 @@
               <span class="notification-bell-icon" aria-hidden="true">&#128276;</span>
               <span id="notification-bell-badge" class="notification-bell-badge hidden">0</span>
             </button>
+            <div id="preview-banner" class="preview-banner hidden">
+              <span id="preview-banner-text">Preview</span>
+              <button id="preview-banner-reset" class="ghost-btn small-btn" type="button">Real View</button>
+            </div>
             <div class="status-pill" id="sync-status">Offline</div>
             <div id="user-chip" class="user-chip"></div>
             <button id="logout-btn" class="ghost-btn" type="button">Logout</button>
@@ -464,6 +468,34 @@
               <button class="filter-chip" type="button" data-analytics-preset="last-year">Last Year</button>
             </div>
             <p class="inline-note">Track revenue, room demand, service income, and top customers for the selected date range.</p>
+            <div class="analytics-filter-grid">
+              <label class="field compact-field">
+                <span>Lifecycle</span>
+                <select id="analytics-filter-lifecycle">
+                  <option value="all">All Lifecycle</option>
+                </select>
+              </label>
+              <label class="field compact-field">
+                <span>Source</span>
+                <select id="analytics-filter-source">
+                  <option value="all">All Sources</option>
+                </select>
+              </label>
+              <label class="field compact-field">
+                <span>Booked By</span>
+                <select id="analytics-filter-staff">
+                  <option value="all">All Staff</option>
+                </select>
+              </label>
+              <label class="field compact-field">
+                <span>Trend View</span>
+                <select id="analytics-filter-metric">
+                  <option value="revenue">Revenue</option>
+                  <option value="bookings">Bookings</option>
+                  <option value="room_nights">Room Nights</option>
+                </select>
+              </label>
+            </div>
 
             <div class="analytics-summary-grid">
               <div class="analytics-stat-card">
@@ -490,6 +522,23 @@
                 <span>Avg Stay</span>
                 <strong id="analytics-average-stay">0 nights</strong>
               </div>
+            </div>
+
+            <div class="analytics-feature-grid">
+              <section class="analytics-hero-panel">
+                <div class="analytics-panel-head">
+                  <h4>Trend Overview</h4>
+                  <p>Follow the selected metric across the date range.</p>
+                </div>
+                <div id="analytics-trend-chart" class="analytics-trend-chart"></div>
+              </section>
+              <section class="analytics-panel analytics-panel-highlight">
+                <div class="analytics-panel-head">
+                  <h4>Quick Insights</h4>
+                  <p>Fast answers from the current filters and date range.</p>
+                </div>
+                <div id="analytics-insights" class="analytics-insight-list"></div>
+              </section>
             </div>
 
             <div class="analytics-panel-grid">
@@ -571,10 +620,25 @@
               </div>
               <button id="refresh-guide" class="secondary-btn small-btn" type="button">Refresh Guide</button>
             </div>
-            <p class="inline-note">Search this page with your browser search to quickly find steps, roles, pages, and workflows.</p>
+            <p class="inline-note">Search, jump between sections, and open the FAQ to quickly understand the booking workflow.</p>
+            <div class="guide-toolbar">
+              <label class="field compact-field guide-search-field">
+                <span>Search Guide</span>
+                <input id="guide-search" type="search" placeholder="Search booking, hold, delete, reactivate..." />
+              </label>
+              <div id="guide-stats" class="analytics-summary-grid notification-summary-grid guide-stat-grid"></div>
+            </div>
+            <div id="guide-nav" class="settings-jump-grid guide-nav-grid"></div>
             <article id="guide-book-content" class="guide-book-content">
               <p class="inline-note">Loading guide book...</p>
             </article>
+            <section class="analytics-panel guide-faq-panel">
+              <div class="analytics-panel-head">
+                <h4>FAQ</h4>
+                <p>Quick answers for common booking questions.</p>
+              </div>
+              <div id="guide-faq-list" class="guide-faq-list"></div>
+            </section>
           </div>
         </section>
 
@@ -765,6 +829,7 @@
                 <button class="secondary-btn small-btn" type="button" data-settings-jump="settings-times">Check-In / Out Time</button>
                 <button class="secondary-btn small-btn" type="button" data-settings-jump="settings-display">Notifications & Display</button>
                 <button class="secondary-btn small-btn" type="button" data-settings-jump="settings-display">Customer Share Messages</button>
+                <button class="secondary-btn small-btn" type="button" data-settings-jump="settings-preview">Temporary View</button>
                 <button class="secondary-btn small-btn" type="button" data-settings-jump="settings-system-updates">System Updates Access</button>
                 <button class="secondary-btn small-btn" type="button" data-settings-jump="settings-rooms">Room Setup</button>
                 <button class="secondary-btn small-btn" type="button" data-settings-jump="settings-services">Services</button>
@@ -782,6 +847,10 @@
                 <div class="settings-outline-item">
                   <strong>Customer Share Messages</strong>
                   <span>Set the reminder and contact text shown to customers in advance-payment PDF and WhatsApp sharing.</span>
+                </div>
+                <div class="settings-outline-item">
+                  <strong>Temporary View</strong>
+                  <span>Owner can preview how the app looks for admin or normal user before saving new visibility changes.</span>
                 </div>
                 <div class="settings-outline-item">
                   <strong>System Updates Access</strong>
@@ -820,6 +889,11 @@
               <p>Manage notification access, booking page fields, and exported booking details.</p>
             </div>
             <div id="export-settings-list" class="pricing-list"></div>
+            <div id="settings-preview" class="settings-section-heading">
+              <h4>Temporary View</h4>
+              <p>Owner can temporarily preview the app as admin or user and quickly reset back to the real owner view.</p>
+            </div>
+            <div id="settings-preview-panel" class="pricing-list"></div>
             <div id="settings-system-updates" class="settings-section-heading">
               <h4>System Updates Access</h4>
               <p>Choose which roles can open the System Updates audit page.</p>

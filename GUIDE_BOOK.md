@@ -1,279 +1,206 @@
 # Booking Guide Book
 
-## Purpose
-This guide explains the easiest way to use the booking system without missing important details.
-
-Use this guide for:
-- creating a new booking
-- fixing a wrong booking
-- check-in and check-out
-- holding a room
-- deleting a wrong booking
-- reactivating a hold booking
-- understanding which page to use
-
 ## Main Pages
+Use this page guide when you want to quickly understand where to go before doing anything.
 
 ### New Booking
-Use this page to create a fresh booking.
-
-You can:
-- add customer name and phone number
-- select stay dates
-- choose rooms and pax
-- add services
-- add custom price items
-- add advance payment
-- save the booking
+1. Use this page to add a fresh booking.
+2. Add customer name, phone number, dates, rooms, pax, services, and advance payment.
+3. Save only after checking every room line clearly.
 
 ### View By Date
-Use this page to open and manage bookings for one selected date.
-
-You can:
-- view active bookings
-- open full booking details
-- update booking details
-- update advance
-- check in
-- check out
-- send WhatsApp details
-- export PDF
-- hold a booking
+1. Use this page to open bookings for one selected date.
+2. Open full details, update advance, send WhatsApp, export PDF, hold, check in, or check out.
+3. If one customer has more than one room, open the full booking panel and review all rooms together.
 
 ### Booking Planner
-Use this page to understand room usage across several dates.
-
-You can:
-- see which rooms are booked
-- see same booking across more than one room
-- tap a booking and open full details
-- use This Week and Two Weeks quickly
+1. Use this page to understand room usage across several dates.
+2. Check same track code, same customer, room count, pax, and stay length together.
+3. Use `This Week` or `Two Weeks` to get a faster view.
 
 ### Hold Bookings
-Use this page for bookings that were moved to hold.
-
-You can:
-- review hold bookings
-- open booking details
-- reactivate a booking again
+1. Use this page for bookings moved to hold.
+2. Review what happened, then reactivate or keep it on hold.
+3. Reactivating now opens the full edit panel so you can fix everything in one place.
 
 ### Requests
-Use this page when a user cannot directly change something and must send a request.
-
-Examples:
-- change date
-- remove rooms
-- add rooms
-- delete booking after lock
+1. Use this page when a user cannot directly change something.
+2. Owner and admin can approve or reject requests from here.
+3. Good for date changes, room changes, deletes after lock, and payment-related changes.
 
 ### Settings
-Use this page for setup and system control.
+1. Use this page for room setup, services, prices, PDF and WhatsApp format, notifications, and access rules.
+2. Owner can use `Temporary Role Preview` to see how admin or user view will look.
+3. Save settings only after checking the preview and access sections.
 
-You can:
-- set check-in and check-out times
-- choose what appears in PDF and WhatsApp sharing
-- update customer share messages
-- control notification access
-- manage rooms
-- manage services
-- manage room prices
+### Notifications
+1. Use this page to follow live booking actions.
+2. Check new booking, edit, request, approval, rejection, check-in, check-out, and user-join updates.
+3. Use the date filters to narrow the list quickly.
 
 ### System Updates
-Use this page to see what important changes happened in the system.
+1. Use this page to review important setup and booking operation history.
+2. Look at the detail pills to see exactly what changed.
+3. Delete by date range or delete all only when you are sure old audit history is not needed.
 
-You can:
-- see settings changes
-- see hold / reactivate / check-in / check-out updates
-- delete old history when needed
+## Before Saving A Booking
+Always check these items before pressing `Save Booking`.
 
-## Before Saving Any Booking
+1. Correct customer title and name.
+2. Correct phone number.
+3. Correct check-in and check-out dates.
+4. Correct room count for the same customer.
+5. Correct pax and extra pax for each room.
+6. Correct room mode if the room supports `A/C` and `Non A/C`.
+7. Correct advance amount if payment was already received.
+8. Correct notes for staff, driver, service, or special instructions.
 
-Always check these first:
-- correct customer name
-- correct phone number
-- correct check-in and check-out dates
-- correct room count
-- correct pax per room
-- correct room type
-- advance payment amount if paid
-- any extra note that staff should know
+## How To Add A New Booking
+This is the safest order to follow when creating a booking.
 
-If one booking has 2 or more rooms:
-- make sure all rooms belong to the same customer
-- make sure each room has correct pax
-- make sure the full stay dates are correct
+1. Open `New Booking`.
+2. Enter title, customer name, and phone number.
+3. Select check-in and check-out dates.
+4. Review room availability before choosing rooms.
+5. Add each room one by one and set pax correctly.
+6. If the same customer takes two or more rooms, check that all selected rooms belong to that same booking.
+7. Choose `A/C` or `Non A/C` for normal rooms when needed.
+8. Add services only if the customer really asked for them.
+9. Add custom prices only when there is a clear reason.
+10. If advance was paid, turn it on and enter the correct amount.
+11. Review total price and balance.
+12. Save the booking.
 
-## Step By Step: How To Add A Booking
+## Final Save Check
+Use this as a fast second-check right before the final save.
 
-### Step 1
-Open `New Booking`.
+1. Dates match the customer request.
+2. Each room has the correct pax.
+3. No room is selected by mistake.
+4. Room price and room mode are correct.
+5. Advance is marked only if money was actually received.
+6. Notes are short, clear, and useful.
 
-### Step 2
-Enter:
-- title
-- customer name
-- phone number
+## How To Fix A Wrong Booking
+Use the correct fix based on what went wrong.
 
-### Step 3
-Select check-in and check-out dates.
+### If the booking is still open
+1. Open the booking from `View By Date` or `Booking Planner`.
+2. Click `Edit Booking`.
+3. Fix the name, phone, dates, rooms, pax, prices, or notes.
+4. Save again.
 
-### Step 4
-Check availability and choose the room or rooms.
+### If the wrong action button was pressed
+1. If someone pressed `Check In` or `Check Out` by mistake, owner or admin should use `Fresh Booking`.
+2. This resets the booking back to a fresh booking state.
+3. After that, open `Edit Booking` and confirm the correct details.
 
-### Step 5
-Set pax correctly for each room.
+### If the booking was reactivated from hold
+1. Reactivate the hold booking.
+2. The full edit panel opens with the old booking data loaded.
+3. Fix dates, room choice, pax, A/C mode, prices, services, and notes before saving.
 
-### Step 6
-Add services only if needed.
+## How To Hold A Booking
+Use hold when the booking should not continue in the normal active flow.
 
-### Step 7
-Add custom price items only if needed.
-
-### Step 8
-If the customer paid advance:
-- tick advance paid
-- add the correct amount
-
-### Step 9
-Select booking source correctly:
-- Campaign
-- Visit
-- BKC
-- Call
-- Pending
-
-### Step 10
-Save the booking.
-
-## If A User Entered A Wrong Booking
-
-### Before check-in / before lock
-If the booking is still open:
-- open it from `View By Date`
-- click `Edit Booking`
-- fix the wrong details
-- save again
-
-You can usually fix:
-- customer name
-- phone
-- dates
-- room
-- pax
-- notes
-- advance details
-
-### If the wrong button was pressed
-If a user clicked check-in or check-out by mistake:
-- owner/admin can use `Fresh Booking`
-- that will reset the booking back to fresh booked state
-
-### If the booking should not exist at all
-If it was created by mistake:
-- before lock, remove/delete it
-- after lock, use request flow or hold flow depending on the situation
-
-## How To Hold A Room
+1. Open the booking.
+2. Click `Hold Booking`.
+3. Add a short note if needed.
+4. Check `Hold Bookings` page to confirm it moved correctly.
 
 Use hold when:
-- customer said they will come but did not arrive
-- payment/refund decision is still pending
-- owner/admin wants to review it later
-
-Steps:
-1. Open the booking
-2. Click `Hold Room`
-3. Booking moves to `Hold Bookings`
-
-After hold:
-- it should not remain in normal active flow
-- it stays available for later review
+- customer did not arrive
+- payment issue still needs review
+- you are waiting for owner or admin decision
+- the booking should not be deleted yet
 
 ## How To Delete A Wrong Booking
+Delete only when you are sure the booking should not exist.
 
-### Simple delete
-If no payment issue exists and booking is still editable:
-1. Open the booking
-2. Click remove/delete
-3. Confirm
-
-### If payment already exists
-Be careful and check:
-- advance paid or not
-- custom prices added or not
-- whether refund is needed
-
-If payment exists:
-- owner/admin should review before final delete
-- sometimes it is better to move it to `Hold` first
+1. Open the booking.
+2. Check whether advance or custom charges already exist.
+3. If it is a simple wrong entry, remove it.
+4. If payment or refund is involved, ask owner or admin first.
+5. If you are not sure, move it to hold instead of deleting immediately.
 
 ## How To Reactivate A Hold Booking
+Use this when the customer comes back and still wants the reservation.
 
-Use this when the customer comes back again and wants the booking active.
+1. Open `Hold Bookings`.
+2. Click `Reactivate`.
+3. Decide whether to use today as the new check-in date or keep/change the dates.
+4. The edit booking panel will open automatically.
+5. Review dates, rooms, pax, A/C mode, services, advance, and notes.
+6. Save only after the full booking looks correct again.
 
-Steps:
-1. Open `Hold Bookings`
-2. Click `Reactivate`
-3. Choose one of these:
-- use today as new check-in date
-- enter a new check-in date
-- keep the old date if still correct
+## Check-In And Check-Out
+Use these actions only after checking the booking once more.
 
-Important:
-- when reactivating, check the dates again
-- make sure the room is still valid for the new stay
+### Check-In
+1. Open the booking.
+2. Confirm customer, room, and date.
+3. Click `Check In`.
+4. Add services later if needed.
 
-## Check-In Flow
+### Check-Out
+1. Open the booking.
+2. Review service prices and custom charges.
+3. Confirm total price, advance, and balance.
+4. Click `Check Out`.
+5. Export final PDF or send WhatsApp if the customer needs a copy.
 
-When the guest arrives:
-1. Open booking from `View By Date`
-2. Click `Check In`
+## Share PDF And WhatsApp
+Use the share options clearly and carefully.
 
-After check-in:
-- booking becomes checked in
-- later services can still be added
-- owner/admin can still monitor changes
+1. Customer name is the main highlight.
+2. Track code is small and shown as a reference.
+3. The heading changes automatically based on booking state.
 
-## Check-Out Flow
-
-When the guest leaves:
-1. Open booking
-2. Click `Check Out`
-3. review service prices
-4. add any missing service charges
-5. finish check-out
-
-After check-out:
-- final invoice / PDF can be exported
-- booking status becomes checked out
-
-## Advance Payment Sharing
-
-When sending advance payment details to the customer:
-- use WhatsApp or PDF from the booking
-- customer share messages come from `Settings`
-- always make sure the amount is correct before sending
-
-Current customer reminders should include:
+Current share reminders should include:
 - inform us at least 3 days before making another booking
 - for more information call or WhatsApp `+94719707597`
-- do not lose the PDF
+- do not lose the PDF copy
 
 ## Good Daily Practice
+These habits prevent most booking mistakes.
 
-Do these every time:
-- check one more time before saving
-- check dates carefully when a booking has more than one room
-- keep notes short and clear
-- use hold instead of deleting if the case is not fully clear
-- use System Updates page to see what changed recently
-- use Notifications page for live booking activity
+1. Review dates again before saving.
+2. Double-check multi-room bookings carefully.
+3. Keep notes short and useful.
+4. Use hold if the booking situation is not fully clear.
+5. Use Notifications for live activity.
+6. Use System Updates to understand what changed in the system.
+7. Use the Guide Book search when a user is unsure what to do next.
 
 ## When To Ask Owner Or Admin
+Ask owner or admin before taking the final action in these cases.
 
-Ask owner/admin when:
-- payment or refund is involved
-- a checked-in or checked-out booking was handled wrongly
-- a hold booking must be reactivated with new dates
-- a booking should be deleted after lock
-- room price or settings must be changed
+1. Payment or refund issue exists.
+2. Checked-in or checked-out booking was handled wrongly.
+3. A locked booking needs deletion.
+4. A hold booking needs a complicated date or room change.
+5. Room prices, notification access, or system setup must be changed.
+6. You are not sure whether to delete, hold, or reactivate.
+
+## FAQ
+
+### How do I know two rooms belong to the same customer?
+Check the same track code, customer name, and room plan. In mobile planner view, use the booking summary list under the planner to confirm the grouped booking more easily.
+
+### What should I do if a user pressed check in or check out by mistake?
+Owner or admin should use `Fresh Booking`. After the reset, open `Edit Booking` and fix the booking before doing anything else.
+
+### When should I use hold instead of delete?
+Use hold when payment, arrival, refund, or approval is still unclear. Delete only when you are fully sure the booking was a wrong entry.
+
+### What happens when I reactivate a hold booking?
+The booking becomes active again and the full edit panel opens with the old data already loaded, so you can fix dates, rooms, pax, and prices in one place.
+
+### Can I change A/C and Non A/C pricing from Settings?
+Yes. In `Settings`, update the normal room price rows for `A/C` and `Non A/C`. Booking totals will follow the selected room mode.
+
+### Where can I see what changed in the system?
+Open `System Updates`. The detail pills show who changed something, what changed, and when it happened.
+
+### Where can I see live booking actions?
+Open `Notifications`. That page is for live booking activity such as new bookings, edits, requests, approvals, rejections, joins, check-in, and check-out.

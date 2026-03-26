@@ -194,6 +194,9 @@ const state = {
   systemUpdatePreset: "this-week",
   bookingRangePicker: null,
   plannerDragBookingId: null,
+  uiPreviewRole: "",
+  guideBookSections: [],
+  guideBookFaq: [],
 };
 
 const qs = (selector) => document.querySelector(selector);
@@ -265,10 +268,48 @@ function normalizeProfileRow(profile) {
   };
 }
 
+function getPreviewPermissionList(role = "") {
+  if (role === "owner" || role === "admin") return [...ADMIN_ACCESS_PERMISSION_KEYS];
+  return [];
+}
+
+function getVisiblePageLabelsForRole(role = "user") {
+  const labels = [
+    "New Booking",
+    "View By Date",
+    "Booking Planner",
+    "Analytics",
+    "Guide Book",
+    "Hold Bookings",
+    "Requests",
+  ];
+  if (normalizeNotificationRoleList(state.runtimeSettings?.notificationRoles).includes(role)) {
+    labels.push("Notifications");
+  }
+  if (normalizeSystemUpdateRoleList(state.runtimeSettings?.systemUpdateRoles).includes(role)) {
+    labels.push("System Updates");
+  }
+  if (["owner", "admin"].includes(role)) {
+    labels.push("Accounts", "Settings");
+  }
+  return labels;
+}
+
+function getEffectiveProfile(profile = state.currentProfile) {
+  if (!profile) return null;
+  if (!state.uiPreviewRole || profile.role !== "owner") return profile;
+  return {
+    ...profile,
+    role: state.uiPreviewRole,
+    extra_permissions: getPreviewPermissionList(state.uiPreviewRole),
+  };
+}
+
 function profileHasPermission(profile, permissionKey) {
-  if (!profile?.approved) return false;
-  if (["owner", "admin"].includes(profile.role)) return true;
-  return normalizePermissionList(profile.extra_permissions).includes(permissionKey);
+  const effectiveProfile = getEffectiveProfile(profile);
+  if (!effectiveProfile?.approved) return false;
+  if (["owner", "admin"].includes(effectiveProfile.role)) return true;
+  return normalizePermissionList(effectiveProfile.extra_permissions).includes(permissionKey);
 }
 
 function permissionListHasAll(permissionList, requiredKeys) {
@@ -363,45 +404,215 @@ function applyBookingViewMode() {
   bookingViewDesktopBtn?.classList.toggle("view-mode-btn-active", state.bookingViewMode === "desktop");
 }
 
-function renderGuideBookMarkup(markdownText) {
-  const lines = String(markdownText || "").split(/\r?\n/);
-  const parts = [];
-  let listItems = [];
+function slugifyText(value = "") {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
 
-  const flushList = () => {
-    if (!listItems.length) return;
-    parts.push(`<ul>${listItems.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`);
-    listItems = [];
+function getGuideSectionIcon(title = "") {
+  const text = String(title || "").toLowerCase();
+  if (text.includes("new booking") || text.includes("add booking")) return "📝";
+  if (text.includes("before saving")) return "✅";
+  if (text.includes("wrong booking") || text.includes("fix")) return "🛠";
+  if (text.includes("hold")) return "⏸";
+  if (text.includes("delete")) return "🗑";
+  if (text.includes("reactivate")) return "🔄";
+  if (text.includes("check-in") || text.includes("check out")) return "🛎";
+  if (text.includes("share")) return "💬";
+  if (text.includes("daily")) return "📌";
+  if (text.includes("ask owner")) return "👤";
+  return "📘";
+}
+
+function parseGuideBookMarkdown(markdownText) {
+  const lines = String(markdownText || "").split(/\r?\n/);
+  const model = {
+    title: "Guide Book",
+    sections: [],
+    faq: [],
+  };
+  let currentSection = null;
+  let currentFaq = null;
+  let inFaq = false;
+  let pendingList = null;
+
+  const ensureList = (style = "bullet") => {
+    if (!currentSection) return null;
+    if (!pendingList || pendingList.style !== style) {
+      pendingList = { type: "list", style, items: [] };
+      currentSection.blocks.push(pendingList);
+    }
+    return pendingList;
   };
 
-  lines.forEach((line) => {
-    const text = line.trim();
+  const closeList = () => {
+    pendingList = null;
+  };
+
+  const pushParagraph = (text) => {
+    if (inFaq && currentFaq) {
+      currentFaq.answer.push(text);
+      return;
+    }
+    if (!currentSection) return;
+    closeList();
+    currentSection.blocks.push({ type: "paragraph", text });
+  };
+
+  lines.forEach((rawLine) => {
+    const text = rawLine.trim();
     if (!text) {
-      flushList();
-      return;
-    }
-    if (text.startsWith("- ")) {
-      listItems.push(text.slice(2).trim());
-      return;
-    }
-    flushList();
-    if (text.startsWith("## ")) {
-      parts.push(`<h2>${escapeHtml(text.slice(3).trim())}</h2>`);
-      return;
-    }
-    if (text.startsWith("### ")) {
-      parts.push(`<h3>${escapeHtml(text.slice(4).trim())}</h3>`);
+      closeList();
       return;
     }
     if (text.startsWith("# ")) {
-      parts.push(`<h1>${escapeHtml(text.slice(2).trim())}</h1>`);
+      model.title = text.slice(2).trim();
       return;
     }
-    parts.push(`<p>${escapeHtml(text)}</p>`);
+    if (text.startsWith("## ")) {
+      closeList();
+      const title = text.slice(3).trim();
+      inFaq = title.toLowerCase() === "faq";
+      currentFaq = null;
+      if (inFaq) return;
+      currentSection = {
+        id: slugifyText(title),
+        title,
+        icon: getGuideSectionIcon(title),
+        blocks: [],
+      };
+      model.sections.push(currentSection);
+      return;
+    }
+    if (text.startsWith("### ")) {
+      closeList();
+      const title = text.slice(4).trim();
+      if (inFaq) {
+        currentFaq = { question: title, answer: [] };
+        model.faq.push(currentFaq);
+        return;
+      }
+      if (!currentSection) return;
+      currentSection.blocks.push({ type: "subheading", text: title });
+      return;
+    }
+    if (/^\d+\.\s+/.test(text)) {
+      const list = ensureList("ordered");
+      list?.items.push(text.replace(/^\d+\.\s+/, "").trim());
+      return;
+    }
+    if (text.startsWith("- ")) {
+      const list = ensureList("bullet");
+      list?.items.push(text.slice(2).trim());
+      return;
+    }
+    pushParagraph(text);
   });
 
-  flushList();
-  return parts.join("");
+  return model;
+}
+
+function getGuideSectionSearchText(section = {}) {
+  return [
+    section.title,
+    ...(section.blocks || []).flatMap((block) => {
+      if (block.type === "list") return block.items || [];
+      return block.text || "";
+    }),
+  ].join(" ").toLowerCase();
+}
+
+function renderGuideSectionBlock(block = {}) {
+  if (block.type === "subheading") {
+    return `<h3>${escapeHtml(block.text || "")}</h3>`;
+  }
+  if (block.type === "paragraph") {
+    return `<p>${escapeHtml(block.text || "")}</p>`;
+  }
+  if (block.type === "list") {
+    const listClass = block.style === "ordered" ? "guide-check-list guide-step-list" : "guide-check-list";
+    return `
+      <div class="${listClass}">
+        ${(block.items || []).map((item, index) => `
+          <div class="guide-check-item">
+            <span class="guide-check-index">${block.style === "ordered" ? index + 1 : "•"}</span>
+            <span>${escapeHtml(item)}</span>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  }
+  return "";
+}
+
+function renderGuideBookPage() {
+  if (!guideBookContent || !guideNav || !guideStats || !guideFaqList) return;
+  const searchTerm = String(guideSearchInput?.value || "").trim().toLowerCase();
+  const filteredSections = state.guideBookSections.filter((section) => {
+    if (!searchTerm) return true;
+    return getGuideSectionSearchText(section).includes(searchTerm);
+  });
+  const filteredFaq = state.guideBookFaq.filter((item) => {
+    if (!searchTerm) return true;
+    return `${item.question} ${item.answer.join(" ")}`.toLowerCase().includes(searchTerm);
+  });
+
+  guideStats.innerHTML = `
+    <div class="analytics-stat-card">
+      <span>Sections</span>
+      <strong>${filteredSections.length}</strong>
+    </div>
+    <div class="analytics-stat-card">
+      <span>FAQ</span>
+      <strong>${filteredFaq.length}</strong>
+    </div>
+    <div class="analytics-stat-card">
+      <span>Search</span>
+      <strong>${searchTerm ? `"${escapeHtml(searchTerm)}"` : "All"}</strong>
+    </div>
+  `;
+
+  guideNav.innerHTML = filteredSections.map((section, index) => `
+    <button class="secondary-btn small-btn" type="button" data-guide-jump="${escapeHtml(section.id)}">
+      ${escapeHtml(`${index + 1}. ${section.title}`)}
+    </button>
+  `).join("");
+
+  guideBookContent.innerHTML = filteredSections.length
+    ? filteredSections.map((section, index) => `
+        <section id="${escapeHtml(section.id)}" class="guide-section-card">
+          <div class="guide-section-head">
+            <div class="guide-section-badge">${escapeHtml(section.icon || "📘")}</div>
+            <div>
+              <span class="guide-section-kicker">Section ${index + 1}</span>
+              <h2>${escapeHtml(section.title)}</h2>
+            </div>
+          </div>
+          <div class="guide-section-body">
+            ${(section.blocks || []).map((block) => renderGuideSectionBlock(block)).join("")}
+          </div>
+        </section>
+      `).join("")
+    : '<p class="inline-note">No guide results found for this search.</p>';
+
+  guideFaqList.innerHTML = filteredFaq.length
+    ? filteredFaq.map((item, index) => `
+        <details class="guide-faq-item"${searchTerm && index === 0 ? " open" : ""}>
+          <summary>${escapeHtml(item.question)}</summary>
+          <div class="guide-faq-answer">
+            ${(item.answer || []).map((line) => `<p>${escapeHtml(line)}</p>`).join("")}
+          </div>
+        </details>
+      `).join("")
+    : '<p class="inline-note">No FAQ results found.</p>';
+
+  guideNav.querySelectorAll("[data-guide-jump]").forEach((button) => {
+    button.addEventListener("click", () => {
+      document.getElementById(button.dataset.guideJump)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
 }
 
 async function loadGuideBook() {
@@ -425,8 +636,16 @@ async function loadGuideBook() {
       }
     }
     if (!markdown.trim()) throw lastError || new Error("Guide book could not be loaded.");
-    guideBookContent.innerHTML = renderGuideBookMarkup(markdown);
+    const guideModel = parseGuideBookMarkdown(markdown);
+    state.guideBookSections = guideModel.sections;
+    state.guideBookFaq = guideModel.faq;
+    renderGuideBookPage();
   } catch (error) {
+    state.guideBookSections = [];
+    state.guideBookFaq = [];
+    guideNav.innerHTML = "";
+    guideStats.innerHTML = "";
+    guideFaqList.innerHTML = "";
     guideBookContent.innerHTML = `<p class="inline-note">${escapeHtml(error.message || "Guide book could not be loaded.")}</p>`;
   }
 }
@@ -595,6 +814,9 @@ const bookingAddCustomPaymentBtn = qs("#addCustomPayment");
 const bookingCustomPaymentsTotal = qs("#customPaymentsTotal");
 const notificationBellBtn = qs("#notification-bell");
 const notificationBellBadge = qs("#notification-bell-badge");
+const previewBanner = qs("#preview-banner");
+const previewBannerText = qs("#preview-banner-text");
+const previewBannerResetBtn = qs("#preview-banner-reset");
 const accountsList = qs("#accounts-list");
 const accountsEmpty = qs("#accounts-empty");
 const refreshAccountsBtn = qs("#refresh-accounts");
@@ -705,9 +927,20 @@ const analyticsStatuses = qs("#analytics-statuses");
 const analyticsSources = qs("#analytics-sources");
 const analyticsTitles = qs("#analytics-titles");
 const analyticsStaff = qs("#analytics-staff");
+const analyticsTrendChart = qs("#analytics-trend-chart");
+const analyticsInsights = qs("#analytics-insights");
+const analyticsFilterLifecycle = qs("#analytics-filter-lifecycle");
+const analyticsFilterSource = qs("#analytics-filter-source");
+const analyticsFilterStaff = qs("#analytics-filter-staff");
+const analyticsFilterMetric = qs("#analytics-filter-metric");
 const analyticsEmpty = qs("#analytics-empty");
 const guideBookContent = qs("#guide-book-content");
+const guideSearchInput = qs("#guide-search");
+const guideNav = qs("#guide-nav");
+const guideStats = qs("#guide-stats");
+const guideFaqList = qs("#guide-faq-list");
 const refreshGuideBtn = qs("#refresh-guide");
+const settingsPreviewPanel = qs("#settings-preview-panel");
 
 const navButtons = {
   booking: qs("#tab-booking"),
@@ -2042,7 +2275,7 @@ function renderRequestOfferPreview() {
 }
 
 function renderPricingScreen() {
-  if (!pricingList || !roomInventoryList || !serviceCatalogList || !exportSettingsList) return;
+  if (!pricingList || !roomInventoryList || !serviceCatalogList || !exportSettingsList || !settingsPreviewPanel) return;
   if (!state.serviceCatalog?.length) setDefaultServiceCatalogState();
   if (runtimeCheckInTimeInput) runtimeCheckInTimeInput.value = getRuntimeCheckInTime();
   if (runtimeCheckOutTimeInput) runtimeCheckOutTimeInput.value = getRuntimeCheckOutTime();
@@ -2050,6 +2283,7 @@ function renderPricingScreen() {
     setHTML(roomInventoryList, "");
     setHTML(serviceCatalogList, "");
     setHTML(exportSettingsList, "");
+    setHTML(settingsPreviewPanel, "");
     setHTML(pricingList, `<p class="inline-note">You do not have room pricing access yet.</p>`);
     return;
   }
@@ -2057,6 +2291,7 @@ function renderPricingScreen() {
   roomInventoryList.innerHTML = "";
   serviceCatalogList.innerHTML = "";
   exportSettingsList.innerHTML = "";
+  settingsPreviewPanel.innerHTML = "";
   pricingList.innerHTML = "";
 
   ROOM_DEFS.forEach((roomDef) => {
@@ -2431,6 +2666,43 @@ function renderPricingScreen() {
       renderPricingScreen();
     });
   });
+
+  if (state.currentProfile?.role === "owner") {
+    const previewRole = state.uiPreviewRole || "owner";
+    const previewPages = getVisiblePageLabelsForRole(previewRole);
+    const previewCard = document.createElement("article");
+    previewCard.className = "pricing-card";
+    previewCard.innerHTML = `
+      <div class="pricing-card-head">
+        <div>
+          <h4>Temporary Role Preview</h4>
+          <p>See how navigation and page access look for each role before you save new settings.</p>
+        </div>
+      </div>
+      <div class="planner-climate-toggle">
+        ${["owner", "admin", "user"].map((role) => `
+          <button class="planner-climate-btn${(state.uiPreviewRole || "owner") === role ? " active" : ""}" type="button" data-preview-role="${role}">
+            ${role === "owner" ? "Owner View" : role === "admin" ? "Admin View" : "User View"}
+          </button>
+        `).join("")}
+      </div>
+      <div class="system-update-detail-list">
+        ${previewPages.map((label) => `<span class="system-update-detail-pill">${escapeHtml(label)}</span>`).join("")}
+      </div>
+      <p class="inline-note">${state.uiPreviewRole
+        ? `Preview is active. You are seeing the app as ${state.uiPreviewRole}. Use the banner or Owner View to go back.`
+        : "Preview is off. You are seeing the real owner view."}</p>
+    `;
+    previewCard.querySelectorAll("[data-preview-role]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.uiPreviewRole = button.dataset.previewRole === "owner" ? "" : String(button.dataset.previewRole || "");
+        updateHeaderProfile();
+        updateNavVisibility();
+        renderPricingScreen();
+      });
+    });
+    settingsPreviewPanel.appendChild(previewCard);
+  }
 
   const serviceRows = getEditableServiceCatalogRows();
   const serviceCard = document.createElement("article");
@@ -4047,17 +4319,20 @@ function canManageRequests() {
 }
 
 function isOwnerOrAdminRole(profile = state.currentProfile) {
-  return profile?.approved && ["owner", "admin"].includes(profile.role);
+  const effectiveProfile = getEffectiveProfile(profile);
+  return effectiveProfile?.approved && ["owner", "admin"].includes(effectiveProfile.role);
 }
 
 function canAccessNotifications() {
-  if (!state.currentProfile?.approved) return false;
-  return normalizeNotificationRoleList(state.runtimeSettings?.notificationRoles).includes(state.currentProfile.role);
+  const effectiveProfile = getEffectiveProfile();
+  if (!effectiveProfile?.approved) return false;
+  return normalizeNotificationRoleList(state.runtimeSettings?.notificationRoles).includes(effectiveProfile.role);
 }
 
 function canAccessSystemUpdates() {
-  if (!state.currentProfile?.approved) return false;
-  return normalizeSystemUpdateRoleList(state.runtimeSettings?.systemUpdateRoles).includes(state.currentProfile.role);
+  const effectiveProfile = getEffectiveProfile();
+  if (!effectiveProfile?.approved) return false;
+  return normalizeSystemUpdateRoleList(state.runtimeSettings?.systemUpdateRoles).includes(effectiveProfile.role);
 }
 
 function updateNotificationBadge() {
@@ -4077,14 +4352,22 @@ function updateNotificationBadge() {
 function updateHeaderProfile() {
   if (!state.currentProfile) {
     userChip.textContent = "";
+    toggleHidden(previewBanner, true);
     updateNotificationBadge();
     return;
   }
-  userChip.textContent = `${state.currentProfile.full_name || state.currentProfile.username} · ${state.currentProfile.role}`;
+  const effectiveProfile = getEffectiveProfile();
+  userChip.textContent = `${state.currentProfile.full_name || state.currentProfile.username} · ${effectiveProfile.role}`;
+  const previewActive = Boolean(state.uiPreviewRole && state.currentProfile.role === "owner");
+  toggleHidden(previewBanner, !previewActive);
+  if (previewActive) {
+    previewBannerText.textContent = `Preview: ${state.uiPreviewRole}`;
+  }
   updateNotificationBadge();
 }
 
 function updateNavVisibility() {
+  const previewOwnerOverride = state.currentProfile?.role === "owner" && Boolean(state.uiPreviewRole);
   const showPlanner = Boolean(state.currentProfile?.approved);
   const showAnalytics = Boolean(state.currentProfile?.approved);
   const showGuide = Boolean(state.currentProfile?.approved);
@@ -4093,7 +4376,7 @@ function updateNavVisibility() {
   const showRequests = Boolean(state.currentProfile?.approved);
   const showNotifications = canAccessNotifications();
   const showSystemUpdates = canAccessSystemUpdates();
-  const showPricing = canManagePricing();
+  const showPricing = canManagePricing() || previewOwnerOverride;
   navButtons.planner.classList.toggle("hidden", !showPlanner);
   navButtons.analytics.classList.toggle("hidden", !showAnalytics);
   navButtons.guide.classList.toggle("hidden", !showGuide);
@@ -4233,6 +4516,91 @@ function renderAnalyticsTableList(node, items = [], valueFormatter = (value) => 
   `).join("");
 }
 
+function populateAnalyticsFilterSelect(select, values = [], allLabel = "All") {
+  if (!select) return;
+  const selected = select.value || "all";
+  const options = ["all", ...values.filter(Boolean)];
+  select.innerHTML = options.map((value) => `
+    <option value="${escapeHtml(value)}">${escapeHtml(value === "all" ? allLabel : value)}</option>
+  `).join("");
+  select.value = options.includes(selected) ? selected : "all";
+}
+
+function renderAnalyticsTrendChart(node, points = [], formatter = (value) => String(value)) {
+  if (!node) return;
+  if (!points.length) {
+    node.innerHTML = '<p class="inline-note">No trend data for this filter.</p>';
+    return;
+  }
+  const maxValue = Math.max(...points.map((item) => Number(item.value || 0)), 1);
+  node.innerHTML = `
+    <div class="analytics-trend-bars">
+      ${points.map((item) => `
+        <div class="analytics-trend-bar-card">
+          <span class="analytics-trend-value">${escapeHtml(formatter(item.value))}</span>
+          <div class="analytics-trend-bar-track">
+            <div class="analytics-trend-bar-fill" style="height:${Math.max(10, Math.round((Number(item.value || 0) / maxValue) * 100))}%"></div>
+          </div>
+          <strong>${escapeHtml(item.label)}</strong>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderAnalyticsInsights(node, items = []) {
+  if (!node) return;
+  if (!items.length) {
+    node.innerHTML = '<p class="inline-note">No insights available for this filter.</p>';
+    return;
+  }
+  node.innerHTML = items.map((item) => `
+    <div class="analytics-insight-card">
+      <span>${escapeHtml(item.label)}</span>
+      <strong>${escapeHtml(item.value)}</strong>
+      ${item.meta ? `<small>${escapeHtml(item.meta)}</small>` : ""}
+    </div>
+  `).join("");
+}
+
+function buildAnalyticsTrendPoints(groups = [], from, to, metric = "revenue") {
+  const start = parseDate(from);
+  const end = parseDate(to);
+  if (!start || !end || end < start) return [];
+  const dayCount = Math.max(1, getNightCount(from, formatDateKey(addDays(end, 1))));
+  const useMonthly = dayCount > 90;
+  const useWeekly = !useMonthly && dayCount > 21;
+  const buckets = new Map();
+
+  groups.forEach((group) => {
+    const keyDate = parseDate(group.checkIn || from);
+    if (!keyDate) return;
+    let bucketKey = "";
+    let bucketLabel = "";
+    if (useMonthly) {
+      bucketKey = `${keyDate.getFullYear()}-${keyDate.getMonth() + 1}`;
+      bucketLabel = keyDate.toLocaleString("en-GB", { month: "short", year: "2-digit" });
+    } else if (useWeekly) {
+      const weekStart = addDays(keyDate, -(keyDate.getDay() || 7) + 1);
+      bucketKey = formatDateKey(weekStart);
+      bucketLabel = weekStart.toLocaleString("en-GB", { day: "2-digit", month: "short" });
+    } else {
+      bucketKey = formatDateKey(keyDate);
+      bucketLabel = keyDate.toLocaleString("en-GB", { day: "2-digit", month: "short" });
+    }
+    const current = buckets.get(bucketKey) || { label: bucketLabel, value: 0 };
+    if (metric === "bookings") current.value += 1;
+    else if (metric === "room_nights") current.value += getAnalyticsRoomNights(group);
+    else current.value = roundCurrency(current.value + Number(group.totalPrice || 0));
+    buckets.set(bucketKey, current);
+  });
+
+  return Array.from(buckets.entries())
+    .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+    .map(([, value]) => value)
+    .slice(-10);
+}
+
 async function loadAnalytics() {
   if (!state.currentProfile?.approved || !analyticsDateFromInput || !analyticsDateToInput) return;
   const from = analyticsDateFromInput.value;
@@ -4254,10 +4622,28 @@ async function loadAnalytics() {
   try {
     const bookings = await fetchBookingsForPeriod(from, formatDateKey(addDays(parseDate(to), 1)));
     const groups = getAnalyticsReservationGroups(bookings);
-    const totalRevenue = roundCurrency(groups.reduce((sum, group) => sum + Number(group.totalPrice || 0), 0));
-    const totalBookings = groups.length;
-    const totalPendingBalance = roundCurrency(groups.reduce((sum, group) => sum + getBookingBalanceAmount(group), 0));
-    const totalRoomNights = groups.reduce((sum, group) => sum + getAnalyticsRoomNights(group), 0);
+    const lifecycleOptions = Array.from(new Set(groups.map((group) => getLifecycleStatusLabel(getGroupLifecycleStatus(group))))).sort();
+    const sourceOptions = Array.from(new Set(groups.map((group) => (
+      group.statuses.size === 1 ? getBookingStatusLabel(Array.from(group.statuses)[0]) : "Mixed Booking"
+    )))).sort();
+    const staffOptions = Array.from(new Set(groups.map((group) => group.bookings[0]?.createdByName || "Unknown"))).sort();
+    populateAnalyticsFilterSelect(analyticsFilterLifecycle, lifecycleOptions, "All Lifecycle");
+    populateAnalyticsFilterSelect(analyticsFilterSource, sourceOptions, "All Sources");
+    populateAnalyticsFilterSelect(analyticsFilterStaff, staffOptions, "All Staff");
+
+    const filteredGroups = groups.filter((group) => {
+      const lifecycleLabel = getLifecycleStatusLabel(getGroupLifecycleStatus(group));
+      const sourceLabel = group.statuses.size === 1 ? getBookingStatusLabel(Array.from(group.statuses)[0]) : "Mixed Booking";
+      const staffLabel = group.bookings[0]?.createdByName || "Unknown";
+      if ((analyticsFilterLifecycle?.value || "all") !== "all" && analyticsFilterLifecycle.value !== lifecycleLabel) return false;
+      if ((analyticsFilterSource?.value || "all") !== "all" && analyticsFilterSource.value !== sourceLabel) return false;
+      if ((analyticsFilterStaff?.value || "all") !== "all" && analyticsFilterStaff.value !== staffLabel) return false;
+      return true;
+    });
+    const totalRevenue = roundCurrency(filteredGroups.reduce((sum, group) => sum + Number(group.totalPrice || 0), 0));
+    const totalBookings = filteredGroups.length;
+    const totalPendingBalance = roundCurrency(filteredGroups.reduce((sum, group) => sum + getBookingBalanceAmount(group), 0));
+    const totalRoomNights = filteredGroups.reduce((sum, group) => sum + getAnalyticsRoomNights(group), 0);
     const averageBookingValue = totalBookings ? roundCurrency(totalRevenue / totalBookings) : 0;
     const averageStayNights = totalBookings ? roundCurrency(totalRoomNights / totalBookings) : 0;
 
@@ -4270,7 +4656,7 @@ async function loadAnalytics() {
     const sourceTotals = new Map();
     const titleTotals = new Map();
 
-    groups.forEach((group) => {
+    filteredGroups.forEach((group) => {
       const lifecycleStatus = getGroupLifecycleStatus(group);
       statusTotals.set(getLifecycleStatusLabel(lifecycleStatus), (statusTotals.get(getLifecycleStatusLabel(lifecycleStatus)) || 0) + 1);
       const sourceLabel = group.statuses.size === 1 ? getBookingStatusLabel(Array.from(group.statuses)[0]) : "Mixed";
@@ -4347,9 +4733,27 @@ async function loadAnalytics() {
       (value) => formatMoney(value),
     );
 
+    const trendMetric = analyticsFilterMetric?.value || "revenue";
+    const trendPoints = buildAnalyticsTrendPoints(filteredGroups, from, to, trendMetric);
+    renderAnalyticsTrendChart(
+      analyticsTrendChart,
+      trendPoints,
+      (value) => trendMetric === "revenue" ? formatMoney(value) : String(value),
+    );
+
+    const topSource = Array.from(sourceTotals.entries()).sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))[0];
+    const topCustomer = Array.from(customerTotals.entries()).sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))[0];
+    const topStaff = Array.from(staffTotals.entries()).sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))[0];
+    renderAnalyticsInsights(analyticsInsights, [
+      { label: "Filtered Reservations", value: String(totalBookings), meta: `${from} -> ${to}` },
+      { label: "Highest Source", value: topSource ? topSource[0] : "-", meta: topSource ? `${topSource[1]} bookings` : "No data" },
+      { label: "Top Customer", value: topCustomer ? topCustomer[0] : "-", meta: topCustomer ? formatMoney(topCustomer[1]) : "No revenue yet" },
+      { label: "Top Staff", value: topStaff ? topStaff[0] : "-", meta: topStaff ? formatMoney(topStaff[1]) : "No staff data" },
+    ]);
+
     if (analyticsEmpty) {
-      analyticsEmpty.style.display = groups.length ? "none" : "block";
-      analyticsEmpty.textContent = groups.length ? "" : "No analytics data for this range.";
+      analyticsEmpty.style.display = filteredGroups.length ? "none" : "block";
+      analyticsEmpty.textContent = filteredGroups.length ? "" : "No analytics data for this filter.";
     }
   } catch (error) {
     if (analyticsEmpty) {
@@ -4403,6 +4807,7 @@ async function applySession(session) {
 
   if (!session) {
     state.currentProfile = null;
+    state.uiPreviewRole = "";
     state.notifications = [];
     state.recentNotifications = [];
     state.notificationUnreadCount = 0;
@@ -4424,6 +4829,9 @@ async function applySession(session) {
   }
 
   state.currentProfile = profile;
+  if (profile.role !== "owner") {
+    state.uiPreviewRole = "";
+  }
   updateHeaderProfile();
   updateNavVisibility();
 
@@ -4440,6 +4848,8 @@ async function applySession(session) {
   await loadServiceCatalog();
   await loadRoomPricing();
   await loadRuntimeSettings();
+  updateHeaderProfile();
+  updateNavVisibility();
   await setupRealtime();
   await refreshLiveViews();
   await loadRequests();
@@ -6394,7 +6804,7 @@ function openBookingDetailsModal(groupKey) {
       ${(isOwnerOrAdminRole() && ["checked_in", "checked_out"].includes(lifecycleStatus)) ? `<button class="action-btn" type="button" data-booking-group-action="fresh-booking">Fresh Booking</button>` : ""}
       ${lifecycleStatus === "hold" ? `${getLifecycleBadgeMarkup(group)}` : ""}
       ${lifecycleStatus === "checked_out" ? `<span class="booking-tag tag-rejected">Checked Out</span>` : ""}
-      ${lifecycleStatus === "hold" && state.currentProfile?.role === "owner" ? `<button class="action-btn action-btn-icon action-btn-icon-reactivate" type="button" data-booking-group-action="reactivate">Reactivate</button>` : ""}
+      ${lifecycleStatus === "hold" && getEffectiveProfile()?.role === "owner" ? `<button class="action-btn action-btn-icon action-btn-icon-reactivate" type="button" data-booking-group-action="reactivate">Reactivate</button>` : ""}
       ${(hasCheckInWindowStarted(group) && lifecycleStatus === "booked") ? `<button class="action-btn" type="button" data-booking-group-action="hold">Hold Room</button>` : ""}
       ${isPendingGroupRemovalRequest(groupRequest)
         ? `<span class="booking-tag tag-pending">Pending Remove</span>`
@@ -7039,7 +7449,7 @@ function renderHoldBookings(bookings) {
             <button class="secondary-btn action-btn-icon action-btn-icon-view compact-control" type="button" data-hold-open="${group.key}" aria-label="Open Booking" title="Open Booking">
               <span class="compact-label">Open Booking</span>
             </button>
-            ${state.currentProfile?.role === "owner" ? `
+            ${getEffectiveProfile()?.role === "owner" ? `
               <button class="secondary-btn action-btn-icon action-btn-icon-reactivate compact-control" type="button" data-hold-reactivate="${group.key}" aria-label="Reactivate" title="Reactivate">
                 <span class="compact-label">Reactivate</span>
               </button>
@@ -8947,7 +9357,7 @@ function renderAccounts(profiles) {
 
   profiles.forEach((profile) => {
     const isSelf = profile.user_id === state.currentSession?.user?.id;
-    const ownerCanEditPermissions = state.currentProfile.role === "owner" && !isSelf;
+    const ownerCanEditPermissions = getEffectiveProfile()?.role === "owner" && !isSelf;
     const accountManagerCanApprove = canManageAccounts() && !isSelf;
     const extraPermissions = normalizePermissionList(profile.extra_permissions);
     const hasAdminAccess = permissionListHasAll(extraPermissions, ADMIN_ACCESS_PERMISSION_KEYS);
@@ -8962,7 +9372,7 @@ function renderAccounts(profiles) {
 
     const roleOptions = ["user", "admin", "owner"]
       .map((role) => {
-        const disabled = state.currentProfile.role !== "owner" && role === "owner";
+        const disabled = getEffectiveProfile()?.role !== "owner" && role === "owner";
         return `<option value="${role}"${role === profile.role ? " selected" : ""}${disabled ? " disabled" : ""}>${role}</option>`;
       })
       .join("");
@@ -9063,7 +9473,7 @@ function renderAccounts(profiles) {
         const nextPermissions = permissionInputs
           .filter((input) => input.checked)
           .map((input) => input.dataset.permissionKey);
-        const values = state.currentProfile.role === "owner"
+        const values = getEffectiveProfile()?.role === "owner"
           ? { role: nextRole, approved: nextApproved, extra_permissions: nextPermissions }
           : { approved: nextApproved };
         await updateAccount(profile.user_id, values);
@@ -10231,6 +10641,10 @@ loadAnalyticsBtn?.addEventListener("click", () => loadAnalytics());
 analyticsPresetButtons.forEach((button) => {
   button.addEventListener("click", () => applyAnalyticsPreset(button.dataset.analyticsPreset));
 });
+analyticsFilterLifecycle?.addEventListener("change", () => loadAnalytics());
+analyticsFilterSource?.addEventListener("change", () => loadAnalytics());
+analyticsFilterStaff?.addEventListener("change", () => loadAnalytics());
+analyticsFilterMetric?.addEventListener("change", () => loadAnalytics());
 notificationPresetButtons.forEach((button) => {
   button.addEventListener("click", () => {
     loadNotifications({ presetKey: button.dataset.notificationPreset, markVisibleRead: true });
@@ -10451,6 +10865,13 @@ navButtons.accounts.addEventListener("click", () => setScreen("accounts"));
 navButtons.pricing.addEventListener("click", () => setScreen("pricing"));
 notificationBellBtn?.addEventListener("click", () => setScreen("notifications"));
 refreshGuideBtn?.addEventListener("click", () => loadGuideBook());
+guideSearchInput?.addEventListener("input", () => renderGuideBookPage());
+previewBannerResetBtn?.addEventListener("click", () => {
+  state.uiPreviewRole = "";
+  updateHeaderProfile();
+  updateNavVisibility();
+  renderPricingScreen();
+});
 plannerLoadBtn?.addEventListener("click", () => loadReservationPlanner());
 
 window.addEventListener("online", updateOnlineStatus);
