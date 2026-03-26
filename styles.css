@@ -4691,6 +4691,10 @@ h4 {
   content: "\2713";
 }
 
+.action-btn-icon-reactivate::before {
+  content: "\21BA";
+}
+
 @media (hover: hover) and (pointer: fine) {
   .booking-quick-actions .compact-control {
     transition: width 0.18s ease, min-width 0.18s ease, padding 0.18s ease, background 0.18s ease;

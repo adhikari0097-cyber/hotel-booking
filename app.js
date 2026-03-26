@@ -5690,8 +5690,8 @@ async function updateGroupLifecycle(groupKey, values = {}) {
     await updateBooking(booking.id, {
       guestName: booking.guestName,
       phone: booking.phone,
-      checkIn: booking.checkIn,
-      checkOut: booking.checkOut,
+      checkIn: values.checkIn ?? booking.checkIn,
+      checkOut: values.checkOut ?? booking.checkOut,
       guests: booking.guests,
       roomType: booking.roomType,
       roomTypeLabel: booking.roomTypeLabel,
@@ -5709,6 +5709,19 @@ async function updateGroupLifecycle(groupKey, values = {}) {
       closeDetails: "closeDetails" in values ? values.closeDetails : booking.closeDetails,
     });
   }
+}
+
+async function insertBookingSystemUpdate(updateType, title, group, message, metadata = {}) {
+  await insertSystemUpdate({
+    updateType,
+    title,
+    message,
+    metadata: {
+      trackCode: group?.trackCode || group?.key || "",
+      guestName: group?.guestName || "Guest",
+      ...metadata,
+    },
+  });
 }
 
 async function performGroupCheckIn(groupKey) {
@@ -5730,6 +5743,12 @@ async function performGroupCheckIn(groupKey) {
     audience: "owner_admin",
     metadata: { guestName: group.guestName || "Guest" },
   });
+  await insertBookingSystemUpdate(
+    "booking_checked_in",
+    "Checked In",
+    group,
+    `${group.trackCode || "Booking"} · ${group.guestName || "Guest"} checked in.`,
+  );
   return true;
 }
 
@@ -5752,6 +5771,13 @@ async function performGroupHold(groupKey, note = "", bookingStatus = "Hold") {
     audience: "owner_admin",
     metadata: { guestName: group.guestName || "Guest" },
   });
+  await insertBookingSystemUpdate(
+    "booking_hold",
+    "Hold Booking",
+    group,
+    `${group.trackCode || "Booking"} · ${group.guestName || "Guest"} moved to hold.`,
+    { note: holdNote },
+  );
 }
 
 async function performGroupReactivate(groupKey) {
@@ -5759,9 +5785,42 @@ async function performGroupReactivate(groupKey) {
   if (!group) throw new Error("Booking group not found.");
   const confirmed = window.confirm(`Reactivate ${group.trackCode || "this booking"} and move it back to booked status?`);
   if (!confirmed) return false;
+  const stayNights = Math.max(1, getNightCount(group.checkIn, group.checkOut));
+  const todayKey = formatDateKey(new Date());
+  const useToday = window.confirm(
+    `Press OK to reactivate with today's date (${todayKey}) for ${stayNights} night${stayNights === 1 ? "" : "s"}. Press Cancel to choose another option.`,
+  );
+  let nextCheckIn = group.checkIn || todayKey;
+  let nextCheckOut = group.checkOut || formatDateKey(addDays(parseDate(todayKey), stayNights));
+  let reactivationMode = "current_date";
+
+  if (useToday) {
+    nextCheckIn = todayKey;
+    nextCheckOut = formatDateKey(addDays(parseDate(todayKey), stayNights));
+  } else {
+    const customInput = window.prompt(
+      `Enter a new check-in date in YYYY-MM-DD. Leave empty to keep the old stay (${group.checkIn || "-"} -> ${group.checkOut || "-"})`,
+      group.checkIn || todayKey,
+    );
+    if (customInput == null) return false;
+    const trimmedInput = String(customInput || "").trim();
+    if (trimmedInput) {
+      const parsedDate = parseDate(trimmedInput);
+      if (!parsedDate) {
+        throw new Error("Enter a valid reactivation date in YYYY-MM-DD format.");
+      }
+      nextCheckIn = formatDateKey(parsedDate);
+      nextCheckOut = formatDateKey(addDays(parsedDate, stayNights));
+      reactivationMode = "custom_date";
+    } else {
+      reactivationMode = "keep_old_date";
+    }
+  }
   await updateGroupLifecycle(groupKey, {
     lifecycleStatus: "booked",
     status: "Campaign",
+    checkIn: nextCheckIn,
+    checkOut: nextCheckOut,
     checkedInAt: null,
     checkedOutAt: null,
     closeDetails: null,
@@ -5771,10 +5830,17 @@ async function performGroupReactivate(groupKey) {
     trackCode: group.trackCode || group.key,
     eventType: "reactivated",
     title: "Booking Reactivated",
-    message: `${group.guestName || "Guest"} was moved back to active booking state.`,
+    message: `${group.guestName || "Guest"} was moved back to active booking state for ${nextCheckIn} -> ${nextCheckOut}.`,
     audience: "owner_admin",
-    metadata: { guestName: group.guestName || "Guest" },
+    metadata: { guestName: group.guestName || "Guest", checkIn: nextCheckIn, checkOut: nextCheckOut, reactivationMode },
   });
+  await insertBookingSystemUpdate(
+    "booking_reactivated",
+    "Booking Reactivated",
+    group,
+    `${group.trackCode || "Booking"} reactivated · ${nextCheckIn} -> ${nextCheckOut}.`,
+    { checkIn: nextCheckIn, checkOut: nextCheckOut, reactivationMode },
+  );
   return true;
 }
 
@@ -5798,6 +5864,12 @@ async function performGroupFreshBooking(groupKey) {
     audience: "owner_admin",
     metadata: { guestName: group.guestName || "Guest" },
   });
+  await insertBookingSystemUpdate(
+    "booking_fresh_booking",
+    "Fresh Booking",
+    group,
+    `${group.trackCode || "Booking"} reset back to fresh booking state.`,
+  );
   return true;
 }
 
@@ -5897,6 +5969,13 @@ async function performGroupCheckOut(groupKey) {
     audience: "owner_admin",
     metadata: { guestName: group.guestName || "Guest" },
   });
+  await insertBookingSystemUpdate(
+    "booking_checked_out",
+    "Checked Out",
+    group,
+    `${group.trackCode || "Booking"} · ${group.guestName || "Guest"} checked out.`,
+    { serviceCount: uniqueServices.length },
+  );
   return true;
 }
 
@@ -6069,7 +6148,7 @@ function openBookingDetailsModal(groupKey) {
       ${(isOwnerOrAdminRole() && ["checked_in", "checked_out"].includes(lifecycleStatus)) ? `<button class="action-btn" type="button" data-booking-group-action="fresh-booking">Fresh Booking</button>` : ""}
       ${lifecycleStatus === "hold" ? `${getLifecycleBadgeMarkup(group)}` : ""}
       ${lifecycleStatus === "checked_out" ? `<span class="booking-tag tag-rejected">Checked Out</span>` : ""}
-      ${lifecycleStatus === "hold" && state.currentProfile?.role === "owner" ? `<button class="action-btn" type="button" data-booking-group-action="reactivate">Reactivate</button>` : ""}
+      ${lifecycleStatus === "hold" && state.currentProfile?.role === "owner" ? `<button class="action-btn action-btn-icon action-btn-icon-reactivate" type="button" data-booking-group-action="reactivate">Reactivate</button>` : ""}
       ${(hasCheckInWindowStarted(group) && lifecycleStatus === "booked") ? `<button class="action-btn" type="button" data-booking-group-action="hold">Hold Room</button>` : ""}
       ${isPendingGroupRemovalRequest(groupRequest)
         ? `<span class="booking-tag tag-pending">Pending Remove</span>`
@@ -6712,7 +6791,7 @@ function renderHoldBookings(bookings) {
               <span class="compact-label">Open Booking</span>
             </button>
             ${state.currentProfile?.role === "owner" ? `
-              <button class="secondary-btn compact-control" type="button" data-hold-reactivate="${group.key}" aria-label="Reactivate" title="Reactivate">
+              <button class="secondary-btn action-btn-icon action-btn-icon-reactivate compact-control" type="button" data-hold-reactivate="${group.key}" aria-label="Reactivate" title="Reactivate">
                 <span class="compact-label">Reactivate</span>
               </button>
             ` : ""}
