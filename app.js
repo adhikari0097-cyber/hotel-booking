@@ -112,8 +112,8 @@ const EXTRA_PERMISSION_DEFS = [
   },
   {
     key: "manage_pricing",
-    label: "Room Pricing",
-    note: "Open Room Fix and save room prices.",
+    label: "Settings Access",
+    note: "Open Settings and save room prices, notification access, room setup, and share settings.",
   },
   {
     key: "manage_accounts",
@@ -313,6 +313,12 @@ function applyAnalyticsPreset(presetKey) {
   analyticsDateFromInput.value = toDateInputValue(from);
   analyticsDateToInput.value = toDateInputValue(to);
   loadAnalytics();
+}
+
+function jumpToSettingsSection(sectionId) {
+  const target = document.getElementById(sectionId);
+  if (!target) return;
+  target.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function getDefaultBookingViewMode() {
@@ -590,6 +596,7 @@ const notificationPresetButtons = Array.from(document.querySelectorAll("[data-no
 const notificationRangeLabel = qs("#notification-range-label");
 const notificationTotalCount = qs("#notification-total-count");
 const notificationUnreadCount = qs("#notification-unread-count");
+const settingsJumpButtons = Array.from(document.querySelectorAll("[data-settings-jump]"));
 const requestModal = qs("#request-modal");
 const closeModalBtn = qs("#close-modal");
 const requestForm = qs("#request-form");
@@ -1637,6 +1644,23 @@ function moveRoomFixSection(fromKey, toKey) {
   };
 }
 
+async function getSavedRoomPricingSnapshot() {
+  const { data, error } = await state.supabase
+    .from(CONFIG.SUPABASE_PRICING_TABLE)
+    .select("room_type, pax, weekend_price")
+    .order("room_type", { ascending: true })
+    .order("pax", { ascending: true });
+
+  if (error) {
+    throw new Error(error.message || "Could not load current room prices.");
+  }
+
+  return new Map((data || []).map((row) => [
+    getRoomPricingKey(normalizeRoomGroup(row.room_type), Number(row.pax || 0)),
+    roundCurrency(Number(row.weekend_price || 0)),
+  ]));
+}
+
 async function roomHasSavedBookings(roomType, roomNumber) {
   const { data, error } = await state.supabase
     .from(CONFIG.SUPABASE_TABLE)
@@ -2244,6 +2268,7 @@ function renderPricingScreen() {
 
 async function saveRoomPricing() {
   if (!canManagePricing()) return;
+  const savedPricing = await getSavedRoomPricingSnapshot();
   const rows = ROOM_PRICING_DEFS.map((config) => {
     const pricing = getPricingConfig(config.roomType, config.pax);
     return {
@@ -2254,6 +2279,22 @@ async function saveRoomPricing() {
     };
   });
 
+  const changedRows = rows
+    .map((row) => {
+      const key = getRoomPricingKey(row.room_type, row.pax);
+      const previousPrice = roundCurrency(Number(savedPricing.get(key) || 0));
+      const nextPrice = roundCurrency(Number(row.weekend_price || 0));
+      if (previousPrice === nextPrice) return null;
+      const config = ROOM_PRICING_DEFS.find((item) => item.roomType === row.room_type && Number(item.pax) === Number(row.pax));
+      return {
+        key,
+        label: config?.label || `${row.room_type} · ${row.pax} Pax`,
+        previousPrice,
+        nextPrice,
+      };
+    })
+    .filter(Boolean);
+
   const { error } = await state.supabase.from(CONFIG.SUPABASE_PRICING_TABLE).upsert(rows, {
     onConflict: "room_type,pax",
   });
@@ -2263,8 +2304,23 @@ async function saveRoomPricing() {
   }
 
   state.pricingSchemaReady = true;
-  showToast("Room pricing updated.");
+  if (changedRows.length) {
+    const firstChange = changedRows[0];
+    await insertNotification({
+      eventType: "room_price_updated",
+      title: changedRows.length === 1 ? "Room Price Updated" : "Room Prices Updated",
+      message: changedRows.length === 1
+        ? `${firstChange.label} changed from ${formatMoney(firstChange.previousPrice)} to ${formatMoney(firstChange.nextPrice)}.`
+        : `${changedRows.length} room prices were changed in Settings.`,
+      audience: "owner_admin",
+      metadata: {
+        guestName: "Settings",
+        changes: changedRows,
+      },
+    });
+  }
   await loadRoomPricing();
+  return changedRows;
 }
 
 function renderPricingSummary() {
@@ -9082,6 +9138,11 @@ notificationPresetButtons.forEach((button) => {
     loadNotifications({ presetKey: button.dataset.notificationPreset, markVisibleRead: true });
   });
 });
+settingsJumpButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    jumpToSettingsSection(button.dataset.settingsJump);
+  });
+});
 refreshPricingBtn?.addEventListener("click", async () => {
   await loadRoomInventory();
   await loadServiceCatalog();
@@ -9097,11 +9158,12 @@ savePricingBtn?.addEventListener("click", async () => {
     await saveRoomPricing();
     await saveRuntimeSettings();
     await refreshLiveViews();
+    showToast("Settings saved.");
   } catch (error) {
     showToast(error.message, true);
   } finally {
     savePricingBtn.disabled = false;
-    savePricingBtn.textContent = "Save Room Fix";
+    savePricingBtn.textContent = "Save Settings";
   }
 });
 closeModalBtn.addEventListener("click", closeRequestModal);
