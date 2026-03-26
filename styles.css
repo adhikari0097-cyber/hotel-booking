@@ -3829,6 +3829,16 @@ h4 {
   line-height: 1.55;
 }
 
+.export-message-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.export-message-stack textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+
 .export-field-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);

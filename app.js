@@ -75,10 +75,17 @@ const BOOKING_VIEW_FIELD_DEFS = [
 const ROOM_FIX_SECTION_DEFS = [
   { key: "pdf", label: "PDF Export" },
   { key: "whatsapp", label: "WhatsApp Message" },
+  { key: "shareMessages", label: "Customer Share Messages" },
   { key: "bookingView", label: "View By Date Booking Group" },
   { key: "notifications", label: "Notifications" },
   { key: "systemUpdates", label: "System Updates" },
 ];
+
+const SHARE_COPY_DEFAULTS = {
+  rebookingNote: "For another booking, please inform us at least 3 days in advance.",
+  contactNote: "For more information, call or WhatsApp +94719707597.",
+  pdfKeepNote: "Please keep this PDF safe for your booking record.",
+};
 
 const NOTIFICATION_ROLE_DEFS = [
   { key: "owner", label: "Owner", note: "Owner can open the Notifications page and see all booking activity." },
@@ -166,6 +173,9 @@ const state = {
     bookingViewFields: BOOKING_VIEW_FIELD_DEFS.map((item) => item.key),
     notificationRoles: ["owner", "admin"],
     systemUpdateRoles: ["owner", "admin"],
+    shareRebookingNote: SHARE_COPY_DEFAULTS.rebookingNote,
+    shareContactNote: SHARE_COPY_DEFAULTS.contactNote,
+    sharePdfKeepNote: SHARE_COPY_DEFAULTS.pdfKeepNote,
   },
   notifications: [],
   recentNotifications: [],
@@ -1001,6 +1011,14 @@ function normalizeNotificationRoleList(value, fallbackToDefaults = true) {
   return normalized.length ? normalized : (fallbackToDefaults ? ["owner", "admin"] : []);
 }
 
+function getRuntimeShareMessages() {
+  return {
+    rebookingNote: String(state.runtimeSettings?.shareRebookingNote || SHARE_COPY_DEFAULTS.rebookingNote).trim() || SHARE_COPY_DEFAULTS.rebookingNote,
+    contactNote: String(state.runtimeSettings?.shareContactNote || SHARE_COPY_DEFAULTS.contactNote).trim() || SHARE_COPY_DEFAULTS.contactNote,
+    pdfKeepNote: String(state.runtimeSettings?.sharePdfKeepNote || SHARE_COPY_DEFAULTS.pdfKeepNote).trim() || SHARE_COPY_DEFAULTS.pdfKeepNote,
+  };
+}
+
 function normalizeSystemUpdateRoleList(value, fallbackToDefaults = true) {
   const validKeys = new Set(NOTIFICATION_ROLE_DEFS.map((item) => item.key));
   const source = Array.isArray(value)
@@ -1647,6 +1665,9 @@ async function loadRuntimeSettings() {
       roomFixSectionOrder: normalizeRoomFixSectionOrder(data?.room_fix_section_order),
       notificationRoles: normalizeNotificationRoleList(data?.notification_roles),
       systemUpdateRoles: normalizeSystemUpdateRoleList(data?.system_update_roles),
+      shareRebookingNote: data?.share_rebooking_note || SHARE_COPY_DEFAULTS.rebookingNote,
+      shareContactNote: data?.share_contact_note || SHARE_COPY_DEFAULTS.contactNote,
+      sharePdfKeepNote: data?.share_pdf_keep_note || SHARE_COPY_DEFAULTS.pdfKeepNote,
     };
   } catch (error) {
     state.runtimeSettings = {
@@ -1658,6 +1679,9 @@ async function loadRuntimeSettings() {
       roomFixSectionOrder: normalizeRoomFixSectionOrder(null),
       notificationRoles: normalizeNotificationRoleList(null),
       systemUpdateRoles: normalizeSystemUpdateRoleList(null),
+      shareRebookingNote: SHARE_COPY_DEFAULTS.rebookingNote,
+      shareContactNote: SHARE_COPY_DEFAULTS.contactNote,
+      sharePdfKeepNote: SHARE_COPY_DEFAULTS.pdfKeepNote,
     };
     if (canManagePricing()) {
       showToast("Booking runtime settings table is not ready. Run the updated Supabase schema.sql.", true);
@@ -1677,6 +1701,9 @@ async function saveRuntimeSettings() {
     notificationRoles: normalizeNotificationRoleList(state.runtimeSettings?.notificationRoles),
     systemUpdateRoles: normalizeSystemUpdateRoleList(state.runtimeSettings?.systemUpdateRoles),
     bookingViewFields: normalizeBookingViewFieldList(state.runtimeSettings?.bookingViewFields),
+    shareRebookingNote: String(state.runtimeSettings?.shareRebookingNote || SHARE_COPY_DEFAULTS.rebookingNote),
+    shareContactNote: String(state.runtimeSettings?.shareContactNote || SHARE_COPY_DEFAULTS.contactNote),
+    sharePdfKeepNote: String(state.runtimeSettings?.sharePdfKeepNote || SHARE_COPY_DEFAULTS.pdfKeepNote),
   };
   const row = {
     id: true,
@@ -1688,6 +1715,9 @@ async function saveRuntimeSettings() {
     room_fix_section_order: normalizeRoomFixSectionOrder(state.runtimeSettings?.roomFixSectionOrder),
     notification_roles: normalizeNotificationRoleList(state.runtimeSettings?.notificationRoles),
     system_update_roles: normalizeSystemUpdateRoleList(state.runtimeSettings?.systemUpdateRoles),
+    share_rebooking_note: String(state.runtimeSettings?.shareRebookingNote || SHARE_COPY_DEFAULTS.rebookingNote).trim() || SHARE_COPY_DEFAULTS.rebookingNote,
+    share_contact_note: String(state.runtimeSettings?.shareContactNote || SHARE_COPY_DEFAULTS.contactNote).trim() || SHARE_COPY_DEFAULTS.contactNote,
+    share_pdf_keep_note: String(state.runtimeSettings?.sharePdfKeepNote || SHARE_COPY_DEFAULTS.pdfKeepNote).trim() || SHARE_COPY_DEFAULTS.pdfKeepNote,
   };
   const { error } = await state.supabase
     .from(CONFIG.SUPABASE_RUNTIME_SETTINGS_TABLE)
@@ -1704,6 +1734,9 @@ async function saveRuntimeSettings() {
     roomFixSectionOrder: normalizeRoomFixSectionOrder(row.room_fix_section_order),
     notificationRoles: normalizeNotificationRoleList(row.notification_roles),
     systemUpdateRoles: normalizeSystemUpdateRoleList(row.system_update_roles),
+    shareRebookingNote: row.share_rebooking_note,
+    shareContactNote: row.share_contact_note,
+    sharePdfKeepNote: row.share_pdf_keep_note,
   };
   const changedBits = [];
   if (previousSettings.checkInTime !== state.runtimeSettings.checkInTime) changedBits.push(`Check-In ${previousSettings.checkInTime} -> ${state.runtimeSettings.checkInTime}`);
@@ -1711,6 +1744,9 @@ async function saveRuntimeSettings() {
   if (previousSettings.notificationRoles.join("|") !== normalizeNotificationRoleList(state.runtimeSettings.notificationRoles).join("|")) changedBits.push("Notification Access");
   if (previousSettings.systemUpdateRoles.join("|") !== normalizeSystemUpdateRoleList(state.runtimeSettings.systemUpdateRoles).join("|")) changedBits.push("System Updates Access");
   if (previousSettings.bookingViewFields.join("|") !== normalizeBookingViewFieldList(state.runtimeSettings.bookingViewFields).join("|")) changedBits.push("Booking View Fields");
+  if (previousSettings.shareRebookingNote !== state.runtimeSettings.shareRebookingNote) changedBits.push("Share Rebooking Note");
+  if (previousSettings.shareContactNote !== state.runtimeSettings.shareContactNote) changedBits.push("Share Contact Note");
+  if (previousSettings.sharePdfKeepNote !== state.runtimeSettings.sharePdfKeepNote) changedBits.push("PDF Keep Note");
   if (changedBits.length) {
     await insertSystemUpdate({
       updateType: "runtime_settings_updated",
@@ -2151,6 +2187,43 @@ function renderPricingScreen() {
     });
   });
 
+  const shareMessagesCard = document.createElement("article");
+  shareMessagesCard.className = "pricing-card room-fix-panel-card";
+  shareMessagesCard.setAttribute("data-room-fix-panel", "shareMessages");
+  shareMessagesCard.setAttribute("draggable", "true");
+  shareMessagesCard.innerHTML = `
+    <div class="pricing-card-head">
+      <button class="room-fix-drag-handle" type="button" aria-label="Drag panel to reorder" title="Drag panel to reorder">⋮⋮</button>
+      <div>
+        <h4>Customer Share Messages</h4>
+        <p>These notes appear in advance-payment WhatsApp and PDF sharing so the customer gets clear next steps.</p>
+      </div>
+    </div>
+    <div class="export-message-stack">
+      <label class="field compact-field">
+        <span>Rebooking Reminder</span>
+        <textarea data-share-message="shareRebookingNote" rows="3">${escapeHtml(state.runtimeSettings?.shareRebookingNote || SHARE_COPY_DEFAULTS.rebookingNote)}</textarea>
+      </label>
+      <label class="field compact-field">
+        <span>Contact Line</span>
+        <textarea data-share-message="shareContactNote" rows="3">${escapeHtml(state.runtimeSettings?.shareContactNote || SHARE_COPY_DEFAULTS.contactNote)}</textarea>
+      </label>
+      <label class="field compact-field">
+        <span>PDF Keep Note</span>
+        <textarea data-share-message="sharePdfKeepNote" rows="3">${escapeHtml(state.runtimeSettings?.sharePdfKeepNote || SHARE_COPY_DEFAULTS.pdfKeepNote)}</textarea>
+      </label>
+    </div>
+  `;
+
+  shareMessagesCard.querySelectorAll("[data-share-message]").forEach((input) => {
+    input.addEventListener("input", () => {
+      state.runtimeSettings = {
+        ...state.runtimeSettings,
+        [input.dataset.shareMessage]: input.value,
+      };
+    });
+  });
+
   const bookingViewCard = document.createElement("article");
   bookingViewCard.className = "pricing-card room-fix-panel-card";
   bookingViewCard.setAttribute("data-room-fix-panel", "bookingView");
@@ -2265,6 +2338,7 @@ function renderPricingScreen() {
   const roomFixPanels = new Map([
     ["pdf", pdfCard],
     ["whatsapp", whatsappCard],
+    ["shareMessages", shareMessagesCard],
     ["bookingView", bookingViewCard],
     ["notifications", notificationAccessCard],
     ["systemUpdates", systemUpdateAccessCard],
@@ -5252,6 +5326,7 @@ function getReservationShareMeta(group) {
 
 function buildBookingPdfMarkup(group) {
   const shareMeta = getReservationShareMeta(group);
+  const shareMessages = getRuntimeShareMessages();
   const advanceInfo = shareMeta.advanceInfo;
   const customPriceItems = getGroupCustomPriceEntries(group.bookings);
   const customPriceTotal = getGroupCustomPriceTotal(group.bookings);
@@ -5482,6 +5557,17 @@ function buildBookingPdfMarkup(group) {
                 <div class="pdf-notes">${escapeHtml(groupNotes || "-")}</div>
               </section>
             ` : ""}
+            <section class="pdf-section">
+              <div class="pdf-section-head">
+                <h3>More Information</h3>
+                <span>Customer Notice</span>
+              </div>
+              <div class="pdf-note-list">
+                <div class="pdf-note-item">${escapeHtml(shareMessages.rebookingNote)}</div>
+                <div class="pdf-note-item">${escapeHtml(shareMessages.contactNote)}</div>
+                <div class="pdf-note-item">${escapeHtml(shareMessages.pdfKeepNote)}</div>
+              </div>
+            </section>
             ${hasField("servicePrices") ? `
               <section class="pdf-section">
                 <div class="pdf-section-head">
@@ -5576,6 +5662,7 @@ function normalizeWhatsappPhone(value) {
 
 function buildReservationWhatsappMessage(group) {
   const shareMeta = getReservationShareMeta(group);
+  const shareMessages = getRuntimeShareMessages();
   const customerName = group.guestName || group.bookings?.[0]?.guestName || "Guest";
   const groupNotes = getGroupOtherNotes(group.bookings);
   const advanceInfo = shareMeta.advanceInfo;
@@ -5615,6 +5702,8 @@ function buildReservationWhatsappMessage(group) {
     `Status: ${shareMeta.badgeLabel}`,
     `${shareMeta.heroNote}`,
     `${shareMeta.thankYouMessage}`,
+    `${shareMessages.rebookingNote}`,
+    `${shareMessages.contactNote}`,
     ``,
     ...(hasField("phone") ? [`Phone: ${group.phone || "-"}`] : []),
     ...(hasField("bookedBy") ? [`Booked By: ${group.bookings[0]?.createdByName || "-"}`] : []),

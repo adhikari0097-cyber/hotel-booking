@@ -174,9 +174,12 @@ create table if not exists public.booking_runtime_settings (
   pdf_fields jsonb not null default '["trackCode","customer","phone","bookedBy","stay","notes","totalPax","rooms","totalPrice","customPrice","lifecycle","advance","advanceAmount","balance","checkInAt","checkOutAt","exportedAt","services","servicePrices","customPriceEntries","roomDetails"]'::jsonb,
   whatsapp_fields jsonb not null default '["trackCode","customer","phone","bookedBy","stay","notes","totalPax","rooms","totalPrice","customPrice","lifecycle","advance","advanceAmount","balance","checkInAt","checkOutAt","exportedAt","services","servicePrices","customPriceEntries","roomDetails"]'::jsonb,
   booking_view_fields jsonb not null default '["stay","rooms","totalPax","lifecycle","balance","trackCode","customer","bookedBy","phone","checkIn","checkOut","status","statusNote","checkInAt","checkOutAt","totalPrice","advance","customPrice","advanceAmount"]'::jsonb,
-  room_fix_section_order jsonb not null default '["pdf","whatsapp","bookingView","notifications","systemUpdates"]'::jsonb,
+  room_fix_section_order jsonb not null default '["pdf","whatsapp","shareMessages","bookingView","notifications","systemUpdates"]'::jsonb,
   notification_roles jsonb not null default '["owner","admin"]'::jsonb,
   system_update_roles jsonb not null default '["owner","admin"]'::jsonb,
+  share_rebooking_note text not null default 'For another booking, please inform us at least 3 days in advance.',
+  share_contact_note text not null default 'For more information, call or WhatsApp +94719707597.',
+  share_pdf_keep_note text not null default 'Please keep this PDF safe for your booking record.',
   updated_at timestamptz not null default now(),
   constraint booking_runtime_settings_singleton check (id = true)
 );
@@ -194,7 +197,7 @@ alter table public.booking_runtime_settings
   add column if not exists room_fix_section_order jsonb not null default '["pdf","whatsapp","bookingView"]'::jsonb;
 
 alter table public.booking_runtime_settings
-  alter column room_fix_section_order set default '["pdf","whatsapp","bookingView","notifications","systemUpdates"]'::jsonb;
+  alter column room_fix_section_order set default '["pdf","whatsapp","shareMessages","bookingView","notifications","systemUpdates"]'::jsonb;
 
 alter table public.booking_runtime_settings
   add column if not exists notification_roles jsonb not null default '["owner","admin"]'::jsonb;
@@ -202,13 +205,25 @@ alter table public.booking_runtime_settings
 alter table public.booking_runtime_settings
   add column if not exists system_update_roles jsonb not null default '["owner","admin"]'::jsonb;
 
-insert into public.booking_runtime_settings (id, check_in_time, check_out_time, pdf_fields, whatsapp_fields)
+alter table public.booking_runtime_settings
+  add column if not exists share_rebooking_note text not null default 'For another booking, please inform us at least 3 days in advance.';
+
+alter table public.booking_runtime_settings
+  add column if not exists share_contact_note text not null default 'For more information, call or WhatsApp +94719707597.';
+
+alter table public.booking_runtime_settings
+  add column if not exists share_pdf_keep_note text not null default 'Please keep this PDF safe for your booking record.';
+
+insert into public.booking_runtime_settings (id, check_in_time, check_out_time, pdf_fields, whatsapp_fields, share_rebooking_note, share_contact_note, share_pdf_keep_note)
 values (
   true,
   '14:00',
   '11:00',
   '["trackCode","customer","phone","bookedBy","stay","notes","totalPax","rooms","totalPrice","customPrice","lifecycle","advance","advanceAmount","balance","checkInAt","checkOutAt","exportedAt","services","servicePrices","customPriceEntries","roomDetails"]'::jsonb,
-  '["trackCode","customer","phone","bookedBy","stay","notes","totalPax","rooms","totalPrice","customPrice","lifecycle","advance","advanceAmount","balance","checkInAt","checkOutAt","exportedAt","services","servicePrices","customPriceEntries","roomDetails"]'::jsonb
+  '["trackCode","customer","phone","bookedBy","stay","notes","totalPax","rooms","totalPrice","customPrice","lifecycle","advance","advanceAmount","balance","checkInAt","checkOutAt","exportedAt","services","servicePrices","customPriceEntries","roomDetails"]'::jsonb,
+  'For another booking, please inform us at least 3 days in advance.',
+  'For more information, call or WhatsApp +94719707597.',
+  'Please keep this PDF safe for your booking record.'
 )
 on conflict (id) do nothing;
 
@@ -222,9 +237,13 @@ where booking_view_fields is null;
 update public.booking_runtime_settings
 set room_fix_section_order = coalesce(
   room_fix_section_order,
-  '["pdf","whatsapp","bookingView","notifications","systemUpdates"]'::jsonb
+  '["pdf","whatsapp","shareMessages","bookingView","notifications","systemUpdates"]'::jsonb
 )
 where room_fix_section_order is null;
+
+update public.booking_runtime_settings
+set room_fix_section_order = room_fix_section_order || '["shareMessages"]'::jsonb
+where not coalesce(room_fix_section_order, '[]'::jsonb) @> '["shareMessages"]'::jsonb;
 
 update public.booking_runtime_settings
 set room_fix_section_order = room_fix_section_order || '["notifications"]'::jsonb
