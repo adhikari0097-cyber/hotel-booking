@@ -6334,11 +6334,13 @@ function buildReservationWhatsappMessage(group) {
   const servicePricingRows = getServicePricingRows(group.bookings);
   const enabledFields = normalizeExportFieldList(state.runtimeSettings?.whatsappFields);
   const hasField = (fieldKey) => enabledFields.includes(fieldKey);
+  const bullet = (label, value) => `• ${label}: *${value}*`;
+  const plainBullet = (value) => `• ${value}`;
   const paymentLines = [
-    hasField("totalPrice") ? `Total: ${formatMoney(group.totalPrice || 0)}` : "",
-    hasField("advanceAmount") ? `Advance Paid: ${formatMoney(advanceInfo.amount || 0)}` : "",
-    hasField("balance") ? `Balance: ${formatMoney(balanceAmount)}` : "",
-    hasField("customPrice") ? `Custom Price: ${formatMoney(customPriceTotal)}` : "",
+    hasField("totalPrice") ? bullet("Total Amount", formatMoney(group.totalPrice || 0)) : "",
+    hasField("advanceAmount") ? bullet("Advance Paid", formatMoney(advanceInfo.amount || 0)) : "",
+    hasField("balance") ? bullet("Balance", formatMoney(balanceAmount)) : "",
+    hasField("customPrice") ? bullet("Custom Price", formatMoney(customPriceTotal)) : "",
   ].filter(Boolean);
   const roomLines = group.bookings.map((booking) => {
     const noteMeta = parseBookingNotes(booking.notes);
@@ -6355,37 +6357,59 @@ function buildReservationWhatsappMessage(group) {
     ].filter(Boolean).join(" | ");
   });
 
+  const bookingInfoLines = [
+    bullet("Customer Name", customerName),
+    ...(hasField("trackCode") ? [bullet("Track Code", group.trackCode || "-")] : []),
+    bullet("Reservation Status", shareMeta.badgeLabel),
+    ...(hasField("phone") ? [bullet("Phone Number", group.phone || "-")] : []),
+    ...(hasField("bookedBy") ? [bullet("Booked By", group.bookings[0]?.createdByName || "-")] : []),
+    ...(hasField("stay") ? [bullet("Stay", `${group.checkIn || "-"} -> ${group.checkOut || "-"} · ${shareMeta.stayNights} night${shareMeta.stayNights === 1 ? "" : "s"}`)] : []),
+    ...(hasField("rooms") ? [bullet("Rooms", String(group.bookings.length || 0))] : []),
+    ...(hasField("totalPax") ? [bullet("Total Pax", String(group.totalGuests || 0))] : []),
+    ...(hasField("lifecycle") ? [bullet("Lifecycle", shareMeta.lifecycleLabel)] : []),
+    ...(hasField("advance") ? [bullet("Advance Status", advanceInfo.label)] : []),
+    ...(hasField("checkInAt") ? [bullet("Checked In At", group.bookings[0]?.checkedInAt ? new Date(group.bookings[0].checkedInAt).toLocaleString("en-GB") : "-")] : []),
+    ...(hasField("checkOutAt") ? [bullet("Checked Out At", group.bookings[0]?.checkedOutAt ? new Date(group.bookings[0].checkedOutAt).toLocaleString("en-GB") : "-")] : []),
+  ];
+
+  const serviceLines = hasField("servicePrices") && servicePricingRows.length
+    ? servicePricingRows.map((row) => bullet(row.service, row.amount > 0 ? formatMoney(row.amount) : "-"))
+    : [];
+  const customEntryLines = hasField("customPriceEntries") && customPriceItems.length
+    ? customPriceItems.map((payment, index) => plainBullet(`${index + 1}. ${formatMoney(payment.amount || 0)}${payment.note ? ` | ${payment.note}` : ""}`))
+    : [];
+  const selectedServicesLines = hasField("services") && getGroupServices(group.bookings).length
+    ? getGroupServices(group.bookings).map((service) => plainBullet(service))
+    : [];
+  const roomDetailLines = hasField("roomDetails")
+    ? roomLines.map((line, index) => plainBullet(`${index + 1}. ${line}`))
+    : [];
+  const moreInfoLines = [
+    plainBullet(shareMessages.rebookingNote),
+    plainBullet(shareMessages.contactNote),
+    plainBullet(shareMessages.pdfKeepNote),
+  ];
+
   return [
-    `MUTHUGALA RESORT`,
-    `${shareMeta.documentLabel}`,
+    `*MUTHUGALA RESORT*`,
+    `*${shareMeta.documentLabel}*`,
+    ...(hasField("trackCode") ? [`_${group.trackCode || "-"}_`] : []),
     ``,
-    `Customer: ${customerName}`,
-    ...(hasField("trackCode") ? [`Track Code: ${group.trackCode || "-"}`] : []),
-    `Status: ${shareMeta.badgeLabel}`,
+    `Dear *${customerName}*,`,
     `${shareMeta.heroNote}`,
     `${shareMeta.thankYouMessage}`,
-    `${shareMessages.rebookingNote}`,
-    `${shareMessages.contactNote}`,
     ``,
-    ...(hasField("phone") ? [`Phone: ${group.phone || "-"}`] : []),
-    ...(hasField("bookedBy") ? [`Booked By: ${group.bookings[0]?.createdByName || "-"}`] : []),
-    ...(hasField("stay") ? [`Stay: ${group.checkIn || "-"} -> ${group.checkOut || "-"} · ${shareMeta.stayNights} night${shareMeta.stayNights === 1 ? "" : "s"}`] : []),
-    ...(hasField("rooms") ? [`Rooms: ${group.bookings.length || 0}`] : []),
-    ...(hasField("totalPax") ? [`Total Pax: ${group.totalGuests || 0}`] : []),
-    ...(hasField("lifecycle") ? [`Lifecycle: ${shareMeta.lifecycleLabel}`] : []),
-    ...(hasField("advance") ? [`Advance Status: ${advanceInfo.label}`] : []),
-    ...(hasField("checkInAt") ? [`Check In At: ${group.bookings[0]?.checkedInAt ? new Date(group.bookings[0].checkedInAt).toLocaleString("en-GB") : "-"}`] : []),
-    ...(hasField("checkOutAt") ? [`Check Out At: ${group.bookings[0]?.checkedOutAt ? new Date(group.bookings[0].checkedOutAt).toLocaleString("en-GB") : "-"}`] : []),
-    ...(paymentLines.length ? ["", "Payment Summary", ...paymentLines] : []),
-    ...(hasField("servicePrices") && servicePricingRows.length
-      ? ["", "Service Prices:", ...servicePricingRows.map((row) => `${row.service}: ${row.amount > 0 ? formatMoney(row.amount) : "-"}`)]
-      : []),
-    ...(hasField("customPriceEntries") && customPriceItems.length
-      ? ["", "Custom Price Entries:", ...customPriceItems.map((payment, index) => `${index + 1}. ${formatMoney(payment.amount || 0)}${payment.note ? ` | ${payment.note}` : ""}`)]
-      : []),
-    ...(hasField("services") && getGroupServices(group.bookings).length ? ["", `Services: ${getGroupServices(group.bookings).join(", ")}`] : []),
-    ...(hasField("notes") ? ["", `Notes: ${groupNotes || "-"}`] : []),
-    ...(hasField("roomDetails") ? ["", `Room Details:`, ...roomLines.map((line, index) => `${index + 1}. ${line}`)] : []),
+    `*BOOKING INFORMATION*`,
+    ...bookingInfoLines,
+    ...(paymentLines.length ? [``, `*PAYMENT SUMMARY*`, ...paymentLines] : []),
+    ...(roomDetailLines.length ? [``, `*ROOM BREAKDOWN*`, ...roomDetailLines] : []),
+    ...(serviceLines.length ? [``, `*SERVICE PRICES*`, ...serviceLines] : []),
+    ...(customEntryLines.length ? [``, `*CUSTOM PRICE ENTRIES*`, ...customEntryLines] : []),
+    ...(selectedServicesLines.length ? [``, `*SELECTED SERVICES*`, ...selectedServicesLines] : []),
+    ...(hasField("notes") ? [``, `*NOTES*`, plainBullet(groupNotes || "-")] : []),
+    ``,
+    `*MORE INFORMATION*`,
+    ...moreInfoLines,
   ].join("\n");
 }
 
