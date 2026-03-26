@@ -12,6 +12,7 @@ create table if not exists public.bookings (
   room_type text not null,
   room_type_label text not null,
   room_number integer not null check (room_number > 0),
+  ac_enabled boolean not null default true,
   rooms_needed integer not null default 1 check (rooms_needed > 0),
   pricing_pax integer not null default 0,
   weekend_rate numeric(12,2) not null default 0,
@@ -35,6 +36,7 @@ create table if not exists public.bookings (
 
 alter table public.bookings add column if not exists track_code text;
 alter table public.bookings add column if not exists created_by_name text not null default '';
+alter table public.bookings add column if not exists ac_enabled boolean not null default true;
 alter table public.bookings add column if not exists pricing_pax integer not null default 0;
 alter table public.bookings add column if not exists weekend_rate numeric(12,2) not null default 0;
 alter table public.bookings add column if not exists weekday_rate numeric(12,2) not null default 0;
@@ -86,26 +88,48 @@ create table if not exists public.room_pricing (
   id uuid primary key default gen_random_uuid(),
   room_type text not null check (room_type in ('kitchen', 'normal', 'driver')),
   pax integer not null default 0,
+  ac_enabled boolean not null default true,
   weekend_price numeric(12,2) not null default 0 check (weekend_price >= 0),
   weekday_percentage numeric(8,2) not null default 100 check (weekday_percentage >= 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint room_pricing_pax_check check (
     (room_type = 'normal' and pax between 1 and 4)
-    or (room_type in ('kitchen', 'driver') and pax = 0)
+    or (room_type in ('kitchen', 'driver') and pax = 0 and ac_enabled = true)
   ),
-  constraint room_pricing_unique unique (room_type, pax)
+  constraint room_pricing_unique unique (room_type, pax, ac_enabled)
 );
 
-insert into public.room_pricing (room_type, pax, weekend_price, weekday_percentage)
+alter table public.room_pricing add column if not exists ac_enabled boolean not null default true;
+update public.room_pricing
+set ac_enabled = true
+where ac_enabled is distinct from true and room_type in ('kitchen', 'driver');
+
+alter table public.room_pricing drop constraint if exists room_pricing_pax_check;
+alter table public.room_pricing
+  add constraint room_pricing_pax_check
+  check (
+    (room_type = 'normal' and pax between 1 and 4)
+    or (room_type in ('kitchen', 'driver') and pax = 0 and ac_enabled = true)
+  );
+
+alter table public.room_pricing drop constraint if exists room_pricing_unique;
+create unique index if not exists room_pricing_unique_idx
+  on public.room_pricing (room_type, pax, ac_enabled);
+
+insert into public.room_pricing (room_type, pax, ac_enabled, weekend_price, weekday_percentage)
 values
-  ('kitchen', 0, 0, 100),
-  ('driver', 0, 0, 100),
-  ('normal', 1, 0, 100),
-  ('normal', 2, 0, 100),
-  ('normal', 3, 0, 100),
-  ('normal', 4, 0, 100)
-on conflict (room_type, pax) do nothing;
+  ('kitchen', 0, true, 0, 100),
+  ('driver', 0, true, 0, 100),
+  ('normal', 1, true, 0, 100),
+  ('normal', 1, false, 0, 100),
+  ('normal', 2, true, 0, 100),
+  ('normal', 2, false, 0, 100),
+  ('normal', 3, true, 0, 100),
+  ('normal', 3, false, 0, 100),
+  ('normal', 4, true, 0, 100),
+  ('normal', 4, false, 0, 100)
+on conflict (room_type, pax, ac_enabled) do nothing;
 
 create table if not exists public.room_inventory (
   id uuid primary key default gen_random_uuid(),

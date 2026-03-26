@@ -99,13 +99,22 @@ const ROOM_DEFS = [
   { type: "driver", label: "Driver Room", count: 1, maxPax: 4 },
 ];
 
+const NORMAL_ROOM_CLIMATE_OPTIONS = [
+  { key: "ac", label: "A/C Room", acEnabled: true },
+  { key: "non_ac", label: "Non A/C Room", acEnabled: false },
+];
+
 const ROOM_PRICING_DEFS = [
-  { roomType: "kitchen", pax: 0, label: "Kitchen Room", note: "Kitchen room uses one fixed price. Pax does not change the rate." },
-  { roomType: "driver", pax: 0, label: "Driver Room", note: "Driver room uses one fixed price." },
-  { roomType: "normal", pax: 1, label: "Normal Room · 1 Pax", note: "Fixed room price for 1 guest." },
-  { roomType: "normal", pax: 2, label: "Normal Room · 2 Pax", note: "Fixed room price for 2 guests." },
-  { roomType: "normal", pax: 3, label: "Normal Room · 3 Pax", note: "Fixed room price for 3 guests." },
-  { roomType: "normal", pax: 4, label: "Normal Room · 4 Pax", note: "Fixed room price for 4 guests." },
+  { roomType: "kitchen", pax: 0, acEnabled: true, label: "Kitchen Room", note: "Kitchen room uses one fixed price. Pax does not change the rate." },
+  { roomType: "driver", pax: 0, acEnabled: true, label: "Driver Room", note: "Driver room uses one fixed price." },
+  { roomType: "normal", pax: 1, acEnabled: true, label: "Normal Room · 1 Pax · A/C", note: "Fixed room price for 1 guest with A/C." },
+  { roomType: "normal", pax: 1, acEnabled: false, label: "Normal Room · 1 Pax · Non A/C", note: "Fixed room price for 1 guest without A/C." },
+  { roomType: "normal", pax: 2, acEnabled: true, label: "Normal Room · 2 Pax · A/C", note: "Fixed room price for 2 guests with A/C." },
+  { roomType: "normal", pax: 2, acEnabled: false, label: "Normal Room · 2 Pax · Non A/C", note: "Fixed room price for 2 guests without A/C." },
+  { roomType: "normal", pax: 3, acEnabled: true, label: "Normal Room · 3 Pax · A/C", note: "Fixed room price for 3 guests with A/C." },
+  { roomType: "normal", pax: 3, acEnabled: false, label: "Normal Room · 3 Pax · Non A/C", note: "Fixed room price for 3 guests without A/C." },
+  { roomType: "normal", pax: 4, acEnabled: true, label: "Normal Room · 4 Pax · A/C", note: "Fixed room price for 4 guests with A/C." },
+  { roomType: "normal", pax: 4, acEnabled: false, label: "Normal Room · 4 Pax · Non A/C", note: "Fixed room price for 4 guests without A/C." },
 ];
 
 const EXTRA_PERMISSION_DEFS = [
@@ -1215,21 +1224,43 @@ function getGroupOtherNotes(bookings = []) {
   return Array.from(new Set(notes)).join(" | ");
 }
 
-function getRoomPricingKey(roomType, pax = 0) {
-  return `${roomType}-${Number(pax || 0)}`;
+function normalizeAcEnabled(roomType, value = true) {
+  if (normalizeRoomGroup(roomType) !== "normal") return true;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "false" || normalized === "0" || normalized === "off" || normalized === "non_ac") return false;
+    if (normalized === "true" || normalized === "1" || normalized === "on" || normalized === "ac") return true;
+  }
+  return value !== false;
+}
+
+function getRoomClimateLabel(roomType, acEnabled = true) {
+  if (normalizeRoomGroup(roomType) !== "normal") return "";
+  return normalizeAcEnabled(roomType, acEnabled) ? "A/C Room" : "Non A/C Room";
+}
+
+function getRoomPricingKey(roomType, pax = 0, acEnabled = true) {
+  const normalizedType = normalizeRoomGroup(roomType);
+  const normalizedAc = normalizeAcEnabled(normalizedType, acEnabled);
+  return `${normalizedType}-${Number(pax || 0)}-${normalizedAc ? "ac" : "non-ac"}`;
 }
 
 function getDefaultRoomPricingEntries() {
   return ROOM_PRICING_DEFS.map((item) => ({
     roomType: item.roomType,
     pax: item.pax,
+    acEnabled: normalizeAcEnabled(item.roomType, item.acEnabled),
     weekendPrice: 0,
     weekdayPercentage: 100,
   }));
 }
 
-function getRoomPricingLabel(roomType, pax = 0) {
-  return ROOM_PRICING_DEFS.find((item) => item.roomType === roomType && Number(item.pax) === Number(pax))?.label || roomType;
+function getRoomPricingLabel(roomType, pax = 0, acEnabled = true) {
+  return ROOM_PRICING_DEFS.find(
+    (item) => item.roomType === normalizeRoomGroup(roomType)
+      && Number(item.pax) === Number(pax)
+      && normalizeAcEnabled(item.roomType, item.acEnabled) === normalizeAcEnabled(roomType, acEnabled),
+  )?.label || roomType;
 }
 
 function getDefaultRoomInventoryEntries() {
@@ -1312,18 +1343,19 @@ function getNextRoomNumberForType(roomType) {
 
 function setDefaultRoomPricingState() {
   state.roomPricing = new Map(
-    getDefaultRoomPricingEntries().map((item) => [getRoomPricingKey(item.roomType, item.pax), item])
+    getDefaultRoomPricingEntries().map((item) => [getRoomPricingKey(item.roomType, item.pax, item.acEnabled), item])
   );
 }
 
 function hydrateRoomPricing(rows = []) {
   const merged = new Map(
-    getDefaultRoomPricingEntries().map((item) => [getRoomPricingKey(item.roomType, item.pax), item])
+    getDefaultRoomPricingEntries().map((item) => [getRoomPricingKey(item.roomType, item.pax, item.acEnabled), item])
   );
   rows.forEach((row) => {
-    merged.set(getRoomPricingKey(row.room_type, row.pax), {
-      roomType: row.room_type,
+    merged.set(getRoomPricingKey(row.room_type, row.pax, row.ac_enabled), {
+      roomType: normalizeRoomGroup(row.room_type),
       pax: Number(row.pax || 0),
+      acEnabled: normalizeAcEnabled(row.room_type, row.ac_enabled),
       weekendPrice: Number(row.weekend_price || 0),
       weekdayPercentage: Number(row.weekday_percentage || 100),
     });
@@ -1331,10 +1363,11 @@ function hydrateRoomPricing(rows = []) {
   return merged;
 }
 
-function getPricingConfig(roomType, pax = 0) {
-  return state.roomPricing.get(getRoomPricingKey(roomType, pax)) || {
+function getPricingConfig(roomType, pax = 0, acEnabled = true) {
+  return state.roomPricing.get(getRoomPricingKey(roomType, pax, acEnabled)) || {
     roomType,
     pax: Number(pax || 0),
+    acEnabled: normalizeAcEnabled(roomType, acEnabled),
     weekendPrice: 0,
     weekdayPercentage: 100,
   };
@@ -1405,9 +1438,17 @@ function setOfferSelection(options, customField, customInput, percentage = 0) {
   syncOfferInputState(options, customField, customInput);
 }
 
-function computeBookingPrice({ checkIn, checkOut, roomType, guests, weekendRateOverride = null, weekdayRateOverride = null }) {
+function computeBookingPrice({
+  checkIn,
+  checkOut,
+  roomType,
+  guests,
+  acEnabled = true,
+  weekendRateOverride = null,
+  weekdayRateOverride = null,
+}) {
   const pricingPax = getPricingPaxTier(roomType, guests);
-  const pricingRule = getPricingConfig(roomType, pricingPax);
+  const pricingRule = getPricingConfig(roomType, pricingPax, acEnabled);
   const defaultWeekendRate = roundCurrency(pricingRule.weekendPrice);
   const weekdayPercentage = Number(pricingRule.weekdayPercentage || 100);
   const defaultWeekdayRate = roundCurrency((defaultWeekendRate * weekdayPercentage) / 100);
@@ -1776,16 +1817,17 @@ function moveRoomFixSection(fromKey, toKey) {
 async function getSavedRoomPricingSnapshot() {
   const { data, error } = await state.supabase
     .from(CONFIG.SUPABASE_PRICING_TABLE)
-    .select("room_type, pax, weekend_price")
+    .select("room_type, pax, ac_enabled, weekend_price")
     .order("room_type", { ascending: true })
-    .order("pax", { ascending: true });
+    .order("pax", { ascending: true })
+    .order("ac_enabled", { ascending: false });
 
   if (error) {
     throw new Error(error.message || "Could not load current room prices.");
   }
 
   return new Map((data || []).map((row) => [
-    getRoomPricingKey(normalizeRoomGroup(row.room_type), Number(row.pax || 0)),
+    getRoomPricingKey(normalizeRoomGroup(row.room_type), Number(row.pax || 0), row.ac_enabled),
     roundCurrency(Number(row.weekend_price || 0)),
   ]));
 }
@@ -1859,13 +1901,15 @@ async function saveRoomInventory() {
   }
 
   state.roomInventorySchemaReady = true;
-  const addedCount = rows.filter((room) => !(existingRows || []).some((saved) => normalizeRoomGroup(saved.room_type) === room.roomType && Number(saved.room_number) === Number(room.roomNumber))).length;
-  const removedCount = removedRows.length;
-  const changedCount = rows.filter((room) => {
+  const addedRooms = rows.filter((room) => !(existingRows || []).some((saved) => normalizeRoomGroup(saved.room_type) === room.roomType && Number(saved.room_number) === Number(room.roomNumber)));
+  const changedRooms = rows.filter((room) => {
     const saved = (existingRows || []).find((item) => normalizeRoomGroup(item.room_type) === room.roomType && Number(item.room_number) === Number(room.roomNumber));
     if (!saved) return false;
     return Number(saved.max_pax || 0) !== Number(room.maxPax || 0) || Boolean(saved.is_active) !== Boolean(room.isActive);
-  }).length;
+  });
+  const addedCount = addedRooms.length;
+  const removedCount = removedRows.length;
+  const changedCount = changedRooms.length;
   if (addedCount || removedCount || changedCount) {
     await insertSystemUpdate({
       updateType: "room_setup_updated",
@@ -1875,7 +1919,14 @@ async function saveRoomInventory() {
         removedCount ? `${removedCount} removed` : "",
         changedCount ? `${changedCount} changed` : "",
       ].filter(Boolean).join(" · ") || "Room setup was updated.",
-      metadata: { addedCount, removedCount, changedCount },
+      metadata: {
+        addedCount,
+        removedCount,
+        changedCount,
+        added: addedRooms.map((room) => getRoomLabel(room.roomType, room.roomNumber)),
+        removed: removedRows.map((room) => getRoomLabel(normalizeRoomGroup(room.room_type), Number(room.room_number))),
+        changed: changedRooms.map((room) => getRoomLabel(room.roomType, room.roomNumber)),
+      },
     });
   }
   await loadRoomInventory();
@@ -1954,6 +2005,7 @@ function getRequestGroupRoomTotal() {
       checkOut,
       roomType: normalizeRoomGroup(roomEdit.roomType),
       guests: Number(roomEdit.guests || 1),
+      acEnabled: normalizeAcEnabled(roomEdit.roomType, roomEdit.acEnabled),
     });
     return sum + applyOfferPercentage(pricing.roomTotal, offerPercentage);
   }, 0));
@@ -2082,7 +2134,7 @@ function renderPricingScreen() {
   });
 
   ROOM_PRICING_DEFS.forEach((config) => {
-    const pricing = getPricingConfig(config.roomType, config.pax);
+    const pricing = getPricingConfig(config.roomType, config.pax, config.acEnabled);
     const card = document.createElement("article");
     card.className = "pricing-card";
     card.innerHTML = `
@@ -2104,9 +2156,10 @@ function renderPricingScreen() {
 
     function syncCardValues() {
       const weekendPrice = roundCurrency(weekendInput.value);
-      state.roomPricing.set(getRoomPricingKey(config.roomType, config.pax), {
+      state.roomPricing.set(getRoomPricingKey(config.roomType, config.pax, config.acEnabled), {
         roomType: config.roomType,
         pax: config.pax,
+        acEnabled: normalizeAcEnabled(config.roomType, config.acEnabled),
         weekendPrice,
         weekdayPercentage: 100,
       });
@@ -2501,10 +2554,11 @@ async function saveRoomPricing() {
   if (!canManagePricing()) return;
   const savedPricing = await getSavedRoomPricingSnapshot();
   const rows = ROOM_PRICING_DEFS.map((config) => {
-    const pricing = getPricingConfig(config.roomType, config.pax);
+    const pricing = getPricingConfig(config.roomType, config.pax, config.acEnabled);
     return {
       room_type: config.roomType,
       pax: config.pax,
+      ac_enabled: normalizeAcEnabled(config.roomType, config.acEnabled),
       weekend_price: roundCurrency(pricing.weekendPrice),
       weekday_percentage: 100,
     };
@@ -2512,11 +2566,15 @@ async function saveRoomPricing() {
 
   const changedRows = rows
     .map((row) => {
-      const key = getRoomPricingKey(row.room_type, row.pax);
+      const key = getRoomPricingKey(row.room_type, row.pax, row.ac_enabled);
       const previousPrice = roundCurrency(Number(savedPricing.get(key) || 0));
       const nextPrice = roundCurrency(Number(row.weekend_price || 0));
       if (previousPrice === nextPrice) return null;
-      const config = ROOM_PRICING_DEFS.find((item) => item.roomType === row.room_type && Number(item.pax) === Number(row.pax));
+      const config = ROOM_PRICING_DEFS.find(
+        (item) => item.roomType === row.room_type
+          && Number(item.pax) === Number(row.pax)
+          && normalizeAcEnabled(item.roomType, item.acEnabled) === normalizeAcEnabled(row.room_type, row.ac_enabled),
+      );
       return {
         key,
         label: config?.label || `${row.room_type} · ${row.pax} Pax`,
@@ -2527,7 +2585,7 @@ async function saveRoomPricing() {
     .filter(Boolean);
 
   const { error } = await state.supabase.from(CONFIG.SUPABASE_PRICING_TABLE).upsert(rows, {
-    onConflict: "room_type,pax",
+    onConflict: "room_type,pax,ac_enabled",
   });
 
   if (error) {
@@ -2593,10 +2651,13 @@ function renderPricingSummary() {
       checkOut: roomCheckOut,
       roomType: room.type,
       guests: totalGuests,
+      acEnabled: normalizeAcEnabled(room.type, plan.acEnabled),
     });
     const finalPrice = applyOfferPercentage(pricing.roomTotal, offerPercentage);
     roomTotal += finalPrice;
-    const pricingLabel = room.type === "normal" ? `${getRoomPricingLabel(room.type, pricing.pricingPax)}` : getRoomPricingLabel(room.type, 0);
+    const pricingLabel = room.type === "normal"
+      ? `${getRoomPricingLabel(room.type, pricing.pricingPax, plan.acEnabled)}`
+      : getRoomPricingLabel(room.type, 0, true);
     return `
       <div class="pricing-summary-row">
         <div>
@@ -2663,10 +2724,13 @@ function getRoomLabel(type, number) {
   return `${def.label} ${number}`;
 }
 
-function getRoomTypeLabelForGuests(roomType, guests) {
+function getRoomTypeLabelForGuests(roomType, guests, acEnabled = true) {
   const def = getRoomDef(normalizeRoomGroup(roomType));
   if (!def) return getRoomTypeDisplay(roomType);
-  return `${def.label} - ${guests} Pax`;
+  const climateLabel = getRoomClimateLabel(roomType, acEnabled);
+  return climateLabel
+    ? `${def.label} - ${guests} Pax - ${climateLabel}`
+    : `${def.label} - ${guests} Pax`;
 }
 
 function splitNoteParts(notes) {
@@ -3451,6 +3515,7 @@ function buildBookingRoomEditOptions(booking) {
     roomType: normalizeRoomGroup(booking.roomType),
     roomNumber: Number(booking.roomNumber),
     guests: Number(booking.guests || 1),
+    acEnabled: normalizeAcEnabled(booking.roomType, booking.acEnabled),
     services: [...parsed.services],
   };
 }
@@ -3461,6 +3526,7 @@ function serializeBookingRoomEdits() {
     roomType: normalizeRoomGroup(item.roomType),
     roomNumber: Number(item.roomNumber),
     guests: Number(item.guests || 1),
+    acEnabled: normalizeAcEnabled(item.roomType, item.acEnabled),
     services: Array.isArray(item.services) ? [...item.services] : [],
   }));
 }
@@ -3510,6 +3576,19 @@ function renderBookingRoomEditors(booking) {
         <label>Pax Count</label>
         <select data-booking-room-guests>${paxOptions}</select>
       </div>
+      <div class="field compact-field${roomEdit.roomType === "normal" ? "" : " hidden"}" data-booking-room-climate-field>
+        <label>Room Mode</label>
+        <div class="planner-climate-toggle booking-room-climate-toggle">
+          ${NORMAL_ROOM_CLIMATE_OPTIONS.map((optionDef) => `
+            <button
+              class="planner-climate-btn${normalizeAcEnabled(roomEdit.roomType, roomEdit.acEnabled) === optionDef.acEnabled ? " active" : ""}"
+              type="button"
+              data-booking-room-ac
+              data-ac-enabled="${optionDef.acEnabled ? "true" : "false"}"
+            >${optionDef.label}</button>
+          `).join("")}
+        </div>
+      </div>
         <div class="booking-room-service-editor">
           <span class="booking-room-row-label">Services</span>
           <div class="service-chip-list service-chip-list-editable">
@@ -3532,6 +3611,8 @@ function renderBookingRoomEditors(booking) {
     const roomTypeSelect = option.querySelector("[data-booking-room-type]");
     const roomNumberSelect = option.querySelector("[data-booking-room-number]");
     const paxSelect = option.querySelector("[data-booking-room-guests]");
+    const climateField = option.querySelector("[data-booking-room-climate-field]");
+    const acButtons = option.querySelectorAll("[data-booking-room-ac]");
 
     const syncRoomNumbers = () => {
       if (!roomTypeSelect || !roomNumberSelect || !paxSelect) return;
@@ -3547,6 +3628,11 @@ function renderBookingRoomEditors(booking) {
         const selected = pax === Number(state.modalBookingRoomEdits.get(String(item.id))?.guests || 1) ? "selected" : "";
         return `<option value="${pax}" ${selected}>${pax} Pax</option>`;
       }).join(""));
+      toggleHidden(climateField, selectedType !== "normal");
+      const currentAcEnabled = normalizeAcEnabled(selectedType, state.modalBookingRoomEdits.get(String(item.id))?.acEnabled);
+      acButtons.forEach((button) => {
+        button.classList.toggle("active", normalizeAcEnabled(selectedType, button.dataset.acEnabled) === currentAcEnabled);
+      });
     };
 
     syncRoomNumbers();
@@ -3560,6 +3646,7 @@ function renderBookingRoomEditors(booking) {
         roomType: roomTypeSelect.value,
         roomNumber: nextRoomNumbers[0] || 1,
         guests: Math.min(Number(current?.guests || 1), def?.maxPax || 1),
+        acEnabled: normalizeAcEnabled(roomTypeSelect.value, current?.acEnabled),
       });
       syncRoomNumbers();
       renderRequestOfferPreview();
@@ -3580,6 +3667,21 @@ function renderBookingRoomEditors(booking) {
         guests: Number(paxSelect.value),
       });
       renderRequestOfferPreview();
+    });
+
+    acButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const current = state.modalBookingRoomEdits.get(String(item.id));
+        const nextAcEnabled = normalizeAcEnabled(current?.roomType, button.dataset.acEnabled);
+        state.modalBookingRoomEdits.set(String(item.id), {
+          ...current,
+          acEnabled: nextAcEnabled,
+        });
+        acButtons.forEach((itemButton) => {
+          itemButton.classList.toggle("active", itemButton === button);
+        });
+        renderRequestOfferPreview();
+      });
     });
 
     option.querySelectorAll(`[data-booking-room-service]`).forEach((button) => {
@@ -3669,9 +3771,10 @@ async function applyGroupedBookingEdits(targetBookings, roomEdits, commonValues)
       checkIn: commonValues.checkIn,
       checkOut: commonValues.checkOut,
       roomType: roomEdit.roomType,
-      roomTypeLabel: getRoomTypeLabelForGuests(roomEdit.roomType, roomEdit.guests),
+      roomTypeLabel: getRoomTypeLabelForGuests(roomEdit.roomType, roomEdit.guests, roomEdit.acEnabled),
       roomNumber: roomEdit.roomNumber,
       guests: roomEdit.guests,
+      acEnabled: normalizeAcEnabled(roomEdit.roomType, roomEdit.acEnabled),
       notes: mergeNotesAndServices(commonValues.notes, roomEdit.services || []),
       status: commonValues.status,
       trackCode: sharedTrackCode,
@@ -3703,19 +3806,31 @@ async function ensureGroupAvailabilityForUpdate(bookings, checkIn, checkOut, sta
 function getRoomPlan(type, number, defaultNights) {
   const key = getRoomKey(type, number);
   if (!state.roomPlans.has(key)) {
-    state.roomPlans.set(key, { type, number, pax: 0, nights: defaultNights, extraPax: 0 });
+    state.roomPlans.set(key, {
+      type,
+      number,
+      pax: 0,
+      nights: defaultNights,
+      extraPax: 0,
+      acEnabled: normalizeAcEnabled(type, true),
+    });
   }
   const plan = state.roomPlans.get(key);
   plan.type = type;
   plan.number = number;
   if (plan.nights < 1) plan.nights = defaultNights;
   if (typeof plan.extraPax !== "number") plan.extraPax = 0;
+  if (typeof plan.acEnabled === "undefined") plan.acEnabled = normalizeAcEnabled(type, true);
+  plan.acEnabled = normalizeAcEnabled(type, plan.acEnabled);
   return plan;
 }
 
-function getAssignedRoomLabel(room, pax, extraPax = 0) {
+function getAssignedRoomLabel(room, pax, extraPax = 0, acEnabled = true) {
   const totalPax = Number(pax || 0) + Number(extraPax || 0);
-  return `${room.label} - ${totalPax} Pax`;
+  const climateLabel = getRoomClimateLabel(room.type, acEnabled);
+  return climateLabel
+    ? `${room.label} - ${totalPax} Pax - ${climateLabel}`
+    : `${room.label} - ${totalPax} Pax`;
 }
 
 function normalizeRoomGroup(type) {
@@ -3788,6 +3903,7 @@ function mapBooking(row) {
     roomType: row.room_type,
     roomTypeLabel: row.room_type_label,
     roomNumber: Number(row.room_number),
+    acEnabled: normalizeAcEnabled(row.room_type, row.ac_enabled),
     roomsNeeded: Number(row.rooms_needed || 1),
     notes: row.notes || "",
     status: row.booking_status || "",
@@ -3823,6 +3939,7 @@ function shouldRetryWithoutPricingColumns(message) {
     || text.includes("advance_paid")
     || text.includes("advance_amount")
     || text.includes("custom_payments")
+    || text.includes("ac_enabled")
     || text.includes("lifecycle_status")
     || text.includes("checked_in_at")
     || text.includes("checked_out_at")
@@ -3842,10 +3959,12 @@ function applyPricingToBookingRow(row, values) {
     checkOut: values.checkOut,
     roomType: normalizeRoomGroup(values.roomType),
     guests: Number(values.guests || 0),
+    acEnabled: normalizeAcEnabled(values.roomType, values.acEnabled),
     weekendRateOverride: "weekendRate" in values ? values.weekendRate : null,
     weekdayRateOverride: "weekdayRate" in values ? values.weekdayRate : null,
   });
 
+  row.ac_enabled = normalizeAcEnabled(values.roomType, values.acEnabled);
   row.pricing_pax = pricing.pricingPax;
   row.weekend_rate = pricing.weekendRate;
   row.weekday_rate = pricing.weekdayRate;
@@ -3865,6 +3984,7 @@ function applyPricingToBookingRow(row, values) {
 }
 
 function stripPricingColumns(row) {
+  delete row.ac_enabled;
   delete row.pricing_pax;
   delete row.weekend_rate;
   delete row.weekday_rate;
@@ -4611,6 +4731,7 @@ async function insertBooking(payload) {
       room_type: payload.roomType,
       room_type_label: payload.roomTypeLabel,
       room_number: Number(payload.roomNumber),
+      ac_enabled: normalizeAcEnabled(payload.roomType, payload.acEnabled),
       rooms_needed: Number(payload.roomsNeeded || 1),
       notes: payload.notes || "",
       booking_status: payload.status,
@@ -4788,6 +4909,7 @@ function renderPlannerCard(room, isAvailable, booking, plan, defaultNights) {
   } else if (plan.pax === 0) {
     plan.nights = defaultNights;
   }
+  plan.acEnabled = normalizeAcEnabled(room.type, plan.acEnabled);
 
   const card = document.createElement("article");
   card.className = `planner-room ${isAvailable ? "available" : "booked"}${plan.pax > 0 && isAvailable ? " selected" : ""}`;
@@ -4816,6 +4938,22 @@ function renderPlannerCard(room, isAvailable, booking, plan, defaultNights) {
         <label>Extra pax / Kids</label>
         <select data-role="extra-pax" ${isAvailable ? "" : "disabled"}>${buildPaxOptions(4, Number(plan.extraPax || 0))}</select>
       </div>
+      ${room.type === "normal" ? `
+        <div class="planner-control planner-control-climate">
+          <label>Room Mode</label>
+          <div class="planner-climate-toggle">
+            ${NORMAL_ROOM_CLIMATE_OPTIONS.map((option) => `
+              <button
+                class="planner-climate-btn${normalizeAcEnabled(room.type, plan.acEnabled) === option.acEnabled ? " active" : ""}"
+                type="button"
+                data-role="ac-mode"
+                data-ac-enabled="${option.acEnabled ? "true" : "false"}"
+                ${isAvailable ? "" : "disabled"}
+              >${option.label}</button>
+            `).join("")}
+          </div>
+        </div>
+      ` : ""}
     </div>
   `;
 
@@ -4823,6 +4961,7 @@ function renderPlannerCard(room, isAvailable, booking, plan, defaultNights) {
     const nightsSelect = card.querySelector('[data-role="nights"]');
     const paxSelect = card.querySelector('[data-role="pax"]');
     const extraPaxSelect = card.querySelector('[data-role="extra-pax"]');
+    const acButtons = card.querySelectorAll('[data-role="ac-mode"]');
 
     nightsSelect.addEventListener("change", () => {
       plan.nights = Number(nightsSelect.value);
@@ -4839,6 +4978,16 @@ function renderPlannerCard(room, isAvailable, booking, plan, defaultNights) {
       plan.extraPax = Number(extraPaxSelect.value);
       card.classList.toggle("selected", plan.pax > 0 || Number(plan.extraPax || 0) > 0);
       updateTotalGuests();
+    });
+
+    acButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        plan.acEnabled = normalizeAcEnabled(room.type, button.dataset.acEnabled);
+        acButtons.forEach((item) => {
+          item.classList.toggle("active", item === button);
+        });
+        renderPricingSummary();
+      });
     });
   }
 
@@ -4929,7 +5078,7 @@ function updateAvailabilityUI(availability) {
   bookedKitchen.textContent = `${kitchen.booked} booked`;
   availDriver.textContent = `${driver.available.length} / ${driver.total}`;
   bookedDriver.textContent = `${driver.booked} booked`;
-  availabilityHint.textContent = `Nights default from selected dates: ${defaultNights}. Per-room pax, extra pax / kids, and driver count can be adjusted.`;
+  availabilityHint.textContent = `Nights default from selected dates: ${defaultNights}. Per-room pax, extra pax / kids, driver count, and Normal Room A/C mode can be adjusted.`;
 
   buildRoomList().forEach((room) => {
     const groupAvailability = availability[room.type];
@@ -5935,7 +6084,10 @@ async function performGroupReactivate(groupKey) {
     `${group.trackCode || "Booking"} reactivated · ${nextCheckIn} -> ${nextCheckOut}.`,
     { checkIn: nextCheckIn, checkOut: nextCheckOut, reactivationMode },
   );
-  return true;
+  return {
+    trackCode: group.trackCode || group.key,
+    bookingId: group.bookings[0]?.id || null,
+  };
 }
 
 async function performGroupFreshBooking(groupKey) {
@@ -6420,11 +6572,14 @@ function openBookingDetailsModal(groupKey) {
   if (reactivateBtn) {
     reactivateBtn.addEventListener("click", async () => {
       try {
-        const changed = await performGroupReactivate(group.key);
-        if (!changed) return;
+        const result = await performGroupReactivate(group.key);
+        if (!result) return;
         closeBookingDetailsModal();
         showToast("Booking reactivated.");
         await refreshLiveViews();
+        if (result.bookingId) {
+          await openRequestModal(result.bookingId, "edit", "group");
+        }
       } catch (error) {
         showToast(error.message, true);
       }
@@ -6900,10 +7055,13 @@ function renderHoldBookings(bookings) {
     });
     card.querySelector('[data-hold-reactivate]')?.addEventListener("click", async () => {
       try {
-        const changed = await performGroupReactivate(group.key);
-        if (!changed) return;
+        const result = await performGroupReactivate(group.key);
+        if (!result) return;
         showToast("Booking reactivated.");
         await refreshLiveViews();
+        if (result.bookingId) {
+          await openRequestModal(result.bookingId, "edit", "group");
+        }
       } catch (error) {
         showToast(error.message, true);
       }
@@ -6960,26 +7118,46 @@ function closeRequestModal() {
 
 async function openRequestModal(bookingId, mode, scope = "single") {
   ensureRequestModalSections();
-  const booking = state.bookingMap.get(bookingId);
+  let booking = state.bookingMap.get(bookingId);
+  if (!booking) {
+    const fetched = await fetchBookingsByIds([bookingId]);
+    if (fetched.length) {
+      mergeBookingsIntoStateMap(fetched);
+      [booking] = fetched;
+    }
+  }
   if (!booking) {
     showToast("Booking not found.", true);
     return;
   }
 
-  const groupView = getBookingGroupByKey(getBookingGroupKey(booking));
+  let groupView = getBookingGroupByKey(getBookingGroupKey(booking));
+  let groupBookings = groupView?.bookings || [];
+  if (scope === "group" && booking.trackCode && groupBookings.length < 2) {
+    const fetchedGroup = await fetchBookingsByTrackCode(booking.trackCode);
+    if (fetchedGroup.length) {
+      mergeBookingsIntoStateMap(fetchedGroup);
+      groupBookings = fetchedGroup;
+      booking = fetchedGroup.find((item) => String(item.id) === String(bookingId)) || booking;
+    }
+  }
+  const editableGroup = groupView || { bookings: groupBookings.length ? groupBookings : [booking] };
   if (!canManageBookings() && mode === "edit") {
-    if (groupView && !canEditBookingGroupDirect(groupView)) {
+    if (!canEditBookingGroupDirect(editableGroup)) {
       showToast("This booking is locked after check-in time. Use Check In / Check Out or ask owner/admin access.", true);
       return;
     }
   }
 
   state.activeBooking = booking;
-  state.activeBookingGroup = groupView?.bookings || [booking];
-  const groupBookings = state.activeBookingGroup.length ? state.activeBookingGroup : [booking];
+  state.activeBookingGroup = groupBookings.length ? groupBookings : [booking];
+  groupBookings = state.activeBookingGroup.length ? state.activeBookingGroup : [booking];
   const advanceInfo = getAdvancePaymentInfo(groupBookings);
   const customPriceEntries = (scope === "group" ? getGroupCustomPriceEntries(groupBookings) : getBookingCustomPriceEntries(booking))
     .map((item) => ({ amount: item.amount, note: item.note }));
+  const groupTotalPrice = groupView?.totalPrice || roundCurrency(
+    groupBookings.reduce((sum, item) => sum + Number(item.roomTotal || 0), 0) + getCustomPaymentsTotal(customPriceEntries),
+  );
   state.requestScope = scope;
   state.modalMode = mode;
   state.modalCustomPayments = customPriceEntries;
@@ -7003,7 +7181,7 @@ async function openRequestModal(bookingId, mode, scope = "single") {
   populateRequestGuestsOptions(selectedRoomType, booking.guests || 1);
   setValue(requestStatusInput, booking.status || "Campaign");
   setText(requestCurrentPrice, scope === "group"
-    ? `Current total: ${formatMoney(groupView?.totalPrice || (Number(booking.roomTotal || 0) + getCustomPaymentsTotal(customPriceEntries)))}`
+    ? `Current total: ${formatMoney(groupTotalPrice)}`
     : `Current pricing: ${formatBookingPriceBreakdown(booking)}`);
   setValue(requestWeekendRateInput, Number(booking.weekendRate || booking.weekdayRate || 0));
   setOfferSelection(requestOfferOptions, requestOfferCustomField, requestOfferCustomInput, Number(booking.offerPercentage || 0));
@@ -7280,6 +7458,9 @@ async function updateBooking(bookingId, values) {
     roomType: "roomType" in values ? values.roomType : currentBooking.roomType,
     roomTypeLabel: "roomTypeLabel" in values ? values.roomTypeLabel : currentBooking.roomTypeLabel,
     roomNumber: "roomNumber" in values ? Number(values.roomNumber) : Number(currentBooking.roomNumber || 0),
+    acEnabled: "acEnabled" in values
+      ? normalizeAcEnabled(values.roomType ?? currentBooking.roomType, values.acEnabled)
+      : normalizeAcEnabled("roomType" in values ? values.roomType : currentBooking.roomType, currentBooking.acEnabled),
     notes: "notes" in values ? values.notes || "" : currentBooking.notes || "",
     status: "status" in values ? values.status : currentBooking.status,
     roomsNeeded: "roomsNeeded" in values ? Number(values.roomsNeeded) : Number(currentBooking.roomsNeeded || 1),
@@ -7307,6 +7488,7 @@ async function updateBooking(bookingId, values) {
     room_type: merged.roomType,
     room_type_label: merged.roomTypeLabel,
     room_number: merged.roomNumber,
+    ac_enabled: merged.acEnabled,
     rooms_needed: merged.roomsNeeded,
     notes: merged.notes,
     booking_status: merged.status,
@@ -7435,8 +7617,9 @@ async function approveRequest(requestId) {
         checkOut: request.requestedCheckOut || request.booking?.checkOut || "",
         guests: String(pax),
         roomType,
-        roomTypeLabel: getRoomTypeLabelForGuests(roomType, pax),
+        roomTypeLabel: getRoomTypeLabelForGuests(roomType, pax, true),
         roomNumber,
+        acEnabled: true,
         roomsNeeded: 1,
         notes: request.requestedNotes ?? request.booking?.notes ?? "",
         status: request.requestedBookingStatus || request.booking?.status || "Campaign",
@@ -7555,6 +7738,7 @@ async function approveRequest(requestId) {
           roomType: normalizeRoomGroup(item.roomType),
           roomNumber: Number(item.roomNumber),
           guests: Number(item.guests || 1),
+          acEnabled: normalizeAcEnabled(item.roomType, item.acEnabled),
           services: Array.isArray(item.services) ? item.services : [],
         }))
       : targetBookings.map((bookingRow) => buildBookingRoomEditOptions(bookingRow));
@@ -7617,9 +7801,11 @@ async function approveRequest(requestId) {
       roomTypeLabel: getRoomTypeLabelForGuests(
         request.requestedRoomType || request.booking?.roomType || "",
         Number(request.requestedGuests || request.booking?.guests || 1),
+        request.booking?.acEnabled,
       ),
       roomNumber: request.requestedRoomNumber || request.booking?.roomNumber || 0,
       guests: Number(request.requestedGuests || request.booking?.guests || 1),
+      acEnabled: normalizeAcEnabled(request.requestedRoomType || request.booking?.roomType || "", request.booking?.acEnabled),
       notes: request.requestedNotes ?? request.booking?.notes ?? "",
       status: targetStatus,
       trackCode: await resolveBookingTrackCode([request.booking], targetStatus, request.booking?.trackCode || ""),
@@ -8168,7 +8354,7 @@ async function movePlannerBookingToRoom(bookingId, targetRoomType, targetRoomNum
 
   await updateBooking(booking.id, {
     roomType: normalizedRoomType,
-    roomTypeLabel: getRoomTypeLabelForGuests(normalizedRoomType, booking.guests),
+    roomTypeLabel: getRoomTypeLabelForGuests(normalizedRoomType, booking.guests, booking.acEnabled),
     roomNumber: numericRoomNumber,
   });
   return true;
@@ -9017,6 +9203,76 @@ function normalizeSystemUpdateRow(row = {}) {
   };
 }
 
+function getReactivateModeLabel(mode) {
+  switch (String(mode || "")) {
+    case "current_date":
+      return "Moved to today";
+    case "custom_date":
+      return "Moved to custom date";
+    case "keep_old_date":
+      return "Kept previous stay dates";
+    default:
+      return "";
+  }
+}
+
+function getSystemUpdateDetailLines(item = {}) {
+  const metadata = item.metadata && typeof item.metadata === "object" ? item.metadata : {};
+  const lines = [];
+
+  if (metadata.trackCode) lines.push(`Track Code: ${metadata.trackCode}`);
+  if (metadata.guestName) lines.push(`Customer: ${metadata.guestName}`);
+  if (metadata.checkIn || metadata.checkOut) lines.push(`Stay: ${metadata.checkIn || "-"} -> ${metadata.checkOut || "-"}`);
+
+  const reactivateLabel = getReactivateModeLabel(metadata.reactivationMode);
+  if (reactivateLabel) lines.push(`Reactivate Date: ${reactivateLabel}`);
+  if (metadata.note) lines.push(`Note: ${metadata.note}`);
+  if (typeof metadata.serviceCount === "number") lines.push(`Services at checkout: ${metadata.serviceCount}`);
+
+  if (Array.isArray(metadata.changedBits)) {
+    metadata.changedBits.forEach((itemText) => {
+      if (itemText) lines.push(`Changed: ${itemText}`);
+    });
+  }
+
+  if (Array.isArray(metadata.changes)) {
+    metadata.changes.forEach((change) => {
+      if (!change?.label) return;
+      lines.push(`${change.label}: ${formatMoney(change.previousPrice || 0)} -> ${formatMoney(change.nextPrice || 0)}`);
+    });
+  }
+
+  if (Array.isArray(metadata.added)) {
+    metadata.added.forEach((name) => {
+      if (name) lines.push(`Added: ${name}`);
+    });
+  }
+
+  if (Array.isArray(metadata.removed)) {
+    metadata.removed.forEach((name) => {
+      if (name) lines.push(`Removed: ${name}`);
+    });
+  }
+
+  if (Array.isArray(metadata.changed)) {
+    metadata.changed.forEach((name) => {
+      if (name) lines.push(`Updated: ${name}`);
+    });
+  }
+
+  if (typeof metadata.addedCount === "number" || typeof metadata.removedCount === "number" || typeof metadata.changedCount === "number") {
+    lines.push(
+      [
+        typeof metadata.addedCount === "number" ? `Added ${metadata.addedCount}` : "",
+        typeof metadata.removedCount === "number" ? `Removed ${metadata.removedCount}` : "",
+        typeof metadata.changedCount === "number" ? `Changed ${metadata.changedCount}` : "",
+      ].filter(Boolean).join(" · "),
+    );
+  }
+
+  return Array.from(new Set(lines.filter(Boolean)));
+}
+
 async function fetchSystemUpdates({ from = null, to = null, limit = 300 } = {}) {
   ensureSupabase();
   let query = state.supabase
@@ -9079,6 +9335,7 @@ function renderSystemUpdates() {
       item.actorName || "System",
       formatSystemUpdateTime(item.createdAt),
     ];
+    const detailLines = getSystemUpdateDetailLines(item);
     return `
       <article class="notification-card">
         <div class="notification-card-head">
@@ -9087,6 +9344,11 @@ function renderSystemUpdates() {
         </div>
         <strong class="notification-card-message">${escapeHtml(item.message)}</strong>
         <span class="notification-card-meta">${escapeHtml(metaBits.join(" | "))}</span>
+        ${detailLines.length ? `
+          <div class="system-update-detail-list">
+            ${detailLines.map((line) => `<span class="system-update-detail-pill">${escapeHtml(line)}</span>`).join("")}
+          </div>
+        ` : ""}
       </article>
     `;
   }).join("");
@@ -9540,7 +9802,7 @@ async function handleRequestSubmit(event) {
       : roundCurrency(Number(state.activeBooking.advanceAmount || 0)),
   };
 
-  payload.roomTypeLabel = getRoomTypeLabelForGuests(payload.roomType, payload.guests);
+  payload.roomTypeLabel = getRoomTypeLabelForGuests(payload.roomType, payload.guests, state.activeBooking?.acEnabled);
   payload.requestedExtraRooms = Array.from(state.modalExtraRooms.values());
   payload.requestedBookingRooms = reason === "edit_booking_data" && effectiveScope === "group"
     ? serializeBookingRoomEdits()
@@ -9609,8 +9871,9 @@ async function handleRequestSubmit(event) {
             checkOut: payload.checkOut,
             guests: String(pax),
             roomType,
-            roomTypeLabel: getRoomTypeLabelForGuests(roomType, pax),
+            roomTypeLabel: getRoomTypeLabelForGuests(roomType, pax, true),
             roomNumber,
+            acEnabled: true,
             roomsNeeded: payload.requestedExtraRooms.length,
             notes: payload.notes,
             status: payload.status,
@@ -9826,6 +10089,7 @@ bookingForm.addEventListener("submit", async (event) => {
               room,
               pax: Number(plan.pax || 0),
               extraPax: Number(plan.extraPax || 0),
+              acEnabled: normalizeAcEnabled(room.type, plan.acEnabled),
               totalGuests: totalPlanGuests,
               nights: Number(plan.nights || getNightCount(payload.checkIn, payload.checkOut)),
             }
@@ -9874,8 +10138,9 @@ bookingForm.addEventListener("submit", async (event) => {
         guests: String(plan.totalGuests),
         checkOut: roomCheckOut,
         roomType: plan.room.type,
-        roomTypeLabel: getAssignedRoomLabel(plan.room, plan.pax, plan.extraPax),
+        roomTypeLabel: getAssignedRoomLabel(plan.room, plan.pax, plan.extraPax, plan.acEnabled),
         roomNumber: plan.room.number,
+        acEnabled: normalizeAcEnabled(plan.room.type, plan.acEnabled),
         roomsNeeded: selectedPlans.length,
       };
 

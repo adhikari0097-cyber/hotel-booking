@@ -817,6 +817,39 @@ h4 {
   font-family: inherit;
 }
 
+.planner-control-climate {
+  display: grid;
+  gap: 6px;
+}
+
+.planner-climate-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.planner-climate-btn {
+  border: 1px solid var(--border);
+  background: #fffdf9;
+  color: var(--muted);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: inherit;
+}
+
+.planner-climate-btn.active {
+  background: #eef6f2;
+  border-color: color-mix(in srgb, var(--primary) 36%, var(--border));
+  color: var(--primary);
+}
+
+.planner-climate-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .planner-room.booked .planner-control select {
   opacity: 0.5;
   cursor: not-allowed;
@@ -3565,6 +3598,25 @@ h4 {
   line-height: 1.5;
 }
 
+.system-update-detail-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.system-update-detail-pill {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #f7f3eb;
+  border: 1px solid rgba(199, 164, 91, 0.24);
+  color: var(--primary);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .accounts-header {
   display: flex;
   justify-content: space-between;
@@ -5146,6 +5198,21 @@ h4 {
 
   .notification-card-message {
     font-size: 13px;
+  }
+
+  .planner-climate-toggle {
+    gap: 6px;
+  }
+
+  .planner-climate-btn {
+    padding: 9px 8px;
+    font-size: 11px;
+    border-radius: 10px;
+  }
+
+  .system-update-detail-pill {
+    font-size: 10px;
+    padding: 5px 8px;
   }
 
   .settings-jump-grid,
