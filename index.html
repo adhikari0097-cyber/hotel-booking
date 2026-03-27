@@ -461,130 +461,145 @@
         </section>
 
         <section class="screen" id="screen-analytics" aria-labelledby="tab-analytics">
-          <div class="card analytics-card">
-            <div class="accounts-header">
-              <div>
-                <p class="eyebrow">Business View</p>
-                <h3>Analytics</h3>
-              </div>
-              <div class="planner-toolbar-actions">
-                <div class="field compact-field">
-                  <label for="analytics-date-from">From</label>
-                  <input id="analytics-date-from" type="date" />
+          <div class="card analytics-card analytics-dashboard-card">
+            <div class="analytics-dashboard-shell">
+              <section class="analytics-overview-hero">
+                <div class="analytics-overview-copy">
+                  <div class="analytics-overview-kicker">Business Intelligence</div>
+                  <h3>Revenue Analytics</h3>
+                  <p>Professional day-to-day business dashboard for revenue, booking flow, room demand, business costs, and net profit trends.</p>
                 </div>
-                <div class="field compact-field">
-                  <label for="analytics-date-to">To</label>
-                  <input id="analytics-date-to" type="date" />
+                <div class="analytics-overview-actions">
+                  <div class="analytics-date-range-card">
+                    <div class="field compact-field">
+                      <label for="analytics-date-from">From</label>
+                      <input id="analytics-date-from" type="date" />
+                    </div>
+                    <div class="field compact-field">
+                      <label for="analytics-date-to">To</label>
+                      <input id="analytics-date-to" type="date" />
+                    </div>
+                  </div>
+                  <div class="analytics-action-row">
+                    <button id="load-analytics" class="secondary-btn small-btn" type="button">Load Analytics</button>
+                    <button id="export-analytics" class="secondary-btn small-btn" type="button">Export Report</button>
+                  </div>
                 </div>
-                <button id="load-analytics" class="secondary-btn small-btn" type="button">Load Analytics</button>
-                <button id="export-analytics" class="secondary-btn small-btn" type="button">Export Report</button>
-              </div>
-            </div>
-            <div class="preset-chip-row">
-              <button class="filter-chip" type="button" data-analytics-preset="this-month">This Month</button>
-              <button class="filter-chip" type="button" data-analytics-preset="last-month">Last Month</button>
-              <button class="filter-chip" type="button" data-analytics-preset="this-year">This Year</button>
-              <button class="filter-chip" type="button" data-analytics-preset="last-year">Last Year</button>
-            </div>
-            <div class="preset-chip-row analytics-date-shortcuts">
-              <button class="filter-chip" id="analytics-quick-today" type="button">Today</button>
-              <button class="filter-chip" id="analytics-quick-week" type="button">Last 7 Days</button>
-              <button class="filter-chip" id="analytics-pick-from" type="button">Pick From</button>
-              <button class="filter-chip" id="analytics-pick-to" type="button">Pick To</button>
-            </div>
-            <p class="inline-note">Track revenue, room demand, service income, and top customers for the selected date range.</p>
-            <div class="analytics-filter-grid">
-              <div class="field compact-field analytics-state-field">
-                <span>Reservation State</span>
-                <div id="analytics-filter-state-chips" class="analytics-state-chip-list" aria-label="Reservation state filters"></div>
-              </div>
-              <div class="field compact-field analytics-chip-filter-field">
-                <span>Source</span>
-                <div id="analytics-filter-source-chips" class="analytics-state-chip-list" aria-label="Source filters"></div>
-              </div>
-              <div class="field compact-field analytics-chip-filter-field">
-                <span>Booked By</span>
-                <div id="analytics-filter-staff-chips" class="analytics-state-chip-list" aria-label="Booked by filters"></div>
-              </div>
-              <label class="field compact-field analytics-toggle-field">
-                <span>Options</span>
-                <span class="analytics-check-row">
-                  <input id="analytics-include-hold-payments" type="checkbox" />
-                  <span>Show Hold Payments</span>
-                </span>
-                <span class="analytics-check-row" id="analytics-deductions-toggle-row">
-                  <input id="analytics-include-deductions" type="checkbox" />
-                  <span>Include Deductions</span>
-                </span>
-              </label>
-              <label class="field compact-field">
-                <span>Trend View</span>
-                <select id="analytics-filter-metric">
-                  <option value="revenue">Revenue</option>
-                  <option value="bookings">Bookings</option>
-                  <option value="room_nights">Room Nights</option>
-                </select>
-              </label>
-            </div>
-            <div id="analytics-results-context" class="analytics-results-context" aria-live="polite"></div>
-
-            <div class="analytics-summary-grid">
-              <div class="analytics-stat-card">
-                <span>Total Earn</span>
-                <strong id="analytics-total-earn">LKR 0.00</strong>
-              </div>
-              <div class="analytics-stat-card">
-                <span>Total Bookings</span>
-                <strong id="analytics-total-bookings">0</strong>
-              </div>
-              <div class="analytics-stat-card">
-                <span>Avg Booking Value</span>
-                <strong id="analytics-average-booking">LKR 0.00</strong>
-              </div>
-              <div class="analytics-stat-card">
-                <span>Pending Balance</span>
-                <strong id="analytics-pending-balance">LKR 0.00</strong>
-              </div>
-              <div class="analytics-stat-card">
-                <span>Room Nights</span>
-                <strong id="analytics-room-nights">0</strong>
-              </div>
-              <div class="analytics-stat-card">
-                <span>Avg Stay</span>
-                <strong id="analytics-average-stay">0 nights</strong>
-              </div>
-              <div class="analytics-stat-card">
-                <span>Hold Payments</span>
-                <strong id="analytics-hold-payments">Off</strong>
-              </div>
-              <div class="analytics-stat-card">
-                <span>Total Deductions</span>
-                <strong id="analytics-total-deductions">Off</strong>
-              </div>
-              <div class="analytics-stat-card">
-                <span>Net Profit</span>
-                <strong id="analytics-net-profit">LKR 0.00</strong>
-              </div>
-            </div>
-
-            <div class="analytics-feature-grid">
-              <section class="analytics-hero-panel">
-                <div class="analytics-panel-head">
-                  <h4>Trend Overview</h4>
-                  <p>Follow the selected metric across the date range.</p>
-                </div>
-                <div id="analytics-trend-chart" class="analytics-trend-chart"></div>
               </section>
-              <section class="analytics-panel analytics-panel-highlight">
-                <div class="analytics-panel-head">
-                  <h4>Quick Insights</h4>
-                  <p>Fast answers from the current filters and date range.</p>
-                </div>
-                <div id="analytics-insights" class="analytics-insight-list"></div>
-              </section>
-            </div>
 
-            <div class="analytics-panel-grid">
+              <section class="analytics-filter-dock">
+                <div class="analytics-filter-dock-head">
+                  <div>
+                    <p class="eyebrow">Smart Filters</p>
+                    <h4>Control the report view</h4>
+                  </div>
+                  <p class="analytics-filter-dock-copy">Use quick ranges, reservation filters, source filters, and optional deductions to build the exact business view you need.</p>
+                </div>
+                <div class="preset-chip-row analytics-preset-row">
+                  <button class="filter-chip" type="button" data-analytics-preset="this-month">This Month</button>
+                  <button class="filter-chip" type="button" data-analytics-preset="last-month">Last Month</button>
+                  <button class="filter-chip" type="button" data-analytics-preset="this-year">This Year</button>
+                  <button class="filter-chip" type="button" data-analytics-preset="last-year">Last Year</button>
+                </div>
+                <div class="preset-chip-row analytics-date-shortcuts">
+                  <button class="filter-chip" id="analytics-quick-today" type="button">Today</button>
+                  <button class="filter-chip" id="analytics-quick-week" type="button">Last 7 Days</button>
+                  <button class="filter-chip" id="analytics-pick-from" type="button">Pick From</button>
+                  <button class="filter-chip" id="analytics-pick-to" type="button">Pick To</button>
+                </div>
+                <div class="analytics-filter-grid analytics-filter-grid-dashboard">
+                  <div class="field compact-field analytics-state-field">
+                    <span>Reservation State</span>
+                    <div id="analytics-filter-state-chips" class="analytics-state-chip-list" aria-label="Reservation state filters"></div>
+                  </div>
+                  <div class="field compact-field analytics-chip-filter-field">
+                    <span>Source</span>
+                    <div id="analytics-filter-source-chips" class="analytics-state-chip-list" aria-label="Source filters"></div>
+                  </div>
+                  <div class="field compact-field analytics-chip-filter-field">
+                    <span>Booked By</span>
+                    <div id="analytics-filter-staff-chips" class="analytics-state-chip-list" aria-label="Booked by filters"></div>
+                  </div>
+                  <label class="field compact-field analytics-toggle-field">
+                    <span>Options</span>
+                    <span class="analytics-check-row">
+                      <input id="analytics-include-hold-payments" type="checkbox" />
+                      <span>Show Hold Payments</span>
+                    </span>
+                    <span class="analytics-check-row" id="analytics-deductions-toggle-row">
+                      <input id="analytics-include-deductions" type="checkbox" />
+                      <span>Include Deductions</span>
+                    </span>
+                  </label>
+                  <label class="field compact-field analytics-metric-field">
+                    <span>Trend View</span>
+                    <select id="analytics-filter-metric">
+                      <option value="revenue">Revenue</option>
+                      <option value="bookings">Bookings</option>
+                      <option value="room_nights">Room Nights</option>
+                    </select>
+                  </label>
+                </div>
+                <div id="analytics-results-context" class="analytics-results-context" aria-live="polite"></div>
+              </section>
+
+              <section class="analytics-summary-grid analytics-summary-grid-dashboard">
+                <div class="analytics-stat-card analytics-stat-card-highlight">
+                  <span>Total Earn</span>
+                  <strong id="analytics-total-earn">LKR 0.00</strong>
+                </div>
+                <div class="analytics-stat-card analytics-stat-card-highlight-secondary">
+                  <span>Net Profit</span>
+                  <strong id="analytics-net-profit">LKR 0.00</strong>
+                </div>
+                <div class="analytics-stat-card">
+                  <span>Total Deductions</span>
+                  <strong id="analytics-total-deductions">Off</strong>
+                </div>
+                <div class="analytics-stat-card">
+                  <span>Total Bookings</span>
+                  <strong id="analytics-total-bookings">0</strong>
+                </div>
+                <div class="analytics-stat-card">
+                  <span>Avg Booking Value</span>
+                  <strong id="analytics-average-booking">LKR 0.00</strong>
+                </div>
+                <div class="analytics-stat-card">
+                  <span>Pending Balance</span>
+                  <strong id="analytics-pending-balance">LKR 0.00</strong>
+                </div>
+                <div class="analytics-stat-card">
+                  <span>Room Nights</span>
+                  <strong id="analytics-room-nights">0</strong>
+                </div>
+                <div class="analytics-stat-card">
+                  <span>Avg Stay</span>
+                  <strong id="analytics-average-stay">0 nights</strong>
+                </div>
+                <div class="analytics-stat-card">
+                  <span>Hold Payments</span>
+                  <strong id="analytics-hold-payments">Off</strong>
+                </div>
+              </section>
+
+              <div class="analytics-feature-grid analytics-feature-grid-dashboard">
+                <section class="analytics-hero-panel analytics-trend-panel">
+                  <div class="analytics-panel-head analytics-panel-head-light">
+                    <h4>Trend Overview</h4>
+                    <p>Track revenue movement, booking momentum, or room night demand across the selected period.</p>
+                  </div>
+                  <div id="analytics-trend-chart" class="analytics-trend-chart"></div>
+                </section>
+                <section class="analytics-panel analytics-panel-highlight analytics-insight-panel">
+                  <div class="analytics-panel-head">
+                    <h4>Executive Snapshot</h4>
+                    <p>Fast business signals from the current filters and selected date range.</p>
+                  </div>
+                  <div id="analytics-insights" class="analytics-insight-list"></div>
+                </section>
+              </div>
+
+              <div class="analytics-panel-grid analytics-panel-grid-dashboard">
               <section class="analytics-panel">
                 <div class="analytics-panel-head">
                   <h4>Top Rooms</h4>
@@ -655,9 +670,10 @@
                 </div>
                 <div id="analytics-deductions-list" class="analytics-table-list"></div>
               </section>
-            </div>
+              </div>
 
-            <p id="analytics-empty" class="empty-state">Select a date range to load analytics.</p>
+              <p id="analytics-empty" class="empty-state analytics-empty-state">Select a date range to load analytics.</p>
+            </div>
           </div>
         </section>
 
