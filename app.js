@@ -337,71 +337,37 @@ function getStoredBookingViewMode() {
 }
 
 function getStoredMobileNavDock() {
-  try {
-    const stored = String(window.localStorage.getItem("mobile-nav-dock") || "").trim().toLowerCase();
-    return ["bottom", "left", "right"].includes(stored) ? stored : "bottom";
-  } catch (error) {
-    return "bottom";
-  }
+  return "bottom";
 }
 
 function getEffectiveMobileNavDock(position = state.mobileNavDock) {
-  const normalized = ["bottom", "left", "right"].includes(position) ? position : "bottom";
-  if (state.bookingViewMode === "desktop" || window.innerWidth >= 980) return "bottom";
-  return normalized;
+  return "bottom";
 }
 
 function applyMobileNavDock(position = state.mobileNavDock, { persist = false } = {}) {
-  const normalized = ["bottom", "left", "right"].includes(position) ? position : "bottom";
-  state.mobileNavDock = normalized;
-  if (persist) {
-    try {
-      window.localStorage.setItem("mobile-nav-dock", normalized);
-    } catch (error) {
-      // Ignore storage failures.
-    }
-  }
-  const effectiveDock = getEffectiveMobileNavDock(normalized);
-  bottomNav?.classList.toggle("nav-dock-left", effectiveDock === "left");
-  bottomNav?.classList.toggle("nav-dock-right", effectiveDock === "right");
-  bottomNav?.classList.toggle("nav-dock-bottom", effectiveDock === "bottom");
-  appShell?.classList.toggle("mobile-nav-side-left", effectiveDock === "left");
-  appShell?.classList.toggle("mobile-nav-side-right", effectiveDock === "right");
-  bottomNavDragHandle?.setAttribute(
-    "title",
-    effectiveDock === "bottom"
-      ? "Drag to left or right side"
-      : effectiveDock === "left"
-        ? "Drag to bottom or right side"
-        : "Drag to bottom or left side",
-  );
+  state.mobileNavDock = "bottom";
+  bottomNav?.classList.remove("nav-dock-left", "nav-dock-right");
+  bottomNav?.classList.add("nav-dock-bottom");
+  appShell?.classList.remove("mobile-nav-side-left", "mobile-nav-side-right");
   syncBottomNavLayout(Array.from(Object.values(navButtons)).filter((button) => button && !button.classList.contains("hidden")).length);
 }
 
 function getNextMobileNavDock(position = state.mobileNavDock) {
-  if (position === "bottom") return "right";
-  if (position === "right") return "left";
   return "bottom";
 }
 
 function resolveMobileNavDockFromPoint(clientX, clientY) {
-  const sideThreshold = Math.min(132, window.innerWidth * 0.26);
-  const bottomThreshold = Math.min(180, window.innerHeight * 0.28);
-  if (clientY >= window.innerHeight - bottomThreshold) return "bottom";
-  if (clientX <= sideThreshold) return "left";
-  if (clientX >= window.innerWidth - sideThreshold) return "right";
-  return state.mobileNavDock || "bottom";
+  return "bottom";
 }
 
 function syncBottomNavLayout(visibleTabs = 4) {
   if (!bottomNav) return;
   const isDesktopNav = state.bookingViewMode === "desktop" && window.innerWidth >= 980;
-  const dock = getEffectiveMobileNavDock();
   if (isDesktopNav) {
     bottomNav.style.gridTemplateColumns = `repeat(${visibleTabs}, 1fr)`;
     return;
   }
-  bottomNav.style.gridTemplateColumns = dock === "bottom" ? "repeat(4, minmax(0, 1fr))" : "1fr";
+  bottomNav.style.removeProperty("grid-template-columns");
 }
 
 function getStoredPlannerAccentColor() {
@@ -955,52 +921,7 @@ function setBookingViewMode(mode) {
 }
 
 function bindMobileNavDockControls() {
-  if (!bottomNavDragHandle) return;
-  let dragging = false;
-  let moved = false;
-
-  const stopDragging = (event) => {
-    if (!dragging) return;
-    dragging = false;
-    bottomNav?.classList.remove("nav-dragging");
-    const nextDock = resolveMobileNavDockFromPoint(event.clientX, event.clientY);
-    applyMobileNavDock(nextDock, { persist: true });
-    if (moved) {
-      window.setTimeout(() => {
-        bottomNavDragHandle.dataset.dragMoved = "0";
-      }, 0);
-    }
-  };
-
-  bottomNavDragHandle.addEventListener("pointerdown", (event) => {
-    if (state.bookingViewMode === "desktop" || window.innerWidth >= 980) return;
-    dragging = true;
-    moved = false;
-    bottomNavDragHandle.dataset.dragMoved = "0";
-    bottomNav?.classList.add("nav-dragging");
-    bottomNavDragHandle.setPointerCapture?.(event.pointerId);
-    event.preventDefault();
-  });
-
-  bottomNavDragHandle.addEventListener("pointermove", (event) => {
-    if (!dragging) return;
-    const previewDock = resolveMobileNavDockFromPoint(event.clientX, event.clientY);
-    moved = true;
-    bottomNavDragHandle.dataset.dragMoved = "1";
-    applyMobileNavDock(previewDock);
-  });
-
-  bottomNavDragHandle.addEventListener("pointerup", stopDragging);
-  bottomNavDragHandle.addEventListener("pointercancel", stopDragging);
-
-  bottomNavDragHandle.addEventListener("click", (event) => {
-    if (bottomNavDragHandle.dataset.dragMoved === "1") {
-      bottomNavDragHandle.dataset.dragMoved = "0";
-      event.preventDefault();
-      return;
-    }
-    applyMobileNavDock(getNextMobileNavDock(state.mobileNavDock), { persist: true });
-  });
+  applyMobileNavDock("bottom");
 }
 
 function refreshRequestModalNodeRefs() {
