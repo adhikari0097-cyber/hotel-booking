@@ -493,12 +493,10 @@
             </div>
             <p class="inline-note">Track revenue, room demand, service income, and top customers for the selected date range.</p>
             <div class="analytics-filter-grid">
-              <label class="field compact-field">
-                <span>Lifecycle</span>
-                <select id="analytics-filter-lifecycle">
-                  <option value="all">All Lifecycle</option>
-                </select>
-              </label>
+              <div class="field compact-field analytics-state-field">
+                <span>Reservation State</span>
+                <div id="analytics-filter-state-chips" class="analytics-state-chip-list" aria-label="Reservation state filters"></div>
+              </div>
               <label class="field compact-field">
                 <span>Source</span>
                 <select id="analytics-filter-source">

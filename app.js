@@ -478,6 +478,37 @@ function getAnalyticsFilterDisplayValue(select, allLabel) {
   return select.selectedOptions?.[0]?.textContent?.trim() || select.value;
 }
 
+function getAnalyticsGroupStateLabel(group) {
+  const hasPendingStatus = (group?.bookings || []).some((booking) => String(booking.status || "").toLowerCase() === "pending");
+  if (hasPendingStatus) return "Pending Booking";
+  return getLifecycleStatusLabel(getGroupLifecycleStatus(group));
+}
+
+function getSelectedAnalyticsStates() {
+  if (!analyticsFilterStateChips) return [];
+  return Array.from(analyticsFilterStateChips.querySelectorAll("[data-analytics-state].filter-chip-active"))
+    .map((button) => String(button.dataset.analyticsState || "").trim())
+    .filter(Boolean);
+}
+
+function getAnalyticsStateFilterDisplayValue() {
+  const selectedStates = getSelectedAnalyticsStates();
+  return selectedStates.length ? selectedStates.join(", ") : "All States";
+}
+
+function populateAnalyticsStateChips(values = []) {
+  if (!analyticsFilterStateChips) return;
+  const selectedStates = new Set(getSelectedAnalyticsStates());
+  const orderedValues = values.filter(Boolean);
+  analyticsFilterStateChips.innerHTML = orderedValues.map((value) => `
+    <button
+      class="filter-chip${selectedStates.has(value) ? " filter-chip-active" : ""}"
+      type="button"
+      data-analytics-state="${escapeHtml(value)}"
+    >${escapeHtml(value)}</button>
+  `).join("");
+}
+
 function renderAnalyticsResultsContext({ count } = {}) {
   if (!analyticsResultsContext) return;
   const dateValue = analyticsDateFromInput?.value && analyticsDateToInput?.value
@@ -486,7 +517,7 @@ function renderAnalyticsResultsContext({ count } = {}) {
   const metricValue = analyticsFilterMetric?.selectedOptions?.[0]?.textContent?.trim() || "Revenue";
   const items = [
     { label: "Date Range", value: dateValue },
-    { label: "Lifecycle", value: getAnalyticsFilterDisplayValue(analyticsFilterLifecycle, "All Lifecycle") },
+    { label: "Reservation State", value: getAnalyticsStateFilterDisplayValue() },
     { label: "Source", value: getAnalyticsFilterDisplayValue(analyticsFilterSource, "All Sources") },
     { label: "Booked By", value: getAnalyticsFilterDisplayValue(analyticsFilterStaff, "All Staff") },
     { label: "Trend View", value: metricValue },
@@ -1066,7 +1097,7 @@ const analyticsTitles = qs("#analytics-titles");
 const analyticsStaff = qs("#analytics-staff");
 const analyticsTrendChart = qs("#analytics-trend-chart");
 const analyticsInsights = qs("#analytics-insights");
-const analyticsFilterLifecycle = qs("#analytics-filter-lifecycle");
+const analyticsFilterStateChips = qs("#analytics-filter-state-chips");
 const analyticsFilterSource = qs("#analytics-filter-source");
 const analyticsFilterStaff = qs("#analytics-filter-staff");
 const analyticsFilterMetric = qs("#analytics-filter-metric");
@@ -4931,20 +4962,21 @@ async function loadAnalytics() {
   try {
     const bookings = await fetchBookingsForPeriod(from, formatDateKey(addDays(parseDate(to), 1)));
     const groups = getAnalyticsReservationGroups(bookings);
-    const lifecycleOptions = Array.from(new Set(groups.map((group) => getLifecycleStatusLabel(getGroupLifecycleStatus(group))))).sort();
+    const lifecycleOptions = Array.from(new Set(groups.map((group) => getAnalyticsGroupStateLabel(group)))).sort();
     const sourceOptions = Array.from(new Set(groups.map((group) => (
       group.statuses.size === 1 ? getBookingStatusLabel(Array.from(group.statuses)[0]) : "Mixed Booking"
     )))).sort();
     const staffOptions = Array.from(new Set(groups.map((group) => group.bookings[0]?.createdByName || "Unknown"))).sort();
-    populateAnalyticsFilterSelect(analyticsFilterLifecycle, lifecycleOptions, "All Lifecycle");
+    populateAnalyticsStateChips(lifecycleOptions);
     populateAnalyticsFilterSelect(analyticsFilterSource, sourceOptions, "All Sources");
     populateAnalyticsFilterSelect(analyticsFilterStaff, staffOptions, "All Staff");
+    const selectedStates = getSelectedAnalyticsStates();
 
     const filteredGroups = groups.filter((group) => {
-      const lifecycleLabel = getLifecycleStatusLabel(getGroupLifecycleStatus(group));
+      const lifecycleLabel = getAnalyticsGroupStateLabel(group);
       const sourceLabel = group.statuses.size === 1 ? getBookingStatusLabel(Array.from(group.statuses)[0]) : "Mixed Booking";
       const staffLabel = group.bookings[0]?.createdByName || "Unknown";
-      if ((analyticsFilterLifecycle?.value || "all") !== "all" && analyticsFilterLifecycle.value !== lifecycleLabel) return false;
+      if (selectedStates.length && !selectedStates.includes(lifecycleLabel)) return false;
       if ((analyticsFilterSource?.value || "all") !== "all" && analyticsFilterSource.value !== sourceLabel) return false;
       if ((analyticsFilterStaff?.value || "all") !== "all" && analyticsFilterStaff.value !== staffLabel) return false;
       return true;
@@ -11270,7 +11302,12 @@ analyticsPresetButtons.forEach((button) => {
 });
 analyticsDateFromInput?.addEventListener("change", () => renderAnalyticsResultsContext());
 analyticsDateToInput?.addEventListener("change", () => renderAnalyticsResultsContext());
-analyticsFilterLifecycle?.addEventListener("change", () => loadAnalytics());
+analyticsFilterStateChips?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-analytics-state]");
+  if (!button) return;
+  button.classList.toggle("filter-chip-active");
+  loadAnalytics();
+});
 analyticsFilterSource?.addEventListener("change", () => loadAnalytics());
 analyticsFilterStaff?.addEventListener("change", () => loadAnalytics());
 analyticsFilterMetric?.addEventListener("change", () => loadAnalytics());

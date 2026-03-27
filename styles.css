@@ -4367,6 +4367,16 @@ h4 {
   gap: 10px;
 }
 
+.analytics-state-field {
+  grid-column: 1 / -1;
+}
+
+.analytics-state-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .analytics-results-context {
   display: grid;
   gap: 12px;
