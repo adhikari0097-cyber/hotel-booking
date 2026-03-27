@@ -4858,6 +4858,12 @@ function getAnalyticsReservationGroups(bookings = []) {
   return groupBookingsForDisplay((bookings || []).filter((booking) => isVisibleBooking(booking)));
 }
 
+function getAnalyticsAllReservationGroups(bookings = []) {
+  return groupBookingsForDisplay(
+    (bookings || []).filter((booking) => String(booking?.status || "").toLowerCase() !== "cancelled"),
+  );
+}
+
 function getAnalyticsRoomNights(group) {
   return (group?.bookings || []).reduce((sum, booking) => {
     const nights = Math.max(1, getNightCount(booking.checkIn, booking.checkOut));
@@ -5014,6 +5020,7 @@ async function loadAnalytics() {
   try {
     const bookings = await fetchBookingsForPeriod(from, formatDateKey(addDays(parseDate(to), 1)));
     const groups = getAnalyticsReservationGroups(bookings);
+    const allGroups = getAnalyticsAllReservationGroups(bookings);
     const lifecycleOptions = Array.from(new Set(groups.map((group) => getAnalyticsGroupStateLabel(group)))).sort();
     const sourceOptions = Array.from(new Set(groups.map((group) => (
       group.statuses.size === 1 ? getBookingStatusLabel(Array.from(group.statuses)[0]) : "Mixed Booking"
@@ -5046,10 +5053,12 @@ async function loadAnalytics() {
     const averageBookingValue = totalBookings ? roundCurrency(totalRevenue / totalBookings) : 0;
     const averageStayNights = totalBookings ? roundCurrency(totalRoomNights / totalBookings) : 0;
     const totalHoldPayments = includeHoldPayments
-      ? roundCurrency(groups.reduce((sum, group) => {
+      ? roundCurrency(allGroups.reduce((sum, group) => {
         if (getGroupLifecycleStatus(group) !== "hold") return sum;
         if (!matchesSharedAnalyticsFilters(group)) return sum;
-        return sum + Number(getAdvancePaymentInfo(group.bookings).amount || 0);
+        const advanceAmount = Number(getAdvancePaymentInfo(group.bookings).amount || 0);
+        const customAmount = Number(getGroupCustomPriceTotal(group.bookings) || 0);
+        return sum + advanceAmount + customAmount;
       }, 0))
       : 0;
 
