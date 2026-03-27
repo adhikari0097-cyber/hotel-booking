@@ -7599,6 +7599,16 @@ async function openReservationWhatsappGroupBackup(groupKey) {
     : "Add a WhatsApp group link in settings to open it directly.");
 }
 
+function openWhatsappGroupLinkOnly() {
+  const shareMessages = getRuntimeShareMessages();
+  const groupLink = String(shareMessages.whatsappGroupLink || "").trim().replace(/\?mode=gi_t$/i, "");
+  if (!groupLink) {
+    showToast("Add a WhatsApp group link in settings first.", true);
+    return;
+  }
+  window.open(groupLink, "_blank", "noopener,noreferrer");
+}
+
 function openReservationEmail(groupKey) {
   const group = getBookingGroupByKey(groupKey);
   if (!group) {
@@ -8076,7 +8086,8 @@ function openBookingDetailsModal(groupKey) {
     <div class="booking-details-actions">
       ${canUpdateBookingAdvance(group) ? `<button class="action-btn action-btn-icon action-btn-icon-advance" type="button" data-booking-group-action="advance">Update Advance</button>` : ""}
       <button class="action-btn action-btn-icon action-btn-icon-whatsapp" type="button" data-booking-group-action="whatsapp">WhatsApp Customer</button>
-      <button class="action-btn" type="button" data-booking-group-action="whatsapp-group">To WhatsApp Group</button>
+      <button class="action-btn" type="button" data-booking-group-action="whatsapp-group-copy">Copy Backup Note</button>
+      <button class="action-btn" type="button" data-booking-group-action="whatsapp-group-open">Open Group</button>
       <button class="action-btn" type="button" data-booking-group-action="email">Email Slip</button>
       <button class="action-btn action-btn-icon action-btn-icon-pdf" type="button" data-booking-group-action="pdf">Export PDF</button>
       ${(directEditAllowed || canManageBookings()) ? `<button class="primary-btn" type="button" data-booking-group-action="manage">Edit Booking</button>` : ""}
@@ -8154,14 +8165,20 @@ function openBookingDetailsModal(groupKey) {
       openReservationWhatsapp(group.key);
     });
   }
-  const whatsappGroupBtn = bookingDetailsBody.querySelector('[data-booking-group-action="whatsapp-group"]');
-  if (whatsappGroupBtn) {
-    whatsappGroupBtn.addEventListener("click", async () => {
+  const whatsappGroupCopyBtn = bookingDetailsBody.querySelector('[data-booking-group-action="whatsapp-group-copy"]');
+  if (whatsappGroupCopyBtn) {
+    whatsappGroupCopyBtn.addEventListener("click", async () => {
       try {
         await openReservationWhatsappGroupBackup(group.key);
       } catch (error) {
         showToast(error.message || "Unable to open WhatsApp group backup.", true);
       }
+    });
+  }
+  const whatsappGroupOpenBtn = bookingDetailsBody.querySelector('[data-booking-group-action="whatsapp-group-open"]');
+  if (whatsappGroupOpenBtn) {
+    whatsappGroupOpenBtn.addEventListener("click", () => {
+      openWhatsappGroupLinkOnly();
     });
   }
   const emailBtn = bookingDetailsBody.querySelector('[data-booking-group-action="email"]');
@@ -8517,8 +8534,11 @@ function renderBookings(bookings) {
             <button class="secondary-btn action-btn-icon action-btn-icon-whatsapp compact-control" type="button" data-booking-group-whatsapp="${group.key}" aria-label="WhatsApp Customer" title="WhatsApp Customer">
               <span class="compact-label">WA Customer</span>
             </button>
-            <button class="secondary-btn compact-control" type="button" data-booking-group-whatsapp-group="${group.key}" aria-label="To WhatsApp Group" title="To WhatsApp Group">
-              <span class="compact-label">WA Group</span>
+            <button class="secondary-btn compact-control" type="button" data-booking-group-whatsapp-group-copy="${group.key}" aria-label="Copy Backup Note" title="Copy Backup Note">
+              <span class="compact-label">Copy Note</span>
+            </button>
+            <button class="secondary-btn compact-control" type="button" data-booking-group-whatsapp-group-open="${group.key}" aria-label="Open WhatsApp Group" title="Open WhatsApp Group">
+              <span class="compact-label">Open Group</span>
             </button>
             <button class="secondary-btn compact-control" type="button" data-booking-group-email="${group.key}" aria-label="Email Slip" title="Email Slip">
               <span class="compact-label">Email Slip</span>
@@ -8733,14 +8753,20 @@ function renderBookings(bookings) {
         openReservationWhatsapp(whatsappGroupBtn.dataset.bookingGroupWhatsapp);
       });
     }
-    const whatsappBackupBtn = card.querySelector("[data-booking-group-whatsapp-group]");
-    if (whatsappBackupBtn) {
-      whatsappBackupBtn.addEventListener("click", async () => {
+    const whatsappBackupCopyBtn = card.querySelector("[data-booking-group-whatsapp-group-copy]");
+    if (whatsappBackupCopyBtn) {
+      whatsappBackupCopyBtn.addEventListener("click", async () => {
         try {
-          await openReservationWhatsappGroupBackup(whatsappBackupBtn.dataset.bookingGroupWhatsappGroup);
+          await openReservationWhatsappGroupBackup(whatsappBackupCopyBtn.dataset.bookingGroupWhatsappGroupCopy);
         } catch (error) {
           showToast(error.message || "Unable to open WhatsApp group backup.", true);
         }
+      });
+    }
+    const whatsappBackupOpenBtn = card.querySelector("[data-booking-group-whatsapp-group-open]");
+    if (whatsappBackupOpenBtn) {
+      whatsappBackupOpenBtn.addEventListener("click", () => {
+        openWhatsappGroupLinkOnly();
       });
     }
     const emailGroupBtn = card.querySelector("[data-booking-group-email]");
