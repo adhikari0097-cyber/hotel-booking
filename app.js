@@ -4878,61 +4878,62 @@ function updateNavVisibility() {
   const showNotifications = canAccessNotifications();
   const showSystemUpdates = canAccessSystemUpdates();
   const showPricing = canManagePricing() || previewOwnerOverride;
-  navButtons.planner.classList.toggle("hidden", !showPlanner);
-  navButtons.analytics.classList.toggle("hidden", !showAnalytics);
-  navButtons.deductions.classList.toggle("hidden", !showDeductions);
-  navButtons.guide.classList.toggle("hidden", !showGuide);
-  navButtons.hold.classList.toggle("hidden", !showHold);
-  navButtons.requests.classList.toggle("hidden", !showRequests);
-  navButtons.notifications.classList.toggle("hidden", !showNotifications);
-  navButtons.systemUpdates.classList.toggle("hidden", !showSystemUpdates);
-  navButtons.accounts.classList.toggle("hidden", !showAccounts);
-  navButtons.pricing.classList.toggle("hidden", !showPricing);
+  navButtons.planner?.classList.toggle("hidden", !showPlanner);
+  navButtons.analytics?.classList.toggle("hidden", !showAnalytics);
+  navButtons.deductions?.classList.toggle("hidden", !showDeductions);
+  navButtons.guide?.classList.toggle("hidden", !showGuide);
+  navButtons.hold?.classList.toggle("hidden", !showHold);
+  navButtons.requests?.classList.toggle("hidden", !showRequests);
+  navButtons.notifications?.classList.toggle("hidden", !showNotifications);
+  navButtons.systemUpdates?.classList.toggle("hidden", !showSystemUpdates);
+  navButtons.accounts?.classList.toggle("hidden", !showAccounts);
+  navButtons.pricing?.classList.toggle("hidden", !showPricing);
   analyticsDeductionsToggleRow?.classList.toggle("hidden", !showDeductions);
   const visibleTabs = 2 + Number(showPlanner) + Number(showAnalytics) + Number(showDeductions) + Number(showGuide) + Number(showHold) + Number(showRequests) + Number(showNotifications) + Number(showSystemUpdates) + Number(showAccounts) + Number(showPricing);
   const bottomNav = qs(".bottom-nav");
   const isDesktopNav = state.bookingViewMode === "desktop" && window.innerWidth >= 980;
-  bottomNav.style.gridTemplateColumns = isDesktopNav
+  if (bottomNav) bottomNav.style.gridTemplateColumns = isDesktopNav
     ? `repeat(${visibleTabs}, 1fr)`
     : `repeat(4, minmax(0, 1fr))`;
-  if (!showPlanner && screens.planner.classList.contains("screen-active")) {
+  if (!showPlanner && screens.planner?.classList.contains("screen-active")) {
     setScreen("booking");
   }
-  if (!showAnalytics && screens.analytics.classList.contains("screen-active")) {
+  if (!showAnalytics && screens.analytics?.classList.contains("screen-active")) {
     setScreen("booking");
   }
-  if (!showDeductions && screens.deductions.classList.contains("screen-active")) {
+  if (!showDeductions && screens.deductions?.classList.contains("screen-active")) {
     setScreen("booking");
   }
-  if (!showGuide && screens.guide.classList.contains("screen-active")) {
+  if (!showGuide && screens.guide?.classList.contains("screen-active")) {
     setScreen("booking");
   }
-  if (!showHold && screens.hold.classList.contains("screen-active")) {
+  if (!showHold && screens.hold?.classList.contains("screen-active")) {
     setScreen("booking");
   }
-  if (!showRequests && screens.requests.classList.contains("screen-active")) {
+  if (!showRequests && screens.requests?.classList.contains("screen-active")) {
     setScreen("booking");
   }
-  if (!showNotifications && screens.notifications.classList.contains("screen-active")) {
+  if (!showNotifications && screens.notifications?.classList.contains("screen-active")) {
     setScreen("booking");
   }
-  if (!showSystemUpdates && screens.systemUpdates.classList.contains("screen-active")) {
+  if (!showSystemUpdates && screens.systemUpdates?.classList.contains("screen-active")) {
     setScreen("booking");
   }
-  if (!showAccounts && screens.accounts.classList.contains("screen-active")) {
+  if (!showAccounts && screens.accounts?.classList.contains("screen-active")) {
     setScreen("booking");
   }
-  if (!showPricing && screens.pricing.classList.contains("screen-active")) {
+  if (!showPricing && screens.pricing?.classList.contains("screen-active")) {
     setScreen("booking");
   }
 }
 
 function setScreen(target) {
-  Object.values(screens).forEach((screen) => screen.classList.remove("screen-active"));
-  Object.values(navButtons).forEach((btn) => btn.classList.remove("nav-active"));
+  Object.values(screens).forEach((screen) => screen?.classList.remove("screen-active"));
+  Object.values(navButtons).forEach((btn) => btn?.classList.remove("nav-active"));
 
-  screens[target].classList.add("screen-active");
-  navButtons[target].classList.add("nav-active");
+  if (!screens[target] || !navButtons[target]) return;
+  screens[target]?.classList.add("screen-active");
+  navButtons[target]?.classList.add("nav-active");
   if (target === "planner") {
     loadReservationPlanner();
   }
@@ -12234,14 +12235,14 @@ navButtons.booking.addEventListener("click", () => setScreen("booking"));
 navButtons.view.addEventListener("click", () => setScreen("view"));
 navButtons.planner.addEventListener("click", () => setScreen("planner"));
 navButtons.analytics.addEventListener("click", () => setScreen("analytics"));
-navButtons.deductions.addEventListener("click", () => setScreen("deductions"));
-navButtons.guide.addEventListener("click", () => setScreen("guide"));
-navButtons.hold.addEventListener("click", () => setScreen("hold"));
-navButtons.requests.addEventListener("click", () => setScreen("requests"));
-navButtons.notifications.addEventListener("click", () => setScreen("notifications"));
-navButtons.systemUpdates.addEventListener("click", () => setScreen("systemUpdates"));
-navButtons.accounts.addEventListener("click", () => setScreen("accounts"));
-navButtons.pricing.addEventListener("click", () => setScreen("pricing"));
+navButtons.deductions?.addEventListener("click", () => setScreen("deductions"));
+navButtons.guide?.addEventListener("click", () => setScreen("guide"));
+navButtons.hold?.addEventListener("click", () => setScreen("hold"));
+navButtons.requests?.addEventListener("click", () => setScreen("requests"));
+navButtons.notifications?.addEventListener("click", () => setScreen("notifications"));
+navButtons.systemUpdates?.addEventListener("click", () => setScreen("systemUpdates"));
+navButtons.accounts?.addEventListener("click", () => setScreen("accounts"));
+navButtons.pricing?.addEventListener("click", () => setScreen("pricing"));
 notificationBellBtn?.addEventListener("click", () => setScreen("notifications"));
 refreshGuideBtn?.addEventListener("click", () => loadGuideBook());
 guideSearchInput?.addEventListener("input", () => renderGuideBookPage());
