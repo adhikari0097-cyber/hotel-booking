@@ -1430,6 +1430,8 @@ function mapGoogleSlipBackupRow(row = {}) {
     advanceAmount: Number(row.advanceAmount || 0),
     totalPrice: Number(row.totalPrice || 0),
     balanceAmount: Number(row.balanceAmount || 0),
+    fileSource: row.fileSource || "",
+    fileMimeType: row.fileMimeType || "",
     driveFileId: row.driveFileId || "",
     driveFileUrl: row.driveFileUrl || "",
     fileName: row.fileName || "",
@@ -1555,6 +1557,91 @@ function applyPhoneSanitizer(input) {
     const sanitized = sanitizePhoneValue(input.value);
     if (input.value !== sanitized) input.value = sanitized;
   });
+}
+
+const MAX_CUSTOMER_SLIP_UPLOAD_BYTES = 3 * 1024 * 1024;
+
+function getMimeExtension(mimeType = "") {
+  const normalized = String(mimeType || "").toLowerCase();
+  if (normalized.includes("pdf")) return "pdf";
+  if (normalized.includes("png")) return "png";
+  if (normalized.includes("jpeg") || normalized.includes("jpg")) return "jpg";
+  if (normalized.includes("webp")) return "webp";
+  if (normalized.includes("heic")) return "heic";
+  return "bin";
+}
+
+function sanitizeFileStem(value = "", fallback = "file") {
+  const normalized = String(value || "").trim().replace(/\.[a-z0-9]{2,8}$/i, "");
+  const cleaned = normalized.replace(/[^\w-]+/g, "_").replace(/^_+|_+$/g, "");
+  return cleaned || fallback;
+}
+
+function buildCustomerSlipFileName(trackCode = "", file = null) {
+  const trackStem = sanitizeFileStem(trackCode || "booking", "booking");
+  const originalName = String(file?.name || "customer-bank-slip").trim();
+  const originalExtensionMatch = originalName.match(/\.([a-z0-9]{2,8})$/i);
+  const extension = originalExtensionMatch?.[1]
+    ? originalExtensionMatch[1].toLowerCase()
+    : getMimeExtension(file?.type || "");
+  const nameStem = sanitizeFileStem(originalName, "customer-bank-slip");
+  return `${trackStem}-${nameStem}.${extension}`;
+}
+
+function promptCustomerBankSlipFile() {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    let settled = false;
+
+    const finish = (file = null) => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener("focus", handleFocus, true);
+      input.remove();
+      resolve(file);
+    };
+
+    const handleFocus = () => {
+      window.setTimeout(() => {
+        if (!settled) finish(input.files?.[0] || null);
+      }, 500);
+    };
+
+    input.type = "file";
+    input.accept = "image/*,application/pdf";
+    input.style.position = "fixed";
+    input.style.left = "-9999px";
+    input.style.top = "0";
+    input.addEventListener("change", () => {
+      finish(input.files?.[0] || null);
+    }, { once: true });
+    input.addEventListener("cancel", () => {
+      finish(null);
+    }, { once: true });
+    window.addEventListener("focus", handleFocus, true);
+    document.body.appendChild(input);
+    input.click();
+  });
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Could not read the selected bank slip file."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function parseDataUrlPayload(dataUrl = "") {
+  const match = String(dataUrl || "").match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) {
+    throw new Error("Selected bank slip file could not be prepared for upload.");
+  }
+  return {
+    mimeType: match[1],
+    base64Content: match[2],
+  };
 }
 
 function setBookingDateRange(checkIn, checkOut, { syncPicker = true } = {}) {
@@ -3959,7 +4046,7 @@ function getBookingStayedHours(group) {
   return `${diffHours.toFixed(1)} h`;
 }
 
-async function updateGroupAdvancePayment(groupKey, advanceAmount) {
+async function updateGroupAdvancePayment(groupKey, advanceAmount, { slipFile = null } = {}) {
   const group = getBookingGroupByKey(groupKey);
   if (!group?.bookings?.length) throw new Error("Booking group not found.");
   const normalizedAmount = roundCurrency(Math.max(0, Number(advanceAmount || 0)));
@@ -3983,13 +4070,24 @@ async function updateGroupAdvancePayment(groupKey, advanceAmount) {
     });
   }
 
-  if (advancePaid) {
+  let slipUploaded = false;
+  let slipError = "";
+  if (advancePaid && slipFile) {
     try {
-      await savePaymentSlipBackupForGroup(groupKey);
+      await savePaymentSlipBackupForGroup(groupKey, { file: slipFile });
+      slipUploaded = true;
     } catch (error) {
-      showToast(`Advance updated, but slip backup failed: ${error.message}`, true);
+      slipError = error.message || "Customer bank slip backup failed.";
     }
   }
+
+  return {
+    changed: true,
+    slipRequested: advancePaid,
+    slipUploaded,
+    slipPending: advancePaid && !slipUploaded,
+    slipError,
+  };
 }
 
 async function promptGroupCustomPriceAdd(groupKey) {
@@ -4137,8 +4235,11 @@ async function promptGroupPaymentUpdate(groupKey) {
   if (Number.isNaN(nextAmount) || nextAmount < 0) {
     throw new Error("Enter a valid advance amount.");
   }
-  await updateGroupAdvancePayment(groupKey, nextAmount);
-  return true;
+  let slipFile = null;
+  if (nextAmount > 0) {
+    slipFile = await promptCustomerBankSlipFile();
+  }
+  return updateGroupAdvancePayment(groupKey, nextAmount, { slipFile });
 }
 
 async function removeBookingRoomDirect(bookingId) {
@@ -6421,10 +6522,12 @@ function renderGoogleBackupDetail() {
     backupDetailBody.innerHTML = '<p class="inline-note">Selected slip backup could not be found.</p>';
     return;
   }
-  backupDetailBody.innerHTML = `
-    <div class="backup-detail-grid">
+    backupDetailBody.innerHTML = `
+      <div class="backup-detail-grid">
       <div class="backup-detail-card"><strong>Track Code</strong><span>${escapeHtml(slip.trackCode || "-")}</span></div>
       <div class="backup-detail-card"><strong>Document</strong><span>${escapeHtml(slip.documentLabel || "-")}</span></div>
+      <div class="backup-detail-card"><strong>File Name</strong><span>${escapeHtml(slip.fileName || "-")}</span></div>
+      <div class="backup-detail-card"><strong>File Type</strong><span>${escapeHtml(slip.fileMimeType || "-")}</span></div>
       <div class="backup-detail-card"><strong>Advance Amount</strong><span>${escapeHtml(formatMoney(slip.advanceAmount || 0))}</span></div>
       <div class="backup-detail-card"><strong>Total / Balance</strong><span>${escapeHtml(`${formatMoney(slip.totalPrice || 0)} / ${formatMoney(slip.balanceAmount || 0)}`)}</span></div>
       <div class="backup-detail-card"><strong>Saved At</strong><span>${escapeHtml(slip.savedAt ? new Date(slip.savedAt).toLocaleString("en-GB") : "-")}</span></div>
@@ -6539,6 +6642,8 @@ async function loadGoogleBackupPage() {
     if (!state.selectedBackupDetail && state.googleBookingBackups.length) {
       const first = buildGoogleBookingBackupGroups(state.googleBookingBackups)[0];
       if (first) state.selectedBackupDetail = { type: "booking", key: first.key };
+    } else if (!state.selectedBackupDetail && state.googlePaymentSlipBackups.length) {
+      state.selectedBackupDetail = { type: "slip", key: state.googlePaymentSlipBackups[0].slipKey };
     }
     renderGoogleBackupPage();
   } catch (error) {
@@ -6591,15 +6696,23 @@ async function fetchFreshBookingGroupByKey(groupKey) {
   return null;
 }
 
-async function savePaymentSlipBackupForGroup(groupKey) {
+async function savePaymentSlipBackupForGroup(groupKey, { file } = {}) {
   if (!isSheetsBackupConfigured()) {
     return { skipped: true };
   }
+  if (!file) {
+    throw new Error("Select the customer bank slip image or PDF.");
+  }
+  if (file.size > MAX_CUSTOMER_SLIP_UPLOAD_BYTES) {
+    throw new Error("Customer bank slip must be smaller than 3 MB.");
+  }
   const group = await fetchFreshBookingGroupByKey(groupKey);
   if (!group) throw new Error("Booking group not found for payment slip backup.");
+  const fileDataUrl = await readFileAsDataUrl(file);
+  const filePayload = parseDataUrlPayload(fileDataUrl);
   const shareMeta = getReservationShareMeta(group);
-  const slipKey = `${group.trackCode || group.key}|${shareMeta.documentLabel}|${shareMeta.lifecycleStatus}`;
-  const markup = buildBookingPdfMarkup(group);
+  const nowIso = new Date().toISOString();
+  const slipKey = `${group.trackCode || group.key}|customer-bank-slip|${nowIso}`;
   return callGoogleBackupApi("save_payment_slip", {
     method: "POST",
     body: {
@@ -6607,18 +6720,29 @@ async function savePaymentSlipBackupForGroup(groupKey) {
       trackCode: group.trackCode || group.key,
       guestName: group.guestName || "",
       phone: group.phone || "",
-      documentLabel: shareMeta.documentLabel,
+      documentLabel: "Customer Bank Slip",
       lifecycleStatus: shareMeta.lifecycleStatus,
       advanceAmount: String(roundCurrency(Number(shareMeta.advanceInfo?.amount || 0))),
       totalPrice: String(roundCurrency(Number(group.totalPrice || 0))),
       balanceAmount: String(roundCurrency(Number(shareMeta.balanceAmount || 0))),
-      fileName: `${(group.trackCode || "booking").replace(/[^\w-]+/g, "_")}-${shareMeta.documentLabel.replace(/[^\w-]+/g, "_")}.html`,
-      htmlMarkup: markup,
+      fileName: buildCustomerSlipFileName(group.trackCode || group.key, file),
+      fileSource: "customer_upload",
+      fileMimeType: filePayload.mimeType || file.type || "application/octet-stream",
+      fileContentBase64: filePayload.base64Content,
       bookingJson: JSON.stringify(group.bookings || []),
       groupJson: JSON.stringify(group),
-      savedAt: new Date().toISOString(),
+      savedAt: nowIso,
     },
   });
+}
+
+async function promptCustomerSlipUploadForGroup(groupKey) {
+  const file = await promptCustomerBankSlipFile();
+  if (!file) {
+    return { changed: false, slipUploaded: false, skipped: true };
+  }
+  await savePaymentSlipBackupForGroup(groupKey, { file });
+  return { changed: true, slipUploaded: true, skipped: false };
 }
 
 async function getAvailability(checkIn, checkOut) {
@@ -8441,6 +8565,7 @@ function openBookingDetailsModal(groupKey) {
   const displayTrackCode = getGroupDisplayTrackCode(group);
   bookingDetailsTitle.textContent = `${displayTrackCode ? `${displayTrackCode} · ` : ""}${group.guestName || "Guest"}`;
   const advanceInfo = getAdvancePaymentInfo(group.bookings);
+  const canUploadAdvanceSlip = canUpdateBookingAdvance(group) && (advanceInfo.amount > 0 || advanceInfo.allPaid || advanceInfo.partiallyPaid);
   const customPriceItems = getGroupCustomPriceEntries(group.bookings);
   const customPriceTotal = getGroupCustomPriceTotal(group.bookings);
   const balanceAmount = getBookingBalanceAmount(group);
@@ -8548,6 +8673,7 @@ function openBookingDetailsModal(groupKey) {
     ${requestHistoryMarkup}
     <div class="booking-details-actions">
       ${canUpdateBookingAdvance(group) ? `<button class="action-btn action-btn-icon action-btn-icon-advance" type="button" data-booking-group-action="advance">Update Advance</button>` : ""}
+      ${canUploadAdvanceSlip ? `<button class="action-btn" type="button" data-booking-group-action="upload-slip">Upload Slip</button>` : ""}
       <button class="action-btn action-btn-icon action-btn-icon-whatsapp" type="button" data-booking-group-action="whatsapp">WhatsApp Customer</button>
       <button class="action-btn" type="button" data-booking-group-action="whatsapp-group-copy">Copy Backup Note</button>
       <button class="action-btn" type="button" data-booking-group-action="whatsapp-group-open">Open Group</button>
@@ -8654,13 +8780,34 @@ function openBookingDetailsModal(groupKey) {
   if (advanceBtn) {
     advanceBtn.addEventListener("click", async () => {
       try {
-        const changed = await promptGroupPaymentUpdate(group.key);
-        if (!changed) return;
-        showToast("Advance payment updated.");
+        const result = await promptGroupPaymentUpdate(group.key);
+        if (!result?.changed) return;
+        showToast(result.slipUploaded
+          ? "Advance payment updated and customer bank slip saved."
+          : result.slipError
+            ? `Advance payment updated. Slip backup failed: ${result.slipError}`
+            : result.slipRequested
+              ? "Advance payment updated. Upload the customer bank slip when available."
+              : "Advance payment updated.");
         await refreshLiveViews();
         openBookingDetailsModal(group.key);
       } catch (error) {
         showToast(error.message || "Unable to update advance payment.", true);
+      }
+    });
+  }
+  const uploadSlipBtn = bookingDetailsBody.querySelector('[data-booking-group-action="upload-slip"]');
+  if (uploadSlipBtn) {
+    uploadSlipBtn.addEventListener("click", async () => {
+      try {
+        const result = await promptCustomerSlipUploadForGroup(group.key);
+        if (!result?.changed) return;
+        showToast("Customer bank slip saved to Google Drive.");
+        if (state.activePage === "backup") {
+          await loadGoogleBackupPage();
+        }
+      } catch (error) {
+        showToast(error.message || "Unable to upload customer bank slip.", true);
       }
     });
   }
@@ -8908,6 +9055,7 @@ function renderBookings(bookings) {
     const directEditAllowed = canEditBookingGroupDirect(group);
     const checkInWindowStarted = hasCheckInWindowStarted(group);
     const advanceInfo = getAdvancePaymentInfo(group.bookings);
+    const canUploadAdvanceSlip = canUpdateBookingAdvance(group) && (advanceInfo.amount > 0 || advanceInfo.allPaid || advanceInfo.partiallyPaid);
     const groupRequest = pendingCollections.byTrack.get(group.trackCode || group.key);
     const groupServices = getGroupServices(group.bookings);
     const roomRows = group.bookings
@@ -8992,6 +9140,11 @@ function renderBookings(bookings) {
             ${canUpdateBookingAdvance(group) ? `
               <button class="secondary-btn action-btn-icon action-btn-icon-advance compact-control" type="button" data-booking-group-advance="${group.key}" aria-label="Update Advance" title="Update Advance">
                 <span class="compact-label">Update Advance</span>
+              </button>
+            ` : ""}
+            ${canUploadAdvanceSlip ? `
+              <button class="secondary-btn compact-control" type="button" data-booking-group-upload-slip="${group.key}" aria-label="Upload Customer Slip" title="Upload Customer Slip">
+                <span class="compact-label">Upload Slip</span>
               </button>
             ` : ""}
             <button class="secondary-btn action-btn-icon action-btn-icon-whatsapp compact-control" type="button" data-booking-group-whatsapp="${group.key}" aria-label="WhatsApp Customer" title="WhatsApp Customer">
@@ -9242,12 +9395,33 @@ function renderBookings(bookings) {
     if (advanceGroupBtn) {
       advanceGroupBtn.addEventListener("click", async () => {
         try {
-          const changed = await promptGroupPaymentUpdate(advanceGroupBtn.dataset.bookingGroupAdvance);
-          if (!changed) return;
-          showToast("Advance payment updated.");
+          const result = await promptGroupPaymentUpdate(advanceGroupBtn.dataset.bookingGroupAdvance);
+          if (!result?.changed) return;
+          showToast(result.slipUploaded
+            ? "Advance payment updated and customer bank slip saved."
+            : result.slipError
+              ? `Advance payment updated. Slip backup failed: ${result.slipError}`
+              : result.slipRequested
+                ? "Advance payment updated. Upload the customer bank slip when available."
+                : "Advance payment updated.");
           await refreshLiveViews();
         } catch (error) {
           showToast(error.message || "Unable to update advance payment.", true);
+        }
+      });
+    }
+    const uploadSlipGroupBtn = card.querySelector("[data-booking-group-upload-slip]");
+    if (uploadSlipGroupBtn) {
+      uploadSlipGroupBtn.addEventListener("click", async () => {
+        try {
+          const result = await promptCustomerSlipUploadForGroup(uploadSlipGroupBtn.dataset.bookingGroupUploadSlip);
+          if (!result?.changed) return;
+          showToast("Customer bank slip saved to Google Drive.");
+          if (state.activePage === "backup") {
+            await loadGoogleBackupPage();
+          }
+        } catch (error) {
+          showToast(error.message || "Unable to upload customer bank slip.", true);
         }
       });
     }

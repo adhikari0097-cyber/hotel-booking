@@ -38,6 +38,8 @@ const BOOKING_BACKUP_CONFIG = Object.freeze({
     'Advance Amount',
     'Total Price',
     'Balance Amount',
+    'File Source',
+    'File Mime Type',
     'File Name',
     'Drive File Id',
     'Drive File Url',
@@ -130,8 +132,12 @@ function handleBookingBackupRequest_(e, method) {
 
     if (action === 'save_payment_slip') {
       const nowIso = new Date().toISOString();
-      const fileName = params.fileName || ('booking-slip-' + nowIso.replace(/[^\d]/g, '').slice(0, 14) + '.html');
-      const file = createDriveHtmlFile_(fileName, params.htmlMarkup || '');
+      const fileSource = params.fileSource || (params.fileContentBase64 ? 'customer_upload' : 'generated_receipt');
+      const fileMimeType = params.fileMimeType || (fileSource === 'customer_upload' ? 'application/octet-stream' : 'text/html');
+      const fileName = params.fileName || ('booking-slip-' + nowIso.replace(/[^\d]/g, '').slice(0, 14) + (fileSource === 'customer_upload' ? '' : '.html'));
+      const file = params.fileContentBase64
+        ? createDriveBinaryFile_(fileName, params.fileContentBase64 || '', fileMimeType)
+        : createDriveHtmlFile_(fileName, params.htmlMarkup || '');
       const record = {
         'Slip Key': params.slipKey || '',
         'Track Code': params.trackCode || '',
@@ -142,6 +148,8 @@ function handleBookingBackupRequest_(e, method) {
         'Advance Amount': params.advanceAmount || '0',
         'Total Price': params.totalPrice || '0',
         'Balance Amount': params.balanceAmount || '0',
+        'File Source': fileSource,
+        'File Mime Type': fileMimeType,
         'File Name': file.getName(),
         'Drive File Id': file.getId(),
         'Drive File Url': file.getUrl(),
@@ -296,6 +304,17 @@ function createDriveHtmlFile_(fileName, htmlMarkup) {
   const props = PropertiesService.getScriptProperties();
   const folderId = props.getProperty('BOOKING_BACKUP_DRIVE_FOLDER_ID');
   const blob = Utilities.newBlob(String(htmlMarkup || ''), 'text/html', fileName);
+  if (folderId) {
+    return DriveApp.getFolderById(folderId).createFile(blob);
+  }
+  return DriveApp.createFile(blob);
+}
+
+function createDriveBinaryFile_(fileName, base64Content, mimeType) {
+  const props = PropertiesService.getScriptProperties();
+  const folderId = props.getProperty('BOOKING_BACKUP_DRIVE_FOLDER_ID');
+  const bytes = Utilities.base64Decode(String(base64Content || ''));
+  const blob = Utilities.newBlob(bytes, mimeType || 'application/octet-stream', fileName);
   if (folderId) {
     return DriveApp.getFolderById(folderId).createFile(blob);
   }
