@@ -511,9 +511,22 @@ function populateAnalyticsChipFilter(container, values = []) {
 }
 
 function getAnalyticsGroupStateLabel(group) {
-  const hasPendingStatus = (group?.bookings || []).some((booking) => String(booking.status || "").toLowerCase() === "pending");
-  if (hasPendingStatus) return "Pending Booking";
+  if (isAnalyticsPendingGroup(group)) return "Pending Booking";
   return getLifecycleStatusLabel(getGroupLifecycleStatus(group));
+}
+
+function isAnalyticsPendingGroup(group) {
+  if (!group?.bookings?.length) return false;
+  const hasPendingStatus = group.bookings.some((booking) => String(booking.status || "").toLowerCase() === "pending");
+  if (hasPendingStatus) return true;
+
+  const pendingCollections = getLatestPendingRequestCollections();
+  const groupKey = group.trackCode || group.key || getBookingGroupKey(group.bookings[0]);
+  const hasPendingRequest = pendingCollections.byTrack.get(groupKey)?.status === "pending"
+    || group.bookings.some((booking) => pendingCollections.byBooking.get(booking.id)?.status === "pending");
+  if (hasPendingRequest) return true;
+
+  return !getAdvancePaymentInfo(group.bookings).allPaid;
 }
 
 function getSelectedAnalyticsStates() {
