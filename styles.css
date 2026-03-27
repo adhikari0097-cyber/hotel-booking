@@ -1,16 +1,16 @@
 :root {
   color-scheme: light;
-  --bg: #f6f3ef;
+  --bg: #eef3ff;
   --card: #ffffff;
-  --primary: #0b3d2e;
-  --primary-dark: #082c21;
-  --accent: #c7a45b;
-  --text: #141414;
-  --muted: #6a6764;
-  --border: #e5e1dc;
-  --success: #2d7d5f;
+  --primary: #315efb;
+  --primary-dark: #213fd0;
+  --accent: #8bb6ff;
+  --text: #161b2f;
+  --muted: #6f7691;
+  --border: #dbe4ff;
+  --success: #3f7cff;
   --danger: #b5473d;
-  --shadow: 0 16px 40px rgba(8, 10, 16, 0.12);
+  --shadow: 0 18px 42px rgba(49, 94, 251, 0.12);
 }
 
 * {
@@ -21,7 +21,10 @@
 
 body {
   font-family: "Sora", system-ui, -apple-system, sans-serif;
-  background: radial-gradient(circle at top, #f9f1df, #f6f3ef 55%, #efe8df 100%);
+  background:
+    radial-gradient(circle at top left, rgba(126, 169, 255, 0.4), transparent 24%),
+    radial-gradient(circle at top right, rgba(49, 94, 251, 0.18), transparent 26%),
+    linear-gradient(180deg, #f7faff 0%, #eef3ff 52%, #e7edff 100%);
   color: var(--text);
   min-height: 100vh;
 }
@@ -54,7 +57,7 @@ body {
   object-fit: contain;
   border-radius: 18px;
   background: #fff;
-  border: 1px solid rgba(199, 164, 91, 0.28);
+  border: 1px solid rgba(139, 182, 255, 0.42);
   box-shadow: 0 10px 24px rgba(20, 26, 36, 0.08);
   padding: 4px;
 }
@@ -92,7 +95,7 @@ h4 {
 }
 
 .status-pill {
-  background: #e6f0eb;
+  background: #e8efff;
   color: var(--primary);
   padding: 6px 12px;
   border-radius: 999px;
@@ -135,7 +138,7 @@ h4 {
   padding: 12px 14px;
   font-size: 16px;
   font-family: inherit;
-  background: #fbfbf9;
+  background: #f8faff;
 }
 
 #bookingDateRange {
@@ -150,7 +153,7 @@ h4 {
 .field input:focus,
 .field select:focus,
 .field textarea:focus {
-  outline: 2px solid rgba(11, 61, 46, 0.2);
+  outline: 2px solid rgba(49, 94, 251, 0.2);
   border-color: var(--primary);
 }
 
@@ -173,9 +176,9 @@ h4 {
 .flatpickr-day.inRange,
 .flatpickr-day.prevMonthDay.inRange,
 .flatpickr-day.nextMonthDay.inRange {
-  background: #e6f0eb;
-  border-color: #e6f0eb;
-  box-shadow: -5px 0 0 #e6f0eb, 5px 0 0 #e6f0eb;
+  background: #e7efff;
+  border-color: #e7efff;
+  box-shadow: -5px 0 0 #e7efff, 5px 0 0 #e7efff;
 }
 
 .grid-2 {
@@ -224,11 +227,11 @@ h4 {
 .primary-btn {
   background: var(--primary);
   color: #fff;
-  box-shadow: 0 12px 24px rgba(11, 61, 46, 0.25);
+  box-shadow: 0 12px 24px rgba(49, 94, 251, 0.25);
 }
 
 .secondary-btn {
-  background: #efe5d1;
+  background: #e8efff;
   color: var(--primary);
 }
 
@@ -350,10 +353,10 @@ h4 {
 
 .calendar-day.selected {
   border: 2px solid var(--primary);
-  background: #eef8f4;
+  background: #edf3ff;
   box-shadow:
-    inset 0 0 0 1px rgba(11, 61, 46, 0.08),
-    0 10px 18px rgba(17, 96, 69, 0.1);
+    inset 0 0 0 1px rgba(49, 94, 251, 0.08),
+    0 10px 18px rgba(49, 94, 251, 0.12);
 }
 
 .calendar-day.today {
@@ -2332,13 +2335,13 @@ h4 {
 .reservation-planner-cell:hover .reservation-planner-empty-trigger,
 .reservation-planner-empty-trigger:focus-visible {
   opacity: 1;
-  background: rgba(11, 61, 46, 0.05);
+  background: rgba(49, 94, 251, 0.06);
   outline: 0;
 }
 
 .reservation-planner-cell-drop-target {
-  background: rgba(11, 61, 46, 0.08);
-  box-shadow: inset 0 0 0 2px rgba(11, 61, 46, 0.2);
+  background: rgba(49, 94, 251, 0.08);
+  box-shadow: inset 0 0 0 2px rgba(49, 94, 251, 0.22);
 }
 
 .reservation-planner-booking {
@@ -2363,7 +2366,7 @@ h4 {
 
 .reservation-planner-booking-selected {
   box-shadow:
-    0 0 0 3px rgba(11, 61, 46, 0.18),
+    0 0 0 3px rgba(49, 94, 251, 0.18),
     0 12px 24px rgba(50, 40, 20, 0.12);
 }
 
@@ -2546,7 +2549,7 @@ h4 {
 
 .reservation-planner-mobile-marker-selected {
   box-shadow:
-    0 0 0 2px rgba(11, 61, 46, 0.22),
+    0 0 0 2px rgba(49, 94, 251, 0.22),
     0 8px 14px rgba(50, 40, 20, 0.16);
 }
 
@@ -2567,8 +2570,8 @@ h4 {
 }
 
 .reservation-planner-mobile-summary-card-selected {
-  border-color: #0b3d2e;
-  box-shadow: 0 0 0 2px rgba(11, 61, 46, 0.1);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(49, 94, 251, 0.12);
 }
 
 .reservation-planner-mobile-summary-head {
@@ -2669,30 +2672,67 @@ h4 {
   padding: 10px;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   justify-content: stretch;
-  border: 1px solid rgba(229, 225, 220, 0.95);
+  border: 1px solid rgba(219, 228, 255, 0.95);
   border-radius: 22px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 251, 245, 0.94) 100%);
-  box-shadow: 0 12px 28px rgba(20, 26, 36, 0.06);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(245, 248, 255, 0.94) 100%);
+  box-shadow: 0 16px 34px rgba(49, 94, 251, 0.08);
   backdrop-filter: blur(16px);
   z-index: 18;
 }
 
 #app-shell.view-desktop .nav-btn {
   min-width: 0;
-  padding: 14px 20px;
+  min-height: 0;
+  padding: 12px 16px;
   border-radius: 16px;
-  background: linear-gradient(180deg, #ffffff 0%, #fbf8f2 100%);
-  border: 1px solid #ece2d3;
-  color: #665f59;
+  background: linear-gradient(180deg, #ffffff 0%, #f4f8ff 100%);
+  border: 1px solid #dfe7ff;
+  color: #61709c;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  font-size: 14px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  transform: none;
+}
+
+#app-shell.view-desktop .nav-btn::before {
+  display: none;
+}
+
+#app-shell.view-desktop .nav-btn-icon {
+  width: 32px;
+  height: 32px;
+  font-size: 18px;
+  background: #edf3ff;
+}
+
+#app-shell.view-desktop .nav-btn-text {
+  justify-items: start;
+}
+
+#app-shell.view-desktop .nav-btn-label {
+  font-size: 13px;
+}
+
+#app-shell.view-desktop .nav-btn-note {
+  font-size: 10px;
 }
 
 #app-shell.view-desktop .nav-btn.nav-active {
-  background: linear-gradient(180deg, #0b4b38 0%, #08382b 100%);
+  background: linear-gradient(180deg, #3f6bff 0%, #2a4fe0 100%);
   color: #fff;
-  border-color: #0b4b38;
-  box-shadow: 0 10px 22px rgba(11, 61, 46, 0.18);
+  border-color: #315efb;
+  box-shadow: 0 12px 26px rgba(49, 94, 251, 0.2);
+}
+
+#app-shell.view-desktop .nav-btn.nav-active .nav-btn-icon {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+#app-shell.view-desktop .nav-btn.nav-active .nav-btn-note {
+  color: rgba(255, 255, 255, 0.86);
 }
 
 #app-shell.view-desktop .screen-active {
@@ -2933,8 +2973,8 @@ h4 {
 }
 
 #app-shell.view-desktop .calendar-day.selected {
-  background: linear-gradient(180deg, #eef7f3 0%, #dff0e9 100%);
-  border-color: #0b4b38;
+  background: linear-gradient(180deg, #f1f5ff 0%, #dde7ff 100%);
+  border-color: var(--primary);
 }
 
 #app-shell.view-desktop .calendar-day-number {
@@ -3266,31 +3306,102 @@ h4 {
 
 .bottom-nav {
   position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: #ffffff;
-  border-top: 1px solid var(--border);
+  left: 50%;
+  right: auto;
+  bottom: 12px;
+  transform: translateX(-50%);
+  width: min(100vw - 20px, 560px);
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(219, 228, 255, 0.95);
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  padding: 8px 14px 16px;
-  gap: 10px;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  gap: 6px;
+  border-radius: 34px;
+  box-shadow: 0 24px 54px rgba(49, 94, 251, 0.16);
+  backdrop-filter: blur(18px);
+  z-index: 24;
 }
 
 .nav-btn {
+  position: relative;
   border: none;
-  background: #f4f1ed;
+  background: transparent;
   color: var(--muted);
-  padding: 12px;
-  border-radius: 14px;
-  font-size: 14px;
-  font-weight: 600;
+  padding: 10px 6px 8px;
+  border-radius: 22px;
+  font-size: 12px;
+  font-weight: 700;
   min-width: 0;
+  min-height: 84px;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 4px;
+  text-align: center;
+  transition: transform 0.18s ease, color 0.18s ease, background 0.18s ease;
+}
+
+.nav-btn::before {
+  content: "";
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--primary);
+  transform: translateX(-50%) scale(0);
+  transition: transform 0.2s ease;
+  box-shadow: 0 8px 18px rgba(49, 94, 251, 0.22);
+}
+
+.nav-btn-icon {
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: inherit;
+  font-size: 23px;
+  line-height: 1;
+}
+
+.nav-btn-text {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+}
+
+.nav-btn-label {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.nav-btn-note {
+  font-size: 9px;
+  line-height: 1.1;
+  color: #97a0bc;
 }
 
 .nav-active {
-  background: var(--primary);
-  color: #fff;
+  background: rgba(49, 94, 251, 0.08);
+  color: var(--primary);
+  transform: translateY(-4px);
+}
+
+.nav-active::before {
+  transform: translateX(-50%) scale(1);
+}
+
+.nav-active .nav-btn-icon {
+  background: rgba(49, 94, 251, 0.12);
+}
+
+.nav-active .nav-btn-note {
+  color: rgba(49, 94, 251, 0.82);
 }
 
 .screen {
@@ -4181,7 +4292,7 @@ h4 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #0b3d2e 0%, #235948 100%);
+  background: linear-gradient(135deg, #315efb 0%, #5f85ff 100%);
   color: #fff;
   font-size: 20px;
 }
@@ -4302,11 +4413,11 @@ h4 {
   position: relative;
   overflow: hidden;
   border-radius: 30px;
-  border: 1px solid #eadfcd;
+  border: 1px solid #dce6ff;
   background:
-    radial-gradient(circle at top left, rgba(225, 197, 128, 0.22), transparent 24%),
-    radial-gradient(circle at top right, rgba(11, 61, 46, 0.08), transparent 24%),
-    linear-gradient(180deg, #fffefb 0%, #f7f3ec 100%);
+    radial-gradient(circle at top left, rgba(143, 184, 255, 0.28), transparent 24%),
+    radial-gradient(circle at top right, rgba(49, 94, 251, 0.12), transparent 24%),
+    linear-gradient(180deg, #fbfcff 0%, #eef3ff 100%);
   padding: 28px;
 }
 
@@ -4315,8 +4426,8 @@ h4 {
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(rgba(11, 61, 46, 0.02) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(11, 61, 46, 0.02) 1px, transparent 1px);
+    linear-gradient(rgba(49, 94, 251, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(49, 94, 251, 0.028) 1px, transparent 1px);
   background-size: 34px 34px;
   pointer-events: none;
   opacity: 0.55;
@@ -4348,7 +4459,7 @@ h4 {
 .analytics-overview-copy {
   border-radius: 28px;
   padding: 26px;
-  background: linear-gradient(135deg, #103f31 0%, #174f3d 52%, #245f4f 100%);
+  background: linear-gradient(135deg, #315efb 0%, #4c77ff 52%, #678fff 100%);
   color: #f8f4eb;
   display: grid;
   align-content: center;
@@ -4485,7 +4596,7 @@ h4 {
 
 .analytics-summary-grid-dashboard .analytics-stat-card-highlight {
   grid-column: span 3;
-  background: linear-gradient(135deg, #133f31 0%, #1d5845 100%);
+  background: linear-gradient(135deg, #315efb 0%, #4c77ff 100%);
 }
 
 .analytics-summary-grid-dashboard .analytics-stat-card-highlight span,
@@ -4495,7 +4606,7 @@ h4 {
 
 .analytics-summary-grid-dashboard .analytics-stat-card-highlight-secondary {
   grid-column: span 3;
-  background: linear-gradient(135deg, #fff7de 0%, #f0e0aa 100%);
+  background: linear-gradient(135deg, #edf3ff 0%, #cfddff 100%);
 }
 
 .analytics-panel-grid {
@@ -4520,14 +4631,14 @@ h4 {
 }
 
 .analytics-hero-panel {
-  border: 1px solid rgba(199, 164, 91, 0.2);
+  border: 1px solid rgba(126, 169, 255, 0.28);
   border-radius: 28px;
-  background: linear-gradient(135deg, #0b3d2e 0%, #104737 42%, #1f6254 100%);
+  background: linear-gradient(135deg, #315efb 0%, #416cff 42%, #6b91ff 100%);
   color: #fff;
   padding: 22px;
   display: grid;
   gap: 18px;
-  box-shadow: 0 24px 48px rgba(10, 47, 37, 0.18);
+  box-shadow: 0 24px 48px rgba(49, 94, 251, 0.2);
 }
 
 .analytics-panel-head-light h4,
@@ -4853,7 +4964,7 @@ h4 {
 .analytics-bar-fill {
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #0b3d2e, #d8bb73);
+  background: linear-gradient(90deg, #315efb, #8bb6ff);
 }
 
 .analytics-empty-state {
@@ -5097,7 +5208,7 @@ h4 {
 }
 
 .tag-success {
-  background: #e6f0eb;
+  background: #e8efff;
   color: var(--success);
 }
 
