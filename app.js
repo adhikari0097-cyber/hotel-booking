@@ -11,6 +11,7 @@ const CONFIG = {
   SUPABASE_NOTIFICATIONS_TABLE: "booking_notifications",
   SUPABASE_NOTIFICATION_READS_TABLE: "booking_notification_reads",
   SUPABASE_SYSTEM_UPDATES_TABLE: "system_update_history",
+  SUPABASE_DEDUCTIONS_TABLE: "monthly_deductions",
   GOOGLE_SHEETS_BACKUP_URL: "/.netlify/functions/proxy",
 };
 
@@ -199,6 +200,8 @@ const state = {
   notificationUnreadCount: 0,
   systemUpdates: [],
   systemUpdatePreset: "this-week",
+  deductions: [],
+  currentAnalyticsSnapshot: null,
   bookingRangePicker: null,
   plannerDragBookingId: null,
   uiPreviewRole: "",
@@ -297,7 +300,7 @@ function getVisiblePageLabelsForRole(role = "user") {
     labels.push("System Updates");
   }
   if (["owner", "admin"].includes(role)) {
-    labels.push("Accounts", "Settings");
+    labels.push("Deductions", "Accounts", "Settings");
   }
   return labels;
 }
@@ -570,12 +573,16 @@ function renderAnalyticsResultsContext({ count } = {}) {
     ? `${formatAnalyticsDateLabel(analyticsDateFromInput.value)} -> ${formatAnalyticsDateLabel(analyticsDateToInput.value)}`
     : "Select From and To dates";
   const metricValue = analyticsFilterMetric?.selectedOptions?.[0]?.textContent?.trim() || "Revenue";
+  const deductionsValue = canAccessDeductions()
+    ? (analyticsIncludeDeductions?.checked ? "Included" : "Hidden")
+    : "Restricted";
   const items = [
     { label: "Date Range", value: dateValue },
     { label: "Reservation State", value: getAnalyticsStateFilterDisplayValue() },
     { label: "Source", value: getAnalyticsChipFilterDisplayValue(analyticsFilterSourceChips, "All Sources") },
     { label: "Booked By", value: getAnalyticsChipFilterDisplayValue(analyticsFilterStaffChips, "All Staff") },
     { label: "Hold Payments", value: analyticsIncludeHoldPayments?.checked ? "Shown" : "Hidden" },
+    { label: "Deductions", value: deductionsValue },
     { label: "Trend View", value: metricValue },
     { label: "Results", value: typeof count === "number" ? `${count} reservations` : "Load analytics to refresh" },
   ];
@@ -1157,9 +1164,28 @@ const analyticsFilterStateChips = qs("#analytics-filter-state-chips");
 const analyticsFilterSourceChips = qs("#analytics-filter-source-chips");
 const analyticsFilterStaffChips = qs("#analytics-filter-staff-chips");
 const analyticsIncludeHoldPayments = qs("#analytics-include-hold-payments");
+const analyticsIncludeDeductions = qs("#analytics-include-deductions");
+const analyticsDeductionsToggleRow = qs("#analytics-deductions-toggle-row");
 const analyticsFilterMetric = qs("#analytics-filter-metric");
 const analyticsEmpty = qs("#analytics-empty");
 const analyticsHoldPayments = qs("#analytics-hold-payments");
+const analyticsTotalDeductions = qs("#analytics-total-deductions");
+const analyticsNetProfit = qs("#analytics-net-profit");
+const analyticsDeductionsList = qs("#analytics-deductions-list");
+const exportAnalyticsBtn = qs("#export-analytics");
+const deductionMonthLabel = qs("#deduction-month-label");
+const deductionMonthTotal = qs("#deduction-month-total");
+const deductionMonthCount = qs("#deduction-month-count");
+const deductionMonthFilterInput = qs("#deduction-month-filter");
+const deductionForm = qs("#deduction-form");
+const deductionMonthInput = qs("#deduction-month");
+const deductionCategoryInput = qs("#deduction-category");
+const deductionTitleInput = qs("#deduction-title");
+const deductionAmountInput = qs("#deduction-amount");
+const deductionDetailsInput = qs("#deduction-details");
+const saveDeductionBtn = qs("#save-deduction");
+const deductionList = qs("#deduction-list");
+const deductionEmpty = qs("#deduction-empty");
 const guideBookContent = qs("#guide-book-content");
 const guideSearchInput = qs("#guide-search");
 const guideNav = qs("#guide-nav");
@@ -1173,6 +1199,7 @@ const navButtons = {
   view: qs("#tab-view"),
   planner: qs("#tab-planner"),
   analytics: qs("#tab-analytics"),
+  deductions: qs("#tab-deductions"),
   guide: qs("#tab-guide"),
   hold: qs("#tab-hold"),
   requests: qs("#tab-requests"),
@@ -1189,6 +1216,7 @@ const screens = {
   view: qs("#screen-view"),
   planner: qs("#screen-planner"),
   analytics: qs("#screen-analytics"),
+  deductions: qs("#screen-deductions"),
   guide: qs("#screen-guide"),
   hold: qs("#screen-hold"),
   requests: qs("#screen-requests"),
@@ -1280,6 +1308,32 @@ function formatDateKey(date) {
 
 function formatMonthLabel(date) {
   return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
+function toMonthInputValue(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+}
+
+function normalizeMonthInputValue(value = "") {
+  const normalized = String(value || "").trim();
+  return /^\d{4}-\d{2}$/.test(normalized) ? normalized : "";
+}
+
+function monthValueToDateKey(value = "") {
+  const normalized = normalizeMonthInputValue(value);
+  return normalized ? `${normalized}-01` : "";
+}
+
+function formatMonthValueLabel(value = "") {
+  const date = parseDate(monthValueToDateKey(value));
+  return date ? formatMonthLabel(date) : "Not selected";
+}
+
+function addMonths(date, months) {
+  return new Date(date.getFullYear(), date.getMonth() + months, 1, 12, 0, 0);
 }
 
 function getNightCount(checkIn, checkOut) {
@@ -4777,6 +4831,10 @@ function canAccessSystemUpdates() {
   return normalizeSystemUpdateRoleList(state.runtimeSettings?.systemUpdateRoles).includes(effectiveProfile.role);
 }
 
+function canAccessDeductions() {
+  return isOwnerOrAdminRole();
+}
+
 function updateNotificationBadge() {
   if (!notificationBellBtn || !notificationBellBadge) return;
   const canOpenNotifications = canAccessNotifications();
@@ -4812,6 +4870,7 @@ function updateNavVisibility() {
   const previewOwnerOverride = state.currentProfile?.role === "owner" && Boolean(state.uiPreviewRole);
   const showPlanner = Boolean(state.currentProfile?.approved);
   const showAnalytics = Boolean(state.currentProfile?.approved);
+  const showDeductions = canAccessDeductions() || previewOwnerOverride;
   const showGuide = Boolean(state.currentProfile?.approved);
   const showHold = Boolean(state.currentProfile?.approved);
   const showAccounts = canManageAccounts();
@@ -4821,6 +4880,7 @@ function updateNavVisibility() {
   const showPricing = canManagePricing() || previewOwnerOverride;
   navButtons.planner.classList.toggle("hidden", !showPlanner);
   navButtons.analytics.classList.toggle("hidden", !showAnalytics);
+  navButtons.deductions.classList.toggle("hidden", !showDeductions);
   navButtons.guide.classList.toggle("hidden", !showGuide);
   navButtons.hold.classList.toggle("hidden", !showHold);
   navButtons.requests.classList.toggle("hidden", !showRequests);
@@ -4828,7 +4888,8 @@ function updateNavVisibility() {
   navButtons.systemUpdates.classList.toggle("hidden", !showSystemUpdates);
   navButtons.accounts.classList.toggle("hidden", !showAccounts);
   navButtons.pricing.classList.toggle("hidden", !showPricing);
-  const visibleTabs = 2 + Number(showPlanner) + Number(showAnalytics) + Number(showGuide) + Number(showHold) + Number(showRequests) + Number(showNotifications) + Number(showSystemUpdates) + Number(showAccounts) + Number(showPricing);
+  analyticsDeductionsToggleRow?.classList.toggle("hidden", !showDeductions);
+  const visibleTabs = 2 + Number(showPlanner) + Number(showAnalytics) + Number(showDeductions) + Number(showGuide) + Number(showHold) + Number(showRequests) + Number(showNotifications) + Number(showSystemUpdates) + Number(showAccounts) + Number(showPricing);
   const bottomNav = qs(".bottom-nav");
   const isDesktopNav = state.bookingViewMode === "desktop" && window.innerWidth >= 980;
   bottomNav.style.gridTemplateColumns = isDesktopNav
@@ -4838,6 +4899,9 @@ function updateNavVisibility() {
     setScreen("booking");
   }
   if (!showAnalytics && screens.analytics.classList.contains("screen-active")) {
+    setScreen("booking");
+  }
+  if (!showDeductions && screens.deductions.classList.contains("screen-active")) {
     setScreen("booking");
   }
   if (!showGuide && screens.guide.classList.contains("screen-active")) {
@@ -4874,6 +4938,9 @@ function setScreen(target) {
   }
   if (target === "analytics") {
     loadAnalytics();
+  }
+  if (target === "deductions") {
+    loadDeductions();
   }
   if (target === "guide") {
     loadGuideBook();
@@ -5049,15 +5116,176 @@ function buildAnalyticsTrendPoints(groups = [], from, to, metric = "revenue") {
     .slice(-10);
 }
 
+function normalizeDeductionRow(row = {}) {
+  const monthValue = normalizeMonthInputValue(
+    row.monthValue
+    || (String(row.deduction_month || "").trim().slice(0, 7))
+    || "",
+  );
+  return {
+    id: row.id || "",
+    monthValue,
+    monthLabel: formatMonthValueLabel(monthValue),
+    category: String(row.category || "Other").trim() || "Other",
+    title: String(row.title || "Deduction").trim() || "Deduction",
+    details: String(row.details || "").trim(),
+    amount: roundCurrency(Number(row.amount || 0)),
+    createdByName: String(row.created_by_name || row.createdByName || "").trim(),
+    createdAt: row.created_at || row.createdAt || "",
+  };
+}
+
+async function fetchDeductionsForRange(from, to) {
+  if (!canAccessDeductions()) return [];
+  const fromDate = parseDate(from);
+  const toDate = parseDate(to);
+  if (!fromDate || !toDate) return [];
+  ensureSupabase();
+  const startMonth = formatDateKey(startOfMonth(fromDate));
+  const endMonthExclusive = formatDateKey(addMonths(startOfMonth(toDate), 1));
+  const { data, error } = await state.supabase
+    .from(CONFIG.SUPABASE_DEDUCTIONS_TABLE)
+    .select("*")
+    .gte("deduction_month", startMonth)
+    .lt("deduction_month", endMonthExclusive)
+    .order("deduction_month", { ascending: true })
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message || "Could not load deductions.");
+  return (data || []).map(normalizeDeductionRow);
+}
+
+async function insertDeduction(payload = {}) {
+  if (!canAccessDeductions()) throw new Error("Only owner or admin can save deductions.");
+  const monthValue = normalizeMonthInputValue(payload.monthValue);
+  if (!monthValue) throw new Error("Select the deduction month.");
+  const title = String(payload.title || "").trim();
+  if (!title) throw new Error("Enter the deduction title.");
+  const amount = roundCurrency(Number(payload.amount || 0));
+  if (!(amount > 0)) throw new Error("Enter a deduction amount.");
+  ensureSupabase();
+  const row = {
+    deduction_month: monthValueToDateKey(monthValue),
+    category: String(payload.category || "Other").trim() || "Other",
+    title,
+    details: String(payload.details || "").trim(),
+    amount,
+    created_by_name: state.currentProfile?.full_name || state.currentProfile?.username || "",
+    actor_user_id: state.currentSession?.user?.id || null,
+  };
+  const { error } = await state.supabase.from(CONFIG.SUPABASE_DEDUCTIONS_TABLE).insert(row);
+  if (error) throw new Error(error.message || "Could not save deduction.");
+}
+
+async function deleteDeduction(deductionId = "") {
+  if (!canAccessDeductions()) throw new Error("Only owner or admin can remove deductions.");
+  const normalizedId = String(deductionId || "").trim();
+  if (!normalizedId) return false;
+  ensureSupabase();
+  const confirmed = window.confirm("Remove this deduction item?");
+  if (!confirmed) return false;
+  const { error } = await state.supabase
+    .from(CONFIG.SUPABASE_DEDUCTIONS_TABLE)
+    .delete()
+    .eq("id", normalizedId);
+  if (error) throw new Error(error.message || "Could not remove deduction.");
+  return true;
+}
+
+function renderDeductions(items = []) {
+  if (!deductionList || !deductionEmpty) return;
+  if (!canAccessDeductions()) {
+    deductionList.innerHTML = "";
+    deductionEmpty.style.display = "block";
+    deductionEmpty.textContent = "Only owner or admin can view deductions.";
+    setText(deductionMonthTotal, "Restricted");
+    setText(deductionMonthCount, "0");
+    setText(deductionMonthLabel, "-");
+    return;
+  }
+  deductionList.innerHTML = "";
+  const monthValue = normalizeMonthInputValue(deductionMonthFilterInput?.value || deductionMonthInput?.value || "");
+  setText(deductionMonthLabel, formatMonthValueLabel(monthValue));
+  setText(deductionMonthTotal, formatMoney(items.reduce((sum, item) => sum + Number(item.amount || 0), 0)));
+  setText(deductionMonthCount, String(items.length));
+  if (!items.length) {
+    deductionEmpty.style.display = "block";
+    deductionEmpty.textContent = "No deductions saved for this month.";
+    return;
+  }
+  deductionEmpty.style.display = "none";
+  deductionList.innerHTML = items.map((item) => `
+    <article class="request-card deduction-card">
+      <div class="request-card-head">
+        <div>
+          <strong>${escapeHtml(item.title)}</strong>
+          <div class="muted">${escapeHtml(item.category)} · ${escapeHtml(item.monthLabel)}</div>
+        </div>
+        <strong>${escapeHtml(formatMoney(item.amount))}</strong>
+      </div>
+      ${item.details ? `<p class="muted">${escapeHtml(item.details)}</p>` : ""}
+      <div class="request-card-head">
+        <span class="muted">${escapeHtml(item.createdByName || "-")}</span>
+        <button class="ghost-btn small-btn" type="button" data-delete-deduction="${escapeHtml(item.id)}">Remove</button>
+      </div>
+    </article>
+  `).join("");
+  deductionList.querySelectorAll("[data-delete-deduction]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        const changed = await deleteDeduction(button.dataset.deleteDeduction);
+        if (!changed) return;
+        await insertSystemUpdate({
+          updateType: "deduction_removed",
+          title: "Deduction Removed",
+          message: `Removed a deduction from ${formatMonthValueLabel(monthValue)}.`,
+          metadata: { deductionId: button.dataset.deleteDeduction, monthValue },
+        });
+        showToast("Deduction removed.");
+        await loadDeductions(monthValue);
+        if (screens.analytics?.classList.contains("screen-active")) await loadAnalytics();
+      } catch (error) {
+        showToast(error.message, true);
+      }
+    });
+  });
+}
+
+async function loadDeductions(monthValue = deductionMonthFilterInput?.value || toMonthInputValue(new Date())) {
+  const normalizedMonth = normalizeMonthInputValue(monthValue) || toMonthInputValue(new Date());
+  if (deductionMonthFilterInput) deductionMonthFilterInput.value = normalizedMonth;
+  if (deductionMonthInput) deductionMonthInput.value = normalizedMonth;
+  if (!canAccessDeductions()) {
+    renderDeductions([]);
+    return;
+  }
+  try {
+    const items = await fetchDeductionsForRange(monthValueToDateKey(normalizedMonth), formatDateKey(endOfMonth(parseDate(monthValueToDateKey(normalizedMonth)))));
+    state.deductions = items;
+    renderDeductions(items);
+  } catch (error) {
+    state.deductions = [];
+    renderDeductions([]);
+    if (deductionEmpty) {
+      deductionEmpty.style.display = "block";
+      deductionEmpty.textContent = error.message;
+    }
+  }
+}
+
 async function loadAnalytics() {
   if (!state.currentProfile?.approved || !analyticsDateFromInput || !analyticsDateToInput) return;
   const from = analyticsDateFromInput.value;
   const to = analyticsDateToInput.value;
   const includeHoldPayments = Boolean(analyticsIncludeHoldPayments?.checked);
+  const includeDeductions = Boolean(analyticsIncludeDeductions?.checked) && canAccessDeductions();
 
   if (!from || !to) {
     renderAnalyticsResultsContext();
     setText(analyticsHoldPayments, includeHoldPayments ? formatMoney(0) : "Off");
+    setText(analyticsTotalDeductions, canAccessDeductions() ? (includeDeductions ? formatMoney(0) : "Off") : "Restricted");
+    setText(analyticsNetProfit, canAccessDeductions() ? formatMoney(0) : "Restricted");
+    renderAnalyticsTableList(analyticsDeductionsList, [], formatMoney, canAccessDeductions() ? "Turn on Include Deductions to calculate net profit." : "Only owner or admin can view deductions.");
+    state.currentAnalyticsSnapshot = null;
     if (analyticsEmpty) {
       analyticsEmpty.textContent = "Select a date range to load analytics.";
       analyticsEmpty.style.display = "block";
@@ -5068,12 +5296,16 @@ async function loadAnalytics() {
   if (from > to) {
     renderAnalyticsResultsContext();
     setText(analyticsHoldPayments, includeHoldPayments ? formatMoney(0) : "Off");
+    setText(analyticsTotalDeductions, canAccessDeductions() ? (includeDeductions ? formatMoney(0) : "Off") : "Restricted");
+    setText(analyticsNetProfit, canAccessDeductions() ? formatMoney(0) : "Restricted");
+    state.currentAnalyticsSnapshot = null;
     showToast("Analytics end date must be after the start date.", true);
     return;
   }
 
   try {
     const bookings = await fetchBookingsForPeriod(from, formatDateKey(addDays(parseDate(to), 1)));
+    const deductionRows = includeDeductions ? await fetchDeductionsForRange(from, to) : [];
     const groups = getAnalyticsReservationGroups(bookings);
     const allGroups = getAnalyticsAllReservationGroups(bookings);
     const lifecycleOptions = Array.from(new Set(groups.map((group) => getAnalyticsGroupStateLabel(group)))).sort();
@@ -5116,6 +5348,10 @@ async function loadAnalytics() {
         return sum + advanceAmount + customAmount;
       }, 0))
       : 0;
+    const totalDeductions = includeDeductions
+      ? roundCurrency(deductionRows.reduce((sum, item) => sum + Number(item.amount || 0), 0))
+      : 0;
+    const netProfit = includeDeductions ? roundCurrency(totalRevenue - totalDeductions) : totalRevenue;
 
     const roomTotals = new Map();
     const roomTypeRevenue = new Map();
@@ -5162,6 +5398,8 @@ async function loadAnalytics() {
     setText(analyticsRoomNights, String(totalRoomNights));
     setText(analyticsAverageStay, `${averageStayNights.toFixed(1)} nights`);
     setText(analyticsHoldPayments, includeHoldPayments ? formatMoney(totalHoldPayments) : "Off");
+    setText(analyticsTotalDeductions, canAccessDeductions() ? (includeDeductions ? formatMoney(totalDeductions) : "Off") : "Restricted");
+    setText(analyticsNetProfit, canAccessDeductions() ? formatMoney(netProfit) : "Restricted");
 
     renderAnalyticsBarList(
       analyticsTopRooms,
@@ -5203,6 +5441,20 @@ async function loadAnalytics() {
       Array.from(staffTotals.entries()).map(([label, value]) => ({ label, value, meta: "Booked by staff" })).sort((a, b) => b.value - a.value).slice(0, 6),
       (value) => formatMoney(value),
     );
+    const deductionMonthTotals = new Map();
+    deductionRows.forEach((item) => {
+      deductionMonthTotals.set(item.monthLabel, roundCurrency((deductionMonthTotals.get(item.monthLabel) || 0) + Number(item.amount || 0)));
+    });
+    renderAnalyticsTableList(
+      analyticsDeductionsList,
+      includeDeductions
+        ? Array.from(deductionMonthTotals.entries()).map(([label, value]) => ({ label, value, meta: "Monthly deductions" })).sort((a, b) => b.value - a.value)
+        : [],
+      (value) => formatMoney(value),
+      canAccessDeductions()
+        ? (includeDeductions ? "No deductions saved for this range." : "Turn on Include Deductions to calculate net profit.")
+        : "Only owner or admin can view deductions.",
+    );
 
     const trendMetric = analyticsFilterMetric?.value || "revenue";
     const trendPoints = buildAnalyticsTrendPoints(filteredGroups, from, to, trendMetric);
@@ -5221,6 +5473,26 @@ async function loadAnalytics() {
       { label: "Top Customer", value: topCustomer ? topCustomer[0] : "-", meta: topCustomer ? formatMoney(topCustomer[1]) : "No revenue yet" },
       { label: "Top Staff", value: topStaff ? topStaff[0] : "-", meta: topStaff ? formatMoney(topStaff[1]) : "No staff data" },
     ]);
+    state.currentAnalyticsSnapshot = {
+      generatedAt: new Date().toISOString(),
+      from,
+      to,
+      totalRevenue,
+      totalBookings,
+      totalPendingBalance,
+      totalRoomNights,
+      averageBookingValue,
+      averageStayNights,
+      totalHoldPayments,
+      totalDeductions,
+      netProfit,
+      includeHoldPayments,
+      includeDeductions,
+      deductions: deductionRows,
+      topSource: topSource ? { label: topSource[0], value: Number(topSource[1] || 0) } : null,
+      topCustomer: topCustomer ? { label: topCustomer[0], value: Number(topCustomer[1] || 0) } : null,
+      topStaff: topStaff ? { label: topStaff[0], value: Number(topStaff[1] || 0) } : null,
+    };
 
     if (analyticsEmpty) {
       analyticsEmpty.style.display = filteredGroups.length ? "none" : "block";
@@ -5229,6 +5501,10 @@ async function loadAnalytics() {
   } catch (error) {
     renderAnalyticsResultsContext();
     setText(analyticsHoldPayments, includeHoldPayments ? formatMoney(0) : "Off");
+    setText(analyticsTotalDeductions, canAccessDeductions() ? (includeDeductions ? formatMoney(0) : "Off") : "Restricted");
+    setText(analyticsNetProfit, canAccessDeductions() ? formatMoney(0) : "Restricted");
+    renderAnalyticsTableList(analyticsDeductionsList, [], formatMoney, canAccessDeductions() ? "Unable to load deductions for this report." : "Only owner or admin can view deductions.");
+    state.currentAnalyticsSnapshot = null;
     if (analyticsEmpty) {
       analyticsEmpty.textContent = error.message;
       analyticsEmpty.style.display = "block";
@@ -6794,13 +7070,7 @@ function buildBookingPdfMarkup(group) {
   `;
 }
 
-function exportBookingGroupPdf(groupKey) {
-  const group = getBookingGroupByKey(groupKey);
-  if (!group) {
-    showToast("Booking details not found.", true);
-    return;
-  }
-
+function printMarkup(markup) {
   if (pdfPrintFrame) {
     pdfPrintFrame.remove();
     pdfPrintFrame = null;
@@ -6849,6 +7119,104 @@ function exportBookingGroupPdf(groupKey) {
       showToast("PDF export failed. Try again.", true);
     }
   }, 700);
+}
+
+function buildAnalyticsExportMarkup(snapshot = state.currentAnalyticsSnapshot) {
+  if (!snapshot) return "";
+  const generatedAt = snapshot.generatedAt ? new Date(snapshot.generatedAt).toLocaleString("en-GB") : new Date().toLocaleString("en-GB");
+  const deductionRows = (snapshot.deductions || []).map((item) => `
+    <tr>
+      <td>${escapeHtml(item.monthLabel || "-")}</td>
+      <td>${escapeHtml(item.category || "-")}</td>
+      <td>${escapeHtml(item.title || "-")}</td>
+      <td>${escapeHtml(item.details || "-")}</td>
+      <td style="text-align:right;">${escapeHtml(formatMoney(item.amount || 0))}</td>
+    </tr>
+  `).join("");
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Analytics Report</title>
+        <style>
+          body { font-family: "Sora", Arial, sans-serif; margin: 0; padding: 28px; background: #f7f4ee; color: #18352d; }
+          .hero { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 20px; align-items: flex-start; }
+          .hero h1 { margin: 0; font-size: 28px; }
+          .muted { color: #64736c; font-size: 13px; }
+          .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
+          .card { background: #fffdf9; border: 1px solid #e7dfd2; border-radius: 16px; padding: 14px 16px; }
+          .card span { display: block; font-size: 12px; color: #6a746f; margin-bottom: 6px; }
+          .card strong { font-size: 20px; color: #0b3d2e; }
+          .section { background: #fffdf9; border: 1px solid #e7dfd2; border-radius: 16px; padding: 16px; margin-bottom: 16px; }
+          .section h2 { margin: 0 0 10px; font-size: 18px; }
+          table { width: 100%; border-collapse: collapse; }
+          th, td { padding: 10px 8px; border-bottom: 1px solid #ece5da; font-size: 13px; text-align: left; vertical-align: top; }
+          th { font-size: 12px; color: #68756e; text-transform: uppercase; letter-spacing: 0.04em; }
+        </style>
+      </head>
+      <body>
+        <div class="hero">
+          <div>
+            <div class="muted">Muthugala Resort</div>
+            <h1>Analytics Report</h1>
+            <div class="muted">${escapeHtml(formatAnalyticsDateLabel(snapshot.from))} -> ${escapeHtml(formatAnalyticsDateLabel(snapshot.to))}</div>
+          </div>
+          <div class="muted">Generated: ${escapeHtml(generatedAt)}</div>
+        </div>
+        <div class="stats">
+          <div class="card"><span>Total Earn</span><strong>${escapeHtml(formatMoney(snapshot.totalRevenue || 0))}</strong></div>
+          <div class="card"><span>Total Deductions</span><strong>${escapeHtml(snapshot.includeDeductions ? formatMoney(snapshot.totalDeductions || 0) : "Off")}</strong></div>
+          <div class="card"><span>Net Profit</span><strong>${escapeHtml(snapshot.includeDeductions ? formatMoney(snapshot.netProfit || 0) : formatMoney(snapshot.totalRevenue || 0))}</strong></div>
+          <div class="card"><span>Total Bookings</span><strong>${escapeHtml(String(snapshot.totalBookings || 0))}</strong></div>
+          <div class="card"><span>Room Nights</span><strong>${escapeHtml(String(snapshot.totalRoomNights || 0))}</strong></div>
+          <div class="card"><span>Pending Balance</span><strong>${escapeHtml(formatMoney(snapshot.totalPendingBalance || 0))}</strong></div>
+        </div>
+        <div class="section">
+          <h2>Summary</h2>
+          <table>
+            <tbody>
+              <tr><th>Hold Payments</th><td>${escapeHtml(snapshot.includeHoldPayments ? formatMoney(snapshot.totalHoldPayments || 0) : "Off")}</td></tr>
+              <tr><th>Top Source</th><td>${escapeHtml(snapshot.topSource?.label || "-")}${snapshot.topSource ? ` · ${escapeHtml(String(snapshot.topSource.value || 0))} bookings` : ""}</td></tr>
+              <tr><th>Top Customer</th><td>${escapeHtml(snapshot.topCustomer?.label || "-")}${snapshot.topCustomer ? ` · ${escapeHtml(formatMoney(snapshot.topCustomer.value || 0))}` : ""}</td></tr>
+              <tr><th>Top Staff</th><td>${escapeHtml(snapshot.topStaff?.label || "-")}${snapshot.topStaff ? ` · ${escapeHtml(formatMoney(snapshot.topStaff.value || 0))}` : ""}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="section">
+          <h2>Deductions</h2>
+          ${snapshot.includeDeductions
+            ? (snapshot.deductions?.length
+              ? `<table>
+                  <thead>
+                    <tr><th>Month</th><th>Category</th><th>Title</th><th>Details</th><th style="text-align:right;">Amount</th></tr>
+                  </thead>
+                  <tbody>${deductionRows}</tbody>
+                </table>`
+              : `<div class="muted">No deductions saved for this range.</div>`)
+            : `<div class="muted">Include Deductions was turned off for this report.</div>`}
+        </div>
+      </body>
+    </html>
+  `;
+}
+
+function exportBookingGroupPdf(groupKey) {
+  const group = getBookingGroupByKey(groupKey);
+  if (!group) {
+    showToast("Booking details not found.", true);
+    return;
+  }
+  printMarkup(buildBookingPdfMarkup(group));
+}
+
+function exportAnalyticsReport() {
+  if (!state.currentAnalyticsSnapshot) {
+    showToast("Load analytics first to export the report.", true);
+    return;
+  }
+  printMarkup(buildAnalyticsExportMarkup(state.currentAnalyticsSnapshot));
 }
 
 function normalizeWhatsappPhone(value) {
@@ -10072,6 +10440,9 @@ async function refreshLiveViews() {
   if (screens.analytics?.classList.contains("screen-active")) {
     await loadAnalytics();
   }
+  if (canAccessDeductions() && screens.deductions?.classList.contains("screen-active")) {
+    await loadDeductions();
+  }
   if (canAccessNotifications() && screens.notifications?.classList.contains("screen-active")) {
     await loadNotifications({ markVisibleRead: true });
   } else if (canAccessNotifications()) {
@@ -11529,6 +11900,7 @@ refreshAccountsBtn.addEventListener("click", () => loadAccounts());
 refreshRequestsBtn.addEventListener("click", () => loadRequests());
 refreshNotificationsBtn?.addEventListener("click", () => loadNotifications({ markVisibleRead: true }));
 loadAnalyticsBtn?.addEventListener("click", () => loadAnalytics());
+exportAnalyticsBtn?.addEventListener("click", () => exportAnalyticsReport());
 analyticsQuickTodayBtn?.addEventListener("click", () => {
   const today = new Date();
   applyAnalyticsQuickRange(today, today);
@@ -11567,7 +11939,46 @@ analyticsFilterStaffChips?.addEventListener("click", (event) => {
   loadAnalytics();
 });
 analyticsIncludeHoldPayments?.addEventListener("change", () => loadAnalytics());
+analyticsIncludeDeductions?.addEventListener("change", () => loadAnalytics());
 analyticsFilterMetric?.addEventListener("change", () => loadAnalytics());
+deductionMonthFilterInput?.addEventListener("change", () => {
+  loadDeductions(deductionMonthFilterInput.value);
+});
+deductionForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    if (!canAccessDeductions()) throw new Error("Only owner or admin can save deductions.");
+    saveDeductionBtn.disabled = true;
+    saveDeductionBtn.textContent = "Saving...";
+    await insertDeduction({
+      monthValue: deductionMonthInput?.value,
+      category: deductionCategoryInput?.value,
+      title: deductionTitleInput?.value,
+      details: deductionDetailsInput?.value,
+      amount: deductionAmountInput?.value,
+    });
+    await insertSystemUpdate({
+      updateType: "deduction_saved",
+      title: "Deduction Saved",
+      message: `${deductionTitleInput?.value || "Deduction"} saved for ${formatMonthValueLabel(deductionMonthInput?.value || "")}.`,
+      metadata: {
+        monthValue: deductionMonthInput?.value || "",
+        category: deductionCategoryInput?.value || "",
+        amount: Number(deductionAmountInput?.value || 0),
+      },
+    });
+    deductionForm.reset();
+    if (deductionMonthInput) deductionMonthInput.value = deductionMonthFilterInput?.value || toMonthInputValue(new Date());
+    showToast("Deduction saved.");
+    await loadDeductions(deductionMonthFilterInput?.value || deductionMonthInput?.value || toMonthInputValue(new Date()));
+    if (screens.analytics?.classList.contains("screen-active")) await loadAnalytics();
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    saveDeductionBtn.disabled = false;
+    saveDeductionBtn.textContent = "Save Deduction";
+  }
+});
 notificationPresetButtons.forEach((button) => {
   button.addEventListener("click", () => {
     loadNotifications({ presetKey: button.dataset.notificationPreset, markVisibleRead: true });
@@ -11823,6 +12234,7 @@ navButtons.booking.addEventListener("click", () => setScreen("booking"));
 navButtons.view.addEventListener("click", () => setScreen("view"));
 navButtons.planner.addEventListener("click", () => setScreen("planner"));
 navButtons.analytics.addEventListener("click", () => setScreen("analytics"));
+navButtons.deductions.addEventListener("click", () => setScreen("deductions"));
 navButtons.guide.addEventListener("click", () => setScreen("guide"));
 navButtons.hold.addEventListener("click", () => setScreen("hold"));
 navButtons.requests.addEventListener("click", () => setScreen("requests"));
@@ -11858,12 +12270,16 @@ window.addEventListener("offline", updateOnlineStatus);
   const today = new Date();
   const tomorrow = addDays(today, 1);
   const monthStart = startOfMonth(today);
+  const currentMonthValue = toMonthInputValue(today);
   state.currentMonthDate = startOfMonth(today);
   initBookingDateRangePicker(today, tomorrow);
   viewDateInput.value = toDateInputValue(today);
   if (analyticsDateFromInput) analyticsDateFromInput.value = toDateInputValue(monthStart);
   if (analyticsDateToInput) analyticsDateToInput.value = toDateInputValue(today);
+  if (deductionMonthFilterInput) deductionMonthFilterInput.value = currentMonthValue;
+  if (deductionMonthInput) deductionMonthInput.value = currentMonthValue;
   renderAnalyticsResultsContext();
+  renderDeductions([]);
   renderRoomStatus([]);
   updateStats([]);
   bootstrapSession();

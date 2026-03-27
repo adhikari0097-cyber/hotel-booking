@@ -404,6 +404,21 @@ create table if not exists public.system_update_history (
 create index if not exists system_update_history_created_idx
   on public.system_update_history (created_at desc);
 
+create table if not exists public.monthly_deductions (
+  id uuid primary key default gen_random_uuid(),
+  deduction_month date not null,
+  category text not null default 'Other',
+  title text not null,
+  details text not null default '',
+  amount numeric(12,2) not null default 0,
+  actor_user_id uuid references auth.users(id) on delete set null,
+  created_by_name text not null default '',
+  created_at timestamptz not null default now()
+);
+
+create index if not exists monthly_deductions_month_idx
+  on public.monthly_deductions (deduction_month desc, created_at desc);
+
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -543,6 +558,7 @@ alter table public.booking_runtime_settings enable row level security;
 alter table public.booking_notifications enable row level security;
 alter table public.booking_notification_reads enable row level security;
 alter table public.system_update_history enable row level security;
+alter table public.monthly_deductions enable row level security;
 
 drop policy if exists "anon can read bookings" on public.bookings;
 drop policy if exists "anon can insert bookings" on public.bookings;
@@ -718,6 +734,30 @@ on public.system_update_history
 for delete
 to authenticated
 using (public.has_profile_permission('manage_pricing'));
+
+drop policy if exists "owner admin can read deductions" on public.monthly_deductions;
+create policy "owner admin can read deductions"
+on public.monthly_deductions
+for select
+to authenticated
+using (public.is_owner_or_admin());
+
+drop policy if exists "owner admin can insert deductions" on public.monthly_deductions;
+create policy "owner admin can insert deductions"
+on public.monthly_deductions
+for insert
+to authenticated
+with check (
+  public.is_owner_or_admin()
+  and actor_user_id = auth.uid()
+);
+
+drop policy if exists "owner admin can delete deductions" on public.monthly_deductions;
+create policy "owner admin can delete deductions"
+on public.monthly_deductions
+for delete
+to authenticated
+using (public.is_owner_or_admin());
 
 drop policy if exists "owner admin can insert room inventory" on public.room_inventory;
 create policy "owner admin can insert room inventory"
@@ -896,3 +936,24 @@ end;
 $$;
 
 select public.add_system_updates_to_realtime();
+
+create or replace function public.add_deductions_to_realtime()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'monthly_deductions'
+  ) then
+    execute 'alter publication supabase_realtime add table public.monthly_deductions';
+  end if;
+end;
+$$;
+
+select public.add_deductions_to_realtime();

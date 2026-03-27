@@ -477,6 +477,7 @@
                   <input id="analytics-date-to" type="date" />
                 </div>
                 <button id="load-analytics" class="secondary-btn small-btn" type="button">Load Analytics</button>
+                <button id="export-analytics" class="secondary-btn small-btn" type="button">Export Report</button>
               </div>
             </div>
             <div class="preset-chip-row">
@@ -510,6 +511,10 @@
                 <span class="analytics-check-row">
                   <input id="analytics-include-hold-payments" type="checkbox" />
                   <span>Show Hold Payments</span>
+                </span>
+                <span class="analytics-check-row" id="analytics-deductions-toggle-row">
+                  <input id="analytics-include-deductions" type="checkbox" />
+                  <span>Include Deductions</span>
                 </span>
               </label>
               <label class="field compact-field">
@@ -551,6 +556,14 @@
               <div class="analytics-stat-card">
                 <span>Hold Payments</span>
                 <strong id="analytics-hold-payments">Off</strong>
+              </div>
+              <div class="analytics-stat-card">
+                <span>Total Deductions</span>
+                <strong id="analytics-total-deductions">Off</strong>
+              </div>
+              <div class="analytics-stat-card">
+                <span>Net Profit</span>
+                <strong id="analytics-net-profit">LKR 0.00</strong>
               </div>
             </div>
 
@@ -635,9 +648,86 @@
                 </div>
                 <div id="analytics-staff" class="analytics-table-list"></div>
               </section>
+              <section class="analytics-panel">
+                <div class="analytics-panel-head">
+                  <h4>Deductions Used</h4>
+                  <p>Monthly business costs included in this report.</p>
+                </div>
+                <div id="analytics-deductions-list" class="analytics-table-list"></div>
+              </section>
             </div>
 
             <p id="analytics-empty" class="empty-state">Select a date range to load analytics.</p>
+          </div>
+        </section>
+
+        <section class="screen" id="screen-deductions" aria-labelledby="tab-deductions">
+          <div class="card analytics-card">
+            <div class="accounts-header">
+              <div>
+                <p class="eyebrow">Business Costs</p>
+                <h3>Deductions</h3>
+              </div>
+            </div>
+            <p class="inline-note">Only owner and admin can save monthly deductions here. These deductions can then be included in Analytics to calculate net profit for the selected month or date range.</p>
+            <div class="analytics-summary-grid notification-summary-grid">
+              <div class="analytics-stat-card">
+                <span>Selected Month</span>
+                <strong id="deduction-month-label">-</strong>
+              </div>
+              <div class="analytics-stat-card">
+                <span>Total Deductions</span>
+                <strong id="deduction-month-total">LKR 0.00</strong>
+              </div>
+              <div class="analytics-stat-card">
+                <span>Entries</span>
+                <strong id="deduction-month-count">0</strong>
+              </div>
+            </div>
+            <div class="request-summary-panel deduction-controls">
+              <div class="request-form-grid">
+                <label class="field compact-field">
+                  <span>View Month</span>
+                  <input id="deduction-month-filter" type="month" />
+                </label>
+              </div>
+            </div>
+            <form id="deduction-form" class="request-form-layout deduction-form">
+              <div class="request-form-grid">
+                <label class="field compact-field">
+                  <span>Deduction Month</span>
+                  <input id="deduction-month" type="month" required />
+                </label>
+                <label class="field compact-field">
+                  <span>Category</span>
+                  <select id="deduction-category" required>
+                    <option value="Salary">Salary</option>
+                    <option value="Campaign Payment">Campaign Payment</option>
+                    <option value="Utilities">Utilities</option>
+                    <option value="Supplies">Supplies</option>
+                    <option value="Transport">Transport</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </label>
+              </div>
+              <div class="request-form-grid">
+                <label class="field">
+                  <span>Title</span>
+                  <input id="deduction-title" type="text" placeholder="Example: Staff salary / April campaign payment" required />
+                </label>
+                <label class="field compact-field">
+                  <span>Amount</span>
+                  <input id="deduction-amount" type="number" min="0" step="0.01" placeholder="0.00" required />
+                </label>
+              </div>
+              <label class="field">
+                <span>Details</span>
+                <textarea id="deduction-details" rows="3" placeholder="Add more details for this deduction."></textarea>
+              </label>
+              <button id="save-deduction" class="primary-btn" type="submit">Save Deduction</button>
+            </form>
+            <div id="deduction-list" class="pricing-list deduction-list"></div>
+            <p id="deduction-empty" class="empty-state">No deductions saved for this month.</p>
           </div>
         </section>
 
@@ -952,6 +1042,7 @@
         <button id="tab-view" class="nav-btn" type="button">View By Date</button>
         <button id="tab-planner" class="nav-btn" type="button">Booking Planner</button>
         <button id="tab-analytics" class="nav-btn" type="button">Analytics</button>
+        <button id="tab-deductions" class="nav-btn hidden" type="button">Deductions</button>
         <button id="tab-guide" class="nav-btn" type="button">Guide Book</button>
         <button id="tab-hold" class="nav-btn" type="button">Hold Bookings</button>
         <button id="tab-requests" class="nav-btn" type="button">Requests</button>

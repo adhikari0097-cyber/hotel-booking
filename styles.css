@@ -4405,6 +4405,20 @@ h4 {
   margin: 0;
 }
 
+.deduction-controls,
+.deduction-form {
+  margin-top: 18px;
+}
+
+.deduction-list {
+  margin-top: 18px;
+}
+
+.deduction-card {
+  display: grid;
+  gap: 10px;
+}
+
 .analytics-results-context {
   display: grid;
   gap: 12px;
