@@ -7302,6 +7302,7 @@ function openBookingDetailsModal(groupKey) {
       ${lifecycleStatus === "checked_out" ? `<span class="booking-tag tag-rejected">Checked Out</span>` : ""}
       ${lifecycleStatus === "hold" && getEffectiveProfile()?.role === "owner" ? `<button class="action-btn action-btn-icon action-btn-icon-reactivate" type="button" data-booking-group-action="reactivate">Reactivate</button>` : ""}
       ${(hasCheckInWindowStarted(group) && lifecycleStatus === "booked") ? `<button class="action-btn" type="button" data-booking-group-action="hold">Hold Room</button>` : ""}
+      ${(!canManageBookings() && lifecycleStatus === "checked_in") ? `<button class="action-btn" type="button" data-booking-group-action="request-hold">Request Hold</button>` : ""}
       ${(canManageBookings() || ((hasCheckInWindowStarted(group) && lifecycleStatus === "booked") || lifecycleStatus === "checked_in")) && isPendingGroupRemovalRequest(groupRequest)
         ? `<span class="booking-tag tag-pending">Pending Remove</span>`
         : canManageBookings()
@@ -7507,6 +7508,21 @@ function openBookingDetailsModal(groupKey) {
         openBookingDetailsModal(group.key);
       } catch (error) {
         showToast(error.message, true);
+      }
+    });
+  }
+  const requestHoldBtn = bookingDetailsBody.querySelector('[data-booking-group-action="request-hold"]');
+  if (requestHoldBtn) {
+    requestHoldBtn.addEventListener("click", async () => {
+      try {
+        closeBookingDetailsModal();
+        await launchBookingAction(group.bookings[0].id, {
+          scope: "group",
+          reason: "hold",
+          mode: "request",
+        });
+      } catch (error) {
+        showToast(error.message || "Unable to request hold.", true);
       }
     });
   }
@@ -7723,6 +7739,11 @@ function renderBookings(bookings) {
                 <span class="compact-label">Check Out</span>
               </button>
             ` : ""}
+            ${(!canManageBookings() && lifecycleStatus === "checked_in") ? `
+              <button class="secondary-btn compact-control" type="button" data-booking-group-request-hold="${group.bookings[0].id}" aria-label="Request Hold" title="Request Hold">
+                <span class="compact-label">Req Hold</span>
+              </button>
+            ` : ""}
             ${checkInWindowStarted && lifecycleStatus === "booked" ? `
               <button class="secondary-btn compact-control" type="button" data-booking-group-hold="${group.key}" aria-label="Hold Room" title="Hold Room">
                 <span class="compact-label">Hold Room</span>
@@ -7838,6 +7859,19 @@ function renderBookings(bookings) {
           await refreshLiveViews();
         } catch (error) {
           showToast(error.message, true);
+        }
+      });
+    });
+    card.querySelectorAll("[data-booking-group-request-hold]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        try {
+          await launchBookingAction(button.dataset.bookingGroupRequestHold, {
+            scope: "group",
+            reason: "hold",
+            mode: "request",
+          });
+        } catch (error) {
+          showToast(error.message || "Unable to request hold.", true);
         }
       });
     });
