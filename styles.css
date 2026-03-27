@@ -611,14 +611,6 @@ h4 {
   margin-bottom: 12px;
 }
 
-.booking-list-search {
-  margin-bottom: 12px;
-}
-
-.booking-list-search .field {
-  margin-bottom: 0;
-}
-
 .view-mode-toggle {
   display: inline-flex;
   align-items: center;
@@ -652,6 +644,27 @@ h4 {
   overflow-x: auto;
   padding-bottom: 8px;
   margin: 8px 0 14px;
+}
+
+.planner-toolbar-extras {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.planner-search-field,
+.planner-color-field {
+  margin-bottom: 0;
+}
+
+.planner-color-field input[type="color"] {
+  width: 100%;
+  height: 46px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #fff;
+  padding: 6px;
+  cursor: pointer;
 }
 
 .availability-panel {
@@ -2986,13 +2999,14 @@ h4 {
   margin-bottom: 18px;
 }
 
-#app-shell.view-desktop .booking-list-search {
-  margin-bottom: 18px;
-}
-
 #app-shell.view-desktop .booking-list-filters {
   margin-top: 0;
   margin-bottom: 26px;
+}
+
+#app-shell.view-desktop .planner-toolbar-extras {
+  grid-template-columns: minmax(0, 1.6fr) minmax(180px, 0.55fr);
+  margin-bottom: 18px;
 }
 
 #app-shell.view-desktop .filter-chip {
@@ -3160,8 +3174,8 @@ h4 {
     align-items: stretch;
   }
 
-  .booking-list-search {
-    margin-bottom: 10px;
+  .planner-toolbar-extras {
+    margin-bottom: 12px;
   }
 
   .booking-meta-actions-row,

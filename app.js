@@ -166,7 +166,10 @@ const state = {
   modalMode: "request",
   requestScope: "single",
   bookingListFilter: "active",
-  currentViewBookings: [],
+  currentPlannerBookings: [],
+  currentPlannerStartDate: "",
+  currentPlannerRangeDays: 14,
+  plannerAccentColor: "#93c0ec",
   requestsFilterMode: "recent",
   requestsFilterStatus: "pending",
   bookingViewMode: "mobile",
@@ -327,6 +330,15 @@ function getStoredBookingViewMode() {
   }
 }
 
+function getStoredPlannerAccentColor() {
+  try {
+    const stored = window.localStorage.getItem("planner-accent-color");
+    return /^#[0-9a-f]{6}$/i.test(String(stored || "").trim()) ? String(stored).trim() : "#93c0ec";
+  } catch (error) {
+    return "#93c0ec";
+  }
+}
+
 function getPresetRangeDates(presetKey) {
   const today = parseDate(new Date());
   const currentYear = today.getFullYear();
@@ -343,6 +355,10 @@ function getPresetRangeDates(presetKey) {
       return { from: today, to: addDays(today, 13) };
     case "this-month":
       return { from: startOfMonth(today), to: endOfMonth(today) };
+    case "next-month": {
+      const base = new Date(currentYear, currentMonth + 1, 1, 12, 0, 0);
+      return { from: startOfMonth(base), to: endOfMonth(base) };
+    }
     case "last-month": {
       const base = new Date(currentYear, currentMonth - 1, 1, 12, 0, 0);
       return { from: startOfMonth(base), to: endOfMonth(base) };
@@ -374,6 +390,17 @@ function applyPlannerPreset(presetKey) {
   plannerStartDateInput.value = toDateInputValue(from);
   ensureSelectOptionValue(plannerRangeDaysInput, days, `${days} Days`);
   loadReservationPlanner();
+}
+
+function setStoredPlannerAccentColor(color) {
+  const normalized = /^#[0-9a-f]{6}$/i.test(String(color || "").trim()) ? String(color).trim() : "#93c0ec";
+  state.plannerAccentColor = normalized;
+  if (plannerColorInput) plannerColorInput.value = normalized;
+  try {
+    window.localStorage.setItem("planner-accent-color", normalized);
+  } catch (error) {
+    // Ignore local storage failures and keep the in-memory color.
+  }
 }
 
 function applyAnalyticsPreset(presetKey) {
@@ -755,7 +782,6 @@ const guestsInput = qs("#guests");
 const bookingCards = qs("#booking-cards");
 const bookingEmpty = qs("#booking-empty");
 const bookingListCard = qs("#booking-list");
-const bookingSearchInput = qs("#booking-search");
 const bookingViewMobileBtn = qs("#app-view-mobile");
 const bookingViewDesktopBtn = qs("#app-view-desktop");
   const bookingFilterButtons = {
@@ -768,6 +794,8 @@ const plannerStartDateInput = qs("#plannerStartDate");
 const plannerRangeDaysInput = qs("#plannerRangeDays");
 const plannerLoadBtn = qs("#loadPlanner");
 const plannerPresetButtons = Array.from(document.querySelectorAll("[data-planner-preset]"));
+const plannerSearchInput = qs("#planner-search");
+const plannerColorInput = qs("#planner-color");
 const plannerSummaryRange = qs("#plannerSummaryRange");
 const plannerSummaryReservations = qs("#plannerSummaryReservations");
 const plannerSummaryNights = qs("#plannerSummaryNights");
@@ -5801,6 +5829,57 @@ function matchesBookingGroupSearch(group, searchTerm = "") {
     || (normalizedDigitSearch && (phoneDigits.includes(normalizedDigitSearch) || normalizedTrackDigits.includes(normalizedDigitSearch)));
 }
 
+function hexToRgb(color) {
+  const match = String(color || "").trim().match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
+  if (!match) return null;
+  return {
+    r: parseInt(match[1], 16),
+    g: parseInt(match[2], 16),
+    b: parseInt(match[3], 16),
+  };
+}
+
+function rgbToHex({ r, g, b }) {
+  return `#${[r, g, b].map((value) => Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, "0")).join("")}`;
+}
+
+function mixRgb(base, target, ratio) {
+  return {
+    r: base.r + (target.r - base.r) * ratio,
+    g: base.g + (target.g - base.g) * ratio,
+    b: base.b + (target.b - base.b) * ratio,
+  };
+}
+
+function getPlannerAccentPalette(color) {
+  const rgb = hexToRgb(color) || hexToRgb("#93c0ec");
+  const bg = rgbToHex(mixRgb(rgb, { r: 255, g: 255, b: 255 }, 0.55));
+  const border = rgbToHex(mixRgb(rgb, { r: 22, g: 34, b: 51 }, 0.18));
+  const text = rgbToHex(mixRgb(rgb, { r: 18, g: 24, b: 38 }, 0.72));
+  return { bg, border, text };
+}
+
+function getFilteredPlannerBookings(bookings = []) {
+  const items = Array.isArray(bookings) ? bookings : [];
+  const searchTerm = plannerSearchInput?.value || "";
+  if (!searchTerm) return items;
+  const matchedKeys = new Set(
+    groupBookingsForDisplay(items)
+      .filter((group) => matchesBookingGroupSearch(group, searchTerm))
+      .map((group) => group.key),
+  );
+  return items.filter((booking) => matchedKeys.has(getBookingGroupKey(booking)));
+}
+
+function renderCurrentPlannerView() {
+  if (!state.currentPlannerStartDate) return;
+  renderReservationPlanner(
+    state.currentPlannerBookings || [],
+    state.currentPlannerStartDate,
+    state.currentPlannerRangeDays || 14,
+  );
+}
+
 function mergeBookingsIntoStateMap(bookings = []) {
   const merged = new Map(state.bookingMap);
   bookings.forEach((booking) => {
@@ -7291,7 +7370,6 @@ function openBookingDetailsModal(groupKey) {
 function renderBookings(bookings) {
   bookingCards.innerHTML = "";
   state.bookingMap = new Map(bookings.map((booking) => [booking.id, booking]));
-  const searchTerm = bookingSearchInput?.value || "";
   const filteredBookings = bookings.filter((booking) => {
     if (state.bookingListFilter === "cancelled") return booking.status === "Cancelled";
     if (state.bookingListFilter === "active") return booking.status !== "Cancelled" && getBookingLifecycleStatus(booking) !== "hold";
@@ -7311,19 +7389,16 @@ function renderBookings(bookings) {
       return latestRequest?.status === "pending";
     });
   }
-  groupedBookings = groupedBookings.filter((group) => matchesBookingGroupSearch(group, searchTerm));
 
   if (!groupedBookings.length) {
     bookingEmpty.textContent =
-      searchTerm
-        ? "No bookings matched that search."
-        : state.bookingListFilter === "cancelled"
-          ? "No cancelled bookings for this date."
-          : state.bookingListFilter === "pending"
-            ? "No pending-request bookings for this date."
-            : state.bookingListFilter === "active"
-              ? "No active bookings for this date."
-              : "No bookings for this date.";
+      state.bookingListFilter === "cancelled"
+        ? "No cancelled bookings for this date."
+        : state.bookingListFilter === "pending"
+          ? "No pending-request bookings for this date."
+          : state.bookingListFilter === "active"
+            ? "No active bookings for this date."
+            : "No bookings for this date.";
     bookingEmpty.style.display = "block";
     state.bookingGroups = new Map();
     return;
@@ -8884,8 +8959,7 @@ function getPlannerBookingColors(booking, pendingCollections) {
   if (isPlannerPendingBooking(booking, pendingCollections)) {
     return { bg: "#d9c3f7", border: "#9b68dd", text: "#44206b" };
   }
-  const tint = getTrackCodeTint(getBookingGroupKey(booking));
-  return { bg: tint.bg, border: tint.border, text: "#241d17" };
+  return getPlannerAccentPalette(state.plannerAccentColor || getStoredPlannerAccentColor());
 }
 
 function getPlannerPendingLabel(booking, pendingCollections) {
@@ -9229,16 +9303,17 @@ function renderReservationPlanner(bookings, startDate, days) {
   if (!reservationPlannerBoard || !reservationPlannerEmpty) return;
 
   mergeBookingsIntoStateMap(bookings);
-  const groupedBookings = groupBookingsForDisplay(bookings);
+  const visibleBookings = getFilteredPlannerBookings(bookings);
+  const groupedBookings = groupBookingsForDisplay(visibleBookings);
   state.plannerBookingGroups = new Map(groupedBookings.map((group) => [group.key, group]));
 
-  const plannerRooms = getPlannerRooms(bookings);
+  const plannerRooms = getPlannerRooms(visibleBookings);
   const rangeStart = parseDate(startDate);
   const safeDays = Math.max(7, Math.min(366, Number(days || 14)));
   const pendingCollections = getLatestPendingRequestCollections();
   const dateList = Array.from({ length: safeDays }, (_, index) => addDays(rangeStart, index));
   const rangeEnd = addDays(rangeStart, safeDays);
-  const occupiedNights = bookings.reduce((sum, booking) => {
+  const occupiedNights = visibleBookings.reduce((sum, booking) => {
     const checkIn = parseDate(booking.checkIn);
     const checkOut = parseDate(booking.checkOut);
     if (!checkIn || !checkOut) return sum;
@@ -9260,7 +9335,7 @@ function renderReservationPlanner(bookings, startDate, days) {
   }
 
   if (!useDesktopPlannerLayout()) {
-    renderReservationPlannerMobile(bookings, plannerRooms, startDate, safeDays, pendingCollections);
+    renderReservationPlannerMobile(visibleBookings, plannerRooms, startDate, safeDays, pendingCollections);
     return;
   }
 
@@ -9299,7 +9374,7 @@ function renderReservationPlanner(bookings, startDate, days) {
     </div>
   `).join("")).join("");
 
-  const bars = bookings.map((booking) => {
+  const bars = visibleBookings.map((booking) => {
     const roomKey = `${normalizeRoomGroup(booking.roomType)}-${Number(booking.roomNumber)}`;
     const roomIndex = roomIndexMap.get(roomKey);
     if (roomIndex == null) return "";
@@ -9361,10 +9436,13 @@ function renderReservationPlanner(bookings, startDate, days) {
     </div>
   `;
 
-  reservationPlannerEmpty.textContent = bookings.length
+  const plannerSearchTerm = String(plannerSearchInput?.value || "").trim();
+  reservationPlannerEmpty.textContent = visibleBookings.length
     ? ""
-    : "No bookings found in this range. Rooms are still shown for planning.";
-  reservationPlannerEmpty.style.display = bookings.length ? "none" : "block";
+    : plannerSearchTerm
+      ? "No planner bookings matched that search."
+      : "No bookings found in this range. Rooms are still shown for planning.";
+  reservationPlannerEmpty.style.display = visibleBookings.length ? "none" : "block";
   bindPlannerBookingButtons();
 }
 
@@ -9388,7 +9466,10 @@ async function loadReservationPlanner() {
     const endDate = formatDateKey(addDays(parsedStart, rangeDays));
     const bookings = (await fetchBookingsForPeriod(startDate, endDate))
       .filter((booking) => isVisibleBooking(booking));
-    renderReservationPlanner(bookings, startDate, rangeDays);
+    state.currentPlannerBookings = bookings;
+    state.currentPlannerStartDate = startDate;
+    state.currentPlannerRangeDays = rangeDays;
+    renderCurrentPlannerView();
   } catch (error) {
     showToast(error.message, true);
   }
@@ -9396,7 +9477,6 @@ async function loadReservationPlanner() {
 
 async function loadBookingsForDate(date) {
   if (!date || !state.currentProfile?.approved) {
-    state.currentViewBookings = [];
     bookingEmpty.textContent = "Select a date to see bookings.";
     bookingEmpty.style.display = "block";
     return;
@@ -9404,7 +9484,6 @@ async function loadBookingsForDate(date) {
 
   try {
     const bookings = await fetchBookingsByDate(date);
-    state.currentViewBookings = bookings;
     updateStats(bookings);
     renderRoomStatus(bookings);
     renderBookings(bookings);
@@ -11162,6 +11241,7 @@ handleBookingOfferChange();
 handleRequestOfferChange();
 syncAdvanceAmountField();
 syncRequestAdvanceAmountField();
+setStoredPlannerAccentColor(getStoredPlannerAccentColor());
 requestRoomTypeInput.addEventListener("change", () => {
   populateRequestRoomNumbers(requestRoomTypeInput.value, 1);
   populateRequestGuestsOptions(requestRoomTypeInput.value, requestGuestsInput?.value || 1);
@@ -11192,8 +11272,13 @@ Object.entries(bookingFilterButtons).forEach(([key, button]) => {
   });
 });
 
-bookingSearchInput?.addEventListener("input", () => {
-  renderBookings(state.currentViewBookings || []);
+plannerSearchInput?.addEventListener("input", () => {
+  renderCurrentPlannerView();
+});
+
+plannerColorInput?.addEventListener("input", (event) => {
+  setStoredPlannerAccentColor(event.target.value);
+  renderCurrentPlannerView();
 });
 
 monthPrevBtn.addEventListener("click", async () => {
