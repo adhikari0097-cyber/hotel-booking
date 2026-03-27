@@ -5552,6 +5552,18 @@ async function fetchProfile(userId, attempts = 5) {
   return null;
 }
 
+async function runSessionBootStep(label, task, failures) {
+  try {
+    await task();
+    return true;
+  } catch (error) {
+    const message = error?.message || `${label} failed.`;
+    failures.push(`${label}: ${message}`);
+    console.error(`Session boot failed at ${label}`, error);
+    return false;
+  }
+}
+
 async function applySession(session) {
   state.currentSession = session;
 
@@ -5594,21 +5606,28 @@ async function applySession(session) {
 
   renderShell("app");
   updateOnlineStatus();
-  await loadRoomInventory();
-  await loadServiceCatalog();
-  await loadRoomPricing();
-  await loadRuntimeSettings();
+  const bootFailures = [];
+  await runSessionBootStep("Room inventory", () => loadRoomInventory(), bootFailures);
+  await runSessionBootStep("Service catalog", () => loadServiceCatalog(), bootFailures);
+  await runSessionBootStep("Room pricing", () => loadRoomPricing(), bootFailures);
+  await runSessionBootStep("Runtime settings", () => loadRuntimeSettings(), bootFailures);
   updateHeaderProfile();
   updateNavVisibility();
-  await setupRealtime();
-  await refreshLiveViews();
-  await loadRequests();
-  await loadNotificationUnreadCount();
+  await runSessionBootStep("Realtime", () => setupRealtime(), bootFailures);
+  await runSessionBootStep("Live views", () => refreshLiveViews(), bootFailures);
+  await runSessionBootStep("Requests", () => loadRequests(), bootFailures);
+  await runSessionBootStep("Notifications", () => loadNotificationUnreadCount(), bootFailures);
   if (canAccessSystemUpdates() && screens.systemUpdates?.classList.contains("screen-active")) {
-    await loadSystemUpdates();
+    await runSessionBootStep("System updates", () => loadSystemUpdates(), bootFailures);
   }
   if (canManageAccounts()) {
-    await loadAccounts();
+    await runSessionBootStep("Accounts", () => loadAccounts(), bootFailures);
+  }
+  if (bootFailures.length) {
+    setSyncState("error");
+    showToast(`Loaded with ${bootFailures.length} issue(s). ${bootFailures[0]}`, true);
+  } else {
+    updateOnlineStatus();
   }
 }
 
