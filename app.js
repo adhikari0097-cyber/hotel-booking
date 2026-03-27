@@ -176,6 +176,7 @@ const state = {
   requestsFilterMode: "recent",
   requestsFilterStatus: "pending",
   bookingViewMode: "mobile",
+  mobileNavDock: "bottom",
   roomPricing: new Map(),
   pricingSchemaReady: null,
   bookingCustomPayments: [],
@@ -333,6 +334,74 @@ function getStoredBookingViewMode() {
   } catch (error) {
     return null;
   }
+}
+
+function getStoredMobileNavDock() {
+  try {
+    const stored = String(window.localStorage.getItem("mobile-nav-dock") || "").trim().toLowerCase();
+    return ["bottom", "left", "right"].includes(stored) ? stored : "bottom";
+  } catch (error) {
+    return "bottom";
+  }
+}
+
+function getEffectiveMobileNavDock(position = state.mobileNavDock) {
+  const normalized = ["bottom", "left", "right"].includes(position) ? position : "bottom";
+  if (state.bookingViewMode === "desktop" || window.innerWidth >= 980) return "bottom";
+  return normalized;
+}
+
+function applyMobileNavDock(position = state.mobileNavDock, { persist = false } = {}) {
+  const normalized = ["bottom", "left", "right"].includes(position) ? position : "bottom";
+  state.mobileNavDock = normalized;
+  if (persist) {
+    try {
+      window.localStorage.setItem("mobile-nav-dock", normalized);
+    } catch (error) {
+      // Ignore storage failures.
+    }
+  }
+  const effectiveDock = getEffectiveMobileNavDock(normalized);
+  bottomNav?.classList.toggle("nav-dock-left", effectiveDock === "left");
+  bottomNav?.classList.toggle("nav-dock-right", effectiveDock === "right");
+  bottomNav?.classList.toggle("nav-dock-bottom", effectiveDock === "bottom");
+  appShell?.classList.toggle("mobile-nav-side-left", effectiveDock === "left");
+  appShell?.classList.toggle("mobile-nav-side-right", effectiveDock === "right");
+  bottomNavDragHandle?.setAttribute(
+    "title",
+    effectiveDock === "bottom"
+      ? "Drag to left or right side"
+      : effectiveDock === "left"
+        ? "Drag to bottom or right side"
+        : "Drag to bottom or left side",
+  );
+  syncBottomNavLayout(Array.from(Object.values(navButtons)).filter((button) => button && !button.classList.contains("hidden")).length);
+}
+
+function getNextMobileNavDock(position = state.mobileNavDock) {
+  if (position === "bottom") return "right";
+  if (position === "right") return "left";
+  return "bottom";
+}
+
+function resolveMobileNavDockFromPoint(clientX, clientY) {
+  const sideThreshold = Math.min(132, window.innerWidth * 0.26);
+  const bottomThreshold = Math.min(180, window.innerHeight * 0.28);
+  if (clientY >= window.innerHeight - bottomThreshold) return "bottom";
+  if (clientX <= sideThreshold) return "left";
+  if (clientX >= window.innerWidth - sideThreshold) return "right";
+  return state.mobileNavDock || "bottom";
+}
+
+function syncBottomNavLayout(visibleTabs = 4) {
+  if (!bottomNav) return;
+  const isDesktopNav = state.bookingViewMode === "desktop" && window.innerWidth >= 980;
+  const dock = getEffectiveMobileNavDock();
+  if (isDesktopNav) {
+    bottomNav.style.gridTemplateColumns = `repeat(${visibleTabs}, 1fr)`;
+    return;
+  }
+  bottomNav.style.gridTemplateColumns = dock === "bottom" ? "repeat(4, minmax(0, 1fr))" : "1fr";
 }
 
 function getStoredPlannerAccentColor() {
@@ -622,6 +691,7 @@ function applyBookingViewMode() {
   bookingListCard.classList.toggle("booking-view-mobile", effectiveMode !== "desktop");
   bookingViewMobileBtn?.classList.toggle("view-mode-btn-active", state.bookingViewMode === "mobile");
   bookingViewDesktopBtn?.classList.toggle("view-mode-btn-active", state.bookingViewMode === "desktop");
+  applyMobileNavDock(state.mobileNavDock);
 }
 
 function slugifyText(value = "") {
@@ -884,6 +954,55 @@ function setBookingViewMode(mode) {
   }
 }
 
+function bindMobileNavDockControls() {
+  if (!bottomNavDragHandle) return;
+  let dragging = false;
+  let moved = false;
+
+  const stopDragging = (event) => {
+    if (!dragging) return;
+    dragging = false;
+    bottomNav?.classList.remove("nav-dragging");
+    const nextDock = resolveMobileNavDockFromPoint(event.clientX, event.clientY);
+    applyMobileNavDock(nextDock, { persist: true });
+    if (moved) {
+      window.setTimeout(() => {
+        bottomNavDragHandle.dataset.dragMoved = "0";
+      }, 0);
+    }
+  };
+
+  bottomNavDragHandle.addEventListener("pointerdown", (event) => {
+    if (state.bookingViewMode === "desktop" || window.innerWidth >= 980) return;
+    dragging = true;
+    moved = false;
+    bottomNavDragHandle.dataset.dragMoved = "0";
+    bottomNav?.classList.add("nav-dragging");
+    bottomNavDragHandle.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  });
+
+  bottomNavDragHandle.addEventListener("pointermove", (event) => {
+    if (!dragging) return;
+    const previewDock = resolveMobileNavDockFromPoint(event.clientX, event.clientY);
+    moved = true;
+    bottomNavDragHandle.dataset.dragMoved = "1";
+    applyMobileNavDock(previewDock);
+  });
+
+  bottomNavDragHandle.addEventListener("pointerup", stopDragging);
+  bottomNavDragHandle.addEventListener("pointercancel", stopDragging);
+
+  bottomNavDragHandle.addEventListener("click", (event) => {
+    if (bottomNavDragHandle.dataset.dragMoved === "1") {
+      bottomNavDragHandle.dataset.dragMoved = "0";
+      event.preventDefault();
+      return;
+    }
+    applyMobileNavDock(getNextMobileNavDock(state.mobileNavDock), { persist: true });
+  });
+}
+
 function refreshRequestModalNodeRefs() {
   requestExtraRoomsSection = qs("#request-extra-rooms-section");
   requestExtraRooms = qs("#request-extra-rooms");
@@ -969,6 +1088,8 @@ const bookingCheckInInput = qs("#checkIn");
 const bookingCheckOutInput = qs("#checkOut");
 const toast = qs("#toast");
 const syncStatus = qs("#sync-status");
+const bottomNav = qs("#bottom-nav");
+const bottomNavDragHandle = qs("#bottom-nav-drag-handle");
 const guestsInput = qs("#guests");
 const bookingCards = qs("#booking-cards");
 const bookingEmpty = qs("#booking-empty");
@@ -4887,11 +5008,7 @@ function updateNavVisibility() {
   navButtons.pricing?.classList.toggle("hidden", !showPricing);
   analyticsDeductionsToggleRow?.classList.toggle("hidden", !showDeductions);
   const visibleTabs = 2 + Number(showPlanner) + Number(showAnalytics) + Number(showDeductions) + Number(showGuide) + Number(showHold) + Number(showRequests) + Number(showNotifications) + Number(showSystemUpdates) + Number(showAccounts) + Number(showPricing);
-  const bottomNav = qs(".bottom-nav");
-  const isDesktopNav = state.bookingViewMode === "desktop" && window.innerWidth >= 980;
-  if (bottomNav) bottomNav.style.gridTemplateColumns = isDesktopNav
-    ? `repeat(${visibleTabs}, 1fr)`
-    : `repeat(4, minmax(0, 1fr))`;
+  syncBottomNavLayout(visibleTabs);
   if (!showPlanner && screens.planner?.classList.contains("screen-active")) {
     setScreen("booking");
   }
@@ -11950,7 +12067,9 @@ bookingForm.addEventListener("submit", async (event) => {
 
 ensureRequestModalSections();
 state.bookingViewMode = getDefaultBookingViewMode();
+state.mobileNavDock = getStoredMobileNavDock();
 applyBookingViewMode();
+bindMobileNavDockControls();
 if (plannerStartDateInput && !plannerStartDateInput.value) {
   plannerStartDateInput.value = toDateInputValue(new Date());
 }
@@ -11965,6 +12084,7 @@ bookingViewMobileBtn?.addEventListener("click", () => setBookingViewMode("mobile
 bookingViewDesktopBtn?.addEventListener("click", () => setBookingViewMode("desktop"));
 window.addEventListener("resize", () => {
   applyBookingViewMode();
+  syncBottomNavLayout(Array.from(Object.values(navButtons)).filter((button) => button && !button.classList.contains("hidden")).length);
   if (screens.planner?.classList.contains("screen-active") && plannerStartDateInput?.value) {
     loadReservationPlanner();
   }
