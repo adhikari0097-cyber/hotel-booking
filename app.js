@@ -7574,8 +7574,11 @@ async function openReservationWhatsappGroupBackup(groupKey) {
   }
 
   const shareMessages = getRuntimeShareMessages();
-  const groupLink = String(shareMessages.whatsappGroupLink || "").trim();
+  const groupLink = String(shareMessages.whatsappGroupLink || "").trim().replace(/\?mode=gi_t$/i, "");
   const backupMessage = buildReservationWhatsappMessage(group, { target: "group" });
+  if (groupLink) {
+    window.open(groupLink, "_blank", "noopener,noreferrer");
+  }
 
   let copied = false;
   try {
@@ -7585,7 +7588,6 @@ async function openReservationWhatsappGroupBackup(groupKey) {
   }
 
   if (groupLink) {
-    window.open(groupLink, "_blank", "noopener,noreferrer");
     showToast(copied
       ? "Group backup note copied. Paste it into your WhatsApp group."
       : "Opened your WhatsApp group. Copy the backup note manually if needed.");
