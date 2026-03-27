@@ -4371,10 +4371,38 @@ h4 {
   grid-column: 1 / -1;
 }
 
+.analytics-chip-filter-field {
+  grid-column: span 1;
+}
+
+.analytics-toggle-field {
+  margin-bottom: 0;
+}
+
 .analytics-state-chip-list {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.analytics-check-row {
+  min-height: 46px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.analytics-check-row input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
 }
 
 .analytics-results-context {

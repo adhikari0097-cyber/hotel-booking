@@ -478,6 +478,31 @@ function getAnalyticsFilterDisplayValue(select, allLabel) {
   return select.selectedOptions?.[0]?.textContent?.trim() || select.value;
 }
 
+function getSelectedAnalyticsChipValues(container) {
+  if (!container) return [];
+  return Array.from(container.querySelectorAll("[data-analytics-chip-value].filter-chip-active"))
+    .map((button) => String(button.dataset.analyticsChipValue || "").trim())
+    .filter(Boolean);
+}
+
+function getAnalyticsChipFilterDisplayValue(container, allLabel) {
+  const selectedValues = getSelectedAnalyticsChipValues(container);
+  return selectedValues.length ? selectedValues.join(", ") : allLabel;
+}
+
+function populateAnalyticsChipFilter(container, values = []) {
+  if (!container) return;
+  const selectedValues = new Set(getSelectedAnalyticsChipValues(container));
+  const orderedValues = values.filter(Boolean);
+  container.innerHTML = orderedValues.map((value) => `
+    <button
+      class="filter-chip${selectedValues.has(value) ? " filter-chip-active" : ""}"
+      type="button"
+      data-analytics-chip-value="${escapeHtml(value)}"
+    >${escapeHtml(value)}</button>
+  `).join("");
+}
+
 function getAnalyticsGroupStateLabel(group) {
   const hasPendingStatus = (group?.bookings || []).some((booking) => String(booking.status || "").toLowerCase() === "pending");
   if (hasPendingStatus) return "Pending Booking";
@@ -485,28 +510,15 @@ function getAnalyticsGroupStateLabel(group) {
 }
 
 function getSelectedAnalyticsStates() {
-  if (!analyticsFilterStateChips) return [];
-  return Array.from(analyticsFilterStateChips.querySelectorAll("[data-analytics-state].filter-chip-active"))
-    .map((button) => String(button.dataset.analyticsState || "").trim())
-    .filter(Boolean);
+  return getSelectedAnalyticsChipValues(analyticsFilterStateChips);
 }
 
 function getAnalyticsStateFilterDisplayValue() {
-  const selectedStates = getSelectedAnalyticsStates();
-  return selectedStates.length ? selectedStates.join(", ") : "All States";
+  return getAnalyticsChipFilterDisplayValue(analyticsFilterStateChips, "All States");
 }
 
 function populateAnalyticsStateChips(values = []) {
-  if (!analyticsFilterStateChips) return;
-  const selectedStates = new Set(getSelectedAnalyticsStates());
-  const orderedValues = values.filter(Boolean);
-  analyticsFilterStateChips.innerHTML = orderedValues.map((value) => `
-    <button
-      class="filter-chip${selectedStates.has(value) ? " filter-chip-active" : ""}"
-      type="button"
-      data-analytics-state="${escapeHtml(value)}"
-    >${escapeHtml(value)}</button>
-  `).join("");
+  populateAnalyticsChipFilter(analyticsFilterStateChips, values);
 }
 
 function renderAnalyticsResultsContext({ count } = {}) {
@@ -518,8 +530,9 @@ function renderAnalyticsResultsContext({ count } = {}) {
   const items = [
     { label: "Date Range", value: dateValue },
     { label: "Reservation State", value: getAnalyticsStateFilterDisplayValue() },
-    { label: "Source", value: getAnalyticsFilterDisplayValue(analyticsFilterSource, "All Sources") },
-    { label: "Booked By", value: getAnalyticsFilterDisplayValue(analyticsFilterStaff, "All Staff") },
+    { label: "Source", value: getAnalyticsChipFilterDisplayValue(analyticsFilterSourceChips, "All Sources") },
+    { label: "Booked By", value: getAnalyticsChipFilterDisplayValue(analyticsFilterStaffChips, "All Staff") },
+    { label: "Hold Payments", value: analyticsIncludeHoldPayments?.checked ? "Shown" : "Hidden" },
     { label: "Trend View", value: metricValue },
     { label: "Results", value: typeof count === "number" ? `${count} reservations` : "Load analytics to refresh" },
   ];
@@ -1098,10 +1111,12 @@ const analyticsStaff = qs("#analytics-staff");
 const analyticsTrendChart = qs("#analytics-trend-chart");
 const analyticsInsights = qs("#analytics-insights");
 const analyticsFilterStateChips = qs("#analytics-filter-state-chips");
-const analyticsFilterSource = qs("#analytics-filter-source");
-const analyticsFilterStaff = qs("#analytics-filter-staff");
+const analyticsFilterSourceChips = qs("#analytics-filter-source-chips");
+const analyticsFilterStaffChips = qs("#analytics-filter-staff-chips");
+const analyticsIncludeHoldPayments = qs("#analytics-include-hold-payments");
 const analyticsFilterMetric = qs("#analytics-filter-metric");
 const analyticsEmpty = qs("#analytics-empty");
+const analyticsHoldPayments = qs("#analytics-hold-payments");
 const guideBookContent = qs("#guide-book-content");
 const guideSearchInput = qs("#guide-search");
 const guideNav = qs("#guide-nav");
@@ -4943,9 +4958,11 @@ async function loadAnalytics() {
   if (!state.currentProfile?.approved || !analyticsDateFromInput || !analyticsDateToInput) return;
   const from = analyticsDateFromInput.value;
   const to = analyticsDateToInput.value;
+  const includeHoldPayments = Boolean(analyticsIncludeHoldPayments?.checked);
 
   if (!from || !to) {
     renderAnalyticsResultsContext();
+    setText(analyticsHoldPayments, includeHoldPayments ? formatMoney(0) : "Off");
     if (analyticsEmpty) {
       analyticsEmpty.textContent = "Select a date range to load analytics.";
       analyticsEmpty.style.display = "block";
@@ -4955,6 +4972,7 @@ async function loadAnalytics() {
 
   if (from > to) {
     renderAnalyticsResultsContext();
+    setText(analyticsHoldPayments, includeHoldPayments ? formatMoney(0) : "Off");
     showToast("Analytics end date must be after the start date.", true);
     return;
   }
@@ -4968,18 +4986,23 @@ async function loadAnalytics() {
     )))).sort();
     const staffOptions = Array.from(new Set(groups.map((group) => group.bookings[0]?.createdByName || "Unknown"))).sort();
     populateAnalyticsStateChips(lifecycleOptions);
-    populateAnalyticsFilterSelect(analyticsFilterSource, sourceOptions, "All Sources");
-    populateAnalyticsFilterSelect(analyticsFilterStaff, staffOptions, "All Staff");
+    populateAnalyticsChipFilter(analyticsFilterSourceChips, sourceOptions);
+    populateAnalyticsChipFilter(analyticsFilterStaffChips, staffOptions);
     const selectedStates = getSelectedAnalyticsStates();
+    const selectedSources = getSelectedAnalyticsChipValues(analyticsFilterSourceChips);
+    const selectedStaff = getSelectedAnalyticsChipValues(analyticsFilterStaffChips);
+    const matchesSharedAnalyticsFilters = (group) => {
+      const sourceLabel = group.statuses.size === 1 ? getBookingStatusLabel(Array.from(group.statuses)[0]) : "Mixed Booking";
+      const staffLabel = group.bookings[0]?.createdByName || "Unknown";
+      if (selectedSources.length && !selectedSources.includes(sourceLabel)) return false;
+      if (selectedStaff.length && !selectedStaff.includes(staffLabel)) return false;
+      return true;
+    };
 
     const filteredGroups = groups.filter((group) => {
       const lifecycleLabel = getAnalyticsGroupStateLabel(group);
-      const sourceLabel = group.statuses.size === 1 ? getBookingStatusLabel(Array.from(group.statuses)[0]) : "Mixed Booking";
-      const staffLabel = group.bookings[0]?.createdByName || "Unknown";
       if (selectedStates.length && !selectedStates.includes(lifecycleLabel)) return false;
-      if ((analyticsFilterSource?.value || "all") !== "all" && analyticsFilterSource.value !== sourceLabel) return false;
-      if ((analyticsFilterStaff?.value || "all") !== "all" && analyticsFilterStaff.value !== staffLabel) return false;
-      return true;
+      return matchesSharedAnalyticsFilters(group);
     });
     renderAnalyticsResultsContext({ count: filteredGroups.length });
     const totalRevenue = roundCurrency(filteredGroups.reduce((sum, group) => sum + Number(group.totalPrice || 0), 0));
@@ -4988,6 +5011,13 @@ async function loadAnalytics() {
     const totalRoomNights = filteredGroups.reduce((sum, group) => sum + getAnalyticsRoomNights(group), 0);
     const averageBookingValue = totalBookings ? roundCurrency(totalRevenue / totalBookings) : 0;
     const averageStayNights = totalBookings ? roundCurrency(totalRoomNights / totalBookings) : 0;
+    const totalHoldPayments = includeHoldPayments
+      ? roundCurrency(groups.reduce((sum, group) => {
+        if (getGroupLifecycleStatus(group) !== "hold") return sum;
+        if (!matchesSharedAnalyticsFilters(group)) return sum;
+        return sum + Number(getAdvancePaymentInfo(group.bookings).amount || 0);
+      }, 0))
+      : 0;
 
     const roomTotals = new Map();
     const roomTypeRevenue = new Map();
@@ -5033,6 +5063,7 @@ async function loadAnalytics() {
     setText(analyticsPendingBalance, formatMoney(totalPendingBalance));
     setText(analyticsRoomNights, String(totalRoomNights));
     setText(analyticsAverageStay, `${averageStayNights.toFixed(1)} nights`);
+    setText(analyticsHoldPayments, includeHoldPayments ? formatMoney(totalHoldPayments) : "Off");
 
     renderAnalyticsBarList(
       analyticsTopRooms,
@@ -5099,6 +5130,7 @@ async function loadAnalytics() {
     }
   } catch (error) {
     renderAnalyticsResultsContext();
+    setText(analyticsHoldPayments, includeHoldPayments ? formatMoney(0) : "Off");
     if (analyticsEmpty) {
       analyticsEmpty.textContent = error.message;
       analyticsEmpty.style.display = "block";
@@ -7027,14 +7059,21 @@ async function performGroupFreshBooking(groupKey) {
 async function performGroupDeleteFlow(groupKey) {
   const group = getBookingGroupByKey(groupKey);
   if (!group) throw new Error("Booking group not found.");
+  const lifecycleStatus = getGroupLifecycleStatus(group);
   const hasPayment = Number(getAdvancePaymentInfo(group.bookings).amount || 0) > 0 || Number(getGroupCustomPriceTotal(group.bookings) || 0) > 0;
-  if (canEditBookingGroupDirect(group) || canManageBookings()) {
+  const allowUserDirectBookedDelete = !canManageBookings() && lifecycleStatus === "booked";
+  if (canEditBookingGroupDirect(group) || canManageBookings() || allowUserDirectBookedDelete) {
     if (!hasPayment) {
       if (!window.confirm("Delete this booking?")) return false;
       await updateGroupLifecycle(groupKey, { lifecycleStatus: "booked" });
       for (const booking of group.bookings) {
         await updateBooking(booking.id, { status: "Cancelled" });
       }
+      return true;
+    }
+    if (!canManageBookings()) {
+      if (!window.confirm("Advance payment found. This booking cannot be deleted and will move to Hold Room. Continue?")) return false;
+      await performGroupHold(groupKey, "Advance payment received. Booking moved to hold instead of deleting.", "Hold");
       return true;
     }
     const refundPayment = window.confirm("Payments found. Press OK to refund and delete. Press Cancel to move this booking to hold without refund.");
@@ -7301,13 +7340,15 @@ function openBookingDetailsModal(groupKey) {
       ${lifecycleStatus === "hold" ? `${getLifecycleBadgeMarkup(group)}` : ""}
       ${lifecycleStatus === "checked_out" ? `<span class="booking-tag tag-rejected">Checked Out</span>` : ""}
       ${lifecycleStatus === "hold" && getEffectiveProfile()?.role === "owner" ? `<button class="action-btn action-btn-icon action-btn-icon-reactivate" type="button" data-booking-group-action="reactivate">Reactivate</button>` : ""}
-      ${(hasCheckInWindowStarted(group) && lifecycleStatus === "booked") ? `<button class="action-btn" type="button" data-booking-group-action="hold">Hold Room</button>` : ""}
+      ${lifecycleStatus === "booked" ? `<button class="action-btn" type="button" data-booking-group-action="hold">Hold Room</button>` : ""}
       ${(!canManageBookings() && lifecycleStatus === "checked_in") ? `<button class="action-btn" type="button" data-booking-group-action="request-hold">Request Hold</button>` : ""}
-      ${(canManageBookings() || ((hasCheckInWindowStarted(group) && lifecycleStatus === "booked") || lifecycleStatus === "checked_in")) && isPendingGroupRemovalRequest(groupRequest)
+      ${(canManageBookings() || (["booked", "checked_in"].includes(lifecycleStatus))) && isPendingGroupRemovalRequest(groupRequest)
         ? `<span class="booking-tag tag-pending">Pending Remove</span>`
         : canManageBookings()
           ? `<button class="action-btn subtle-btn" type="button" data-booking-group-action="remove">Remove Full Booking</button>`
-          : ((hasCheckInWindowStarted(group) && lifecycleStatus === "booked") || lifecycleStatus === "checked_in")
+          : lifecycleStatus === "booked"
+            ? `<button class="action-btn subtle-btn" type="button" data-booking-group-action="remove">Delete Booking</button>`
+          : lifecycleStatus === "checked_in"
             ? `<button class="action-btn subtle-btn" type="button" data-booking-group-action="remove">Request Delete Booking</button>`
           : ""}
     </div>
@@ -7744,7 +7785,7 @@ function renderBookings(bookings) {
                 <span class="compact-label">Req Hold</span>
               </button>
             ` : ""}
-            ${checkInWindowStarted && lifecycleStatus === "booked" ? `
+            ${lifecycleStatus === "booked" ? `
               <button class="secondary-btn compact-control" type="button" data-booking-group-hold="${group.key}" aria-label="Hold Room" title="Hold Room">
                 <span class="compact-label">Hold Room</span>
               </button>
@@ -7753,7 +7794,11 @@ function renderBookings(bookings) {
               <button class="secondary-btn remove-reservation-trigger action-btn-icon action-btn-icon-remove compact-control" type="button" data-booking-group-remove="${group.bookings[0].id}" aria-label="Remove Reservation" title="Remove Reservation">
                 <span class="compact-label">Remove Reservation</span>
               </button>
-            ` : ((checkInWindowStarted && lifecycleStatus === "booked") || lifecycleStatus === "checked_in") ? `
+            ` : lifecycleStatus === "booked" ? `
+              <button class="secondary-btn remove-reservation-trigger action-btn-icon action-btn-icon-remove compact-control" type="button" data-booking-group-remove="${group.bookings[0].id}" aria-label="Delete Booking" title="Delete Booking">
+                <span class="compact-label">Delete Booking</span>
+              </button>
+            ` : lifecycleStatus === "checked_in" ? `
               <button class="secondary-btn remove-reservation-trigger action-btn-icon action-btn-icon-remove compact-control" type="button" data-booking-group-remove="${group.bookings[0].id}" aria-label="Request Delete Booking" title="Request Delete Booking">
                 <span class="compact-label">Request Delete</span>
               </button>
@@ -8747,11 +8792,49 @@ async function approveRequest(requestId) {
     return;
   }
 
+  if (request.reason === "hold") {
+    const targetTrackCode = request.booking?.trackCode || "";
+    const grouped = targetTrackCode
+      ? await fetchBookingsByTrackCode(targetTrackCode)
+      : [];
+    const targetBookings = request.requestedScope === "group"
+      ? (grouped.length ? grouped : (request.booking ? [request.booking] : []))
+      : (request.booking ? [request.booking] : []);
+    const holdNote = request.requestNote
+      || request.requestedNotes
+      || request.booking?.notes
+      || "Customer requested to move this booking to hold.";
+
+    for (const bookingRow of targetBookings) {
+      const mergedNotes = mergeNotesAndServices(holdNote, getBookingServices(bookingRow));
+      await updateBooking(bookingRow.id, {
+        guestName: bookingRow.guestName || "",
+        phone: bookingRow.phone || "",
+        checkIn: bookingRow.checkIn || "",
+        checkOut: bookingRow.checkOut || "",
+        guests: Number(bookingRow.guests || 1),
+        roomType: bookingRow.roomType || "",
+        roomTypeLabel: bookingRow.roomTypeLabel || "",
+        roomNumber: bookingRow.roomNumber || 0,
+        notes: mergedNotes,
+        status: "Hold",
+        trackCode: bookingRow.trackCode || "",
+        lifecycleStatus: "hold",
+        checkedInAt: bookingRow.checkedInAt ?? null,
+        checkedOutAt: null,
+        advancePaid: Boolean(bookingRow.advancePaid),
+        advanceAmount: Number(bookingRow.advanceAmount || 0),
+        customPayments: bookingRow.customPayments || [],
+      });
+    }
+
+    await finalizeRequestStatus(request, "approved");
+    return;
+  }
+
   const targetStatus = request.reason === "cancel"
     ? "Cancelled"
-    : request.reason === "hold"
-      ? "Pending"
-      : request.reason === "delete_booking"
+    : request.reason === "delete_booking"
         ? "Cancelled"
       : (request.requestedBookingStatus || request.booking?.status || "Campaign");
 
@@ -11007,6 +11090,12 @@ async function handleRequestSubmit(event) {
           weekdayRate: payload.weekdayRate,
           offerPercentage: payload.offerPercentage,
         });
+      } else if (reason === "hold") {
+        await performGroupHold(
+          getBookingGroupKey(state.activeBooking),
+          payload.requestNote || payload.notes || "Customer requested to move this booking to hold.",
+          "Hold",
+        );
       } else if (reason === "edit_booking_data" && effectiveScope === "group") {
         const groupBookings = state.activeBookingGroup.length ? state.activeBookingGroup : [state.activeBooking];
         await applyGroupedBookingEdits(groupBookings, payload.requestedBookingRooms, payload);
@@ -11337,13 +11426,24 @@ analyticsPresetButtons.forEach((button) => {
 analyticsDateFromInput?.addEventListener("change", () => renderAnalyticsResultsContext());
 analyticsDateToInput?.addEventListener("change", () => renderAnalyticsResultsContext());
 analyticsFilterStateChips?.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-analytics-state]");
+  const button = event.target.closest("[data-analytics-chip-value]");
   if (!button) return;
   button.classList.toggle("filter-chip-active");
   loadAnalytics();
 });
-analyticsFilterSource?.addEventListener("change", () => loadAnalytics());
-analyticsFilterStaff?.addEventListener("change", () => loadAnalytics());
+analyticsFilterSourceChips?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-analytics-chip-value]");
+  if (!button) return;
+  button.classList.toggle("filter-chip-active");
+  loadAnalytics();
+});
+analyticsFilterStaffChips?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-analytics-chip-value]");
+  if (!button) return;
+  button.classList.toggle("filter-chip-active");
+  loadAnalytics();
+});
+analyticsIncludeHoldPayments?.addEventListener("change", () => loadAnalytics());
 analyticsFilterMetric?.addEventListener("change", () => loadAnalytics());
 notificationPresetButtons.forEach((button) => {
   button.addEventListener("click", () => {

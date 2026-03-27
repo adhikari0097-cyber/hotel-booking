@@ -497,17 +497,20 @@
                 <span>Reservation State</span>
                 <div id="analytics-filter-state-chips" class="analytics-state-chip-list" aria-label="Reservation state filters"></div>
               </div>
-              <label class="field compact-field">
+              <div class="field compact-field analytics-chip-filter-field">
                 <span>Source</span>
-                <select id="analytics-filter-source">
-                  <option value="all">All Sources</option>
-                </select>
-              </label>
-              <label class="field compact-field">
+                <div id="analytics-filter-source-chips" class="analytics-state-chip-list" aria-label="Source filters"></div>
+              </div>
+              <div class="field compact-field analytics-chip-filter-field">
                 <span>Booked By</span>
-                <select id="analytics-filter-staff">
-                  <option value="all">All Staff</option>
-                </select>
+                <div id="analytics-filter-staff-chips" class="analytics-state-chip-list" aria-label="Booked by filters"></div>
+              </div>
+              <label class="field compact-field analytics-toggle-field">
+                <span>Options</span>
+                <span class="analytics-check-row">
+                  <input id="analytics-include-hold-payments" type="checkbox" />
+                  <span>Show Hold Payments</span>
+                </span>
               </label>
               <label class="field compact-field">
                 <span>Trend View</span>
@@ -544,6 +547,10 @@
               <div class="analytics-stat-card">
                 <span>Avg Stay</span>
                 <strong id="analytics-average-stay">0 nights</strong>
+              </div>
+              <div class="analytics-stat-card">
+                <span>Hold Payments</span>
+                <strong id="analytics-hold-payments">Off</strong>
               </div>
             </div>
 
