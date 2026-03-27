@@ -166,6 +166,7 @@ const state = {
   modalMode: "request",
   requestScope: "single",
   bookingListFilter: "active",
+  currentViewBookings: [],
   requestsFilterMode: "recent",
   requestsFilterStatus: "pending",
   bookingViewMode: "mobile",
@@ -754,6 +755,7 @@ const guestsInput = qs("#guests");
 const bookingCards = qs("#booking-cards");
 const bookingEmpty = qs("#booking-empty");
 const bookingListCard = qs("#booking-list");
+const bookingSearchInput = qs("#booking-search");
 const bookingViewMobileBtn = qs("#app-view-mobile");
 const bookingViewDesktopBtn = qs("#app-view-desktop");
   const bookingFilterButtons = {
@@ -5262,6 +5264,11 @@ function getGroupDisplayTrackCode(group) {
   return getVisibleTrackCode(group.trackCode, status);
 }
 
+function getTrackCodePrefix(trackCode = "") {
+  const match = String(trackCode || "").trim().toUpperCase().match(/^([A-Z]+)-\d+$/);
+  return match ? match[1] : "";
+}
+
 async function resolveBookingTrackCode(bookings, nextStatus, currentTrackCode = "") {
   const normalizedTrackCode = String(currentTrackCode || "").trim();
   if (isPendingBookingStatus(nextStatus)) {
@@ -5271,7 +5278,12 @@ async function resolveBookingTrackCode(bookings, nextStatus, currentTrackCode = 
   const transitioningFromPending = items.length
     ? items.every((booking) => isPendingBookingStatus(booking.status))
     : false;
+  const nextPrefix = getStatusTrackPrefix(nextStatus);
+  const currentPrefix = getTrackCodePrefix(normalizedTrackCode);
   if (!normalizedTrackCode || transitioningFromPending || /^PND-\d+$/i.test(normalizedTrackCode)) {
+    return getNextTrackCode(nextStatus);
+  }
+  if (nextPrefix !== "BK" && currentPrefix && currentPrefix !== nextPrefix) {
     return getNextTrackCode(nextStatus);
   }
   return normalizedTrackCode;
@@ -5758,6 +5770,35 @@ function getBookingGroupKey(booking) {
 
 function getBookingGroupByKey(groupKey) {
   return state.bookingGroups.get(groupKey) || state.plannerBookingGroups.get(groupKey) || null;
+}
+
+function normalizeBookingSearchText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function normalizeBookingSearchDigits(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function matchesBookingGroupSearch(group, searchTerm = "") {
+  const normalizedSearch = normalizeBookingSearchText(searchTerm);
+  if (!normalizedSearch) return true;
+
+  const normalizedAlphaNumericSearch = normalizedSearch.replace(/[^a-z0-9]/g, "");
+  const normalizedDigitSearch = normalizeBookingSearchDigits(normalizedSearch);
+  const trackCode = String(group?.trackCode || group?.key || "");
+  const normalizedTrackCode = normalizeBookingSearchText(trackCode);
+  const normalizedTrackAlphaNumeric = normalizedTrackCode.replace(/[^a-z0-9]/g, "");
+  const normalizedTrackDigits = normalizeBookingSearchDigits(trackCode);
+  const guestName = normalizeBookingSearchText(group?.guestName || "");
+  const phoneText = normalizeBookingSearchText(group?.phone || "");
+  const phoneDigits = normalizeBookingSearchDigits(group?.phone || "");
+
+  return normalizedTrackCode.includes(normalizedSearch)
+    || guestName.includes(normalizedSearch)
+    || phoneText.includes(normalizedSearch)
+    || (normalizedAlphaNumericSearch && normalizedTrackAlphaNumeric.includes(normalizedAlphaNumericSearch))
+    || (normalizedDigitSearch && (phoneDigits.includes(normalizedDigitSearch) || normalizedTrackDigits.includes(normalizedDigitSearch)));
 }
 
 function mergeBookingsIntoStateMap(bookings = []) {
@@ -7250,6 +7291,7 @@ function openBookingDetailsModal(groupKey) {
 function renderBookings(bookings) {
   bookingCards.innerHTML = "";
   state.bookingMap = new Map(bookings.map((booking) => [booking.id, booking]));
+  const searchTerm = bookingSearchInput?.value || "";
   const filteredBookings = bookings.filter((booking) => {
     if (state.bookingListFilter === "cancelled") return booking.status === "Cancelled";
     if (state.bookingListFilter === "active") return booking.status !== "Cancelled" && getBookingLifecycleStatus(booking) !== "hold";
@@ -7269,16 +7311,19 @@ function renderBookings(bookings) {
       return latestRequest?.status === "pending";
     });
   }
+  groupedBookings = groupedBookings.filter((group) => matchesBookingGroupSearch(group, searchTerm));
 
   if (!groupedBookings.length) {
     bookingEmpty.textContent =
-      state.bookingListFilter === "cancelled"
-        ? "No cancelled bookings for this date."
-        : state.bookingListFilter === "pending"
-          ? "No pending-request bookings for this date."
-          : state.bookingListFilter === "active"
-            ? "No active bookings for this date."
-            : "No bookings for this date.";
+      searchTerm
+        ? "No bookings matched that search."
+        : state.bookingListFilter === "cancelled"
+          ? "No cancelled bookings for this date."
+          : state.bookingListFilter === "pending"
+            ? "No pending-request bookings for this date."
+            : state.bookingListFilter === "active"
+              ? "No active bookings for this date."
+              : "No bookings for this date.";
     bookingEmpty.style.display = "block";
     state.bookingGroups = new Map();
     return;
@@ -9351,6 +9396,7 @@ async function loadReservationPlanner() {
 
 async function loadBookingsForDate(date) {
   if (!date || !state.currentProfile?.approved) {
+    state.currentViewBookings = [];
     bookingEmpty.textContent = "Select a date to see bookings.";
     bookingEmpty.style.display = "block";
     return;
@@ -9358,6 +9404,7 @@ async function loadBookingsForDate(date) {
 
   try {
     const bookings = await fetchBookingsByDate(date);
+    state.currentViewBookings = bookings;
     updateStats(bookings);
     renderRoomStatus(bookings);
     renderBookings(bookings);
@@ -11143,6 +11190,10 @@ Object.entries(bookingFilterButtons).forEach(([key, button]) => {
     state.bookingListFilter = key;
     await loadBookingsForDate(viewDateInput.value);
   });
+});
+
+bookingSearchInput?.addEventListener("input", () => {
+  renderBookings(state.currentViewBookings || []);
 });
 
 monthPrevBtn.addEventListener("click", async () => {
