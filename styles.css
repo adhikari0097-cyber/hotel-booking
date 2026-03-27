@@ -2670,18 +2670,23 @@ h4 {
   max-width: none;
   margin: 0;
   padding: 10px;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
   justify-content: stretch;
+  align-items: stretch;
   border: 1px solid rgba(219, 228, 255, 0.95);
   border-radius: 22px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(245, 248, 255, 0.94) 100%);
   box-shadow: 0 16px 34px rgba(24, 59, 140, 0.08);
   backdrop-filter: blur(16px);
   z-index: 18;
+  overflow: visible;
 }
 
 #app-shell.view-desktop .nav-btn {
+  width: 100%;
   min-width: 0;
+  flex: initial;
   min-height: 0;
   padding: 12px 16px;
   border-radius: 16px;
@@ -3209,7 +3214,7 @@ h4 {
 @media (max-width: 1040px) {
   #app-shell.view-desktop .bottom-nav {
     top: 96px;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   #app-shell.view-desktop #screen-booking #booking-form {
