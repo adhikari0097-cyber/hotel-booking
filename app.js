@@ -490,6 +490,13 @@ function getAnalyticsChipFilterDisplayValue(container, allLabel) {
   return selectedValues.length ? selectedValues.join(", ") : allLabel;
 }
 
+const ANALYTICS_RESERVATION_STATES = [
+  "Pending Booking",
+  "Booked",
+  "Checked In",
+  "Checked Out",
+];
+
 function populateAnalyticsChipFilter(container, values = []) {
   if (!container) return;
   const selectedValues = new Set(getSelectedAnalyticsChipValues(container));
@@ -518,7 +525,21 @@ function getAnalyticsStateFilterDisplayValue() {
 }
 
 function populateAnalyticsStateChips(values = []) {
-  populateAnalyticsChipFilter(analyticsFilterStateChips, values);
+  const actualValues = Array.from(new Set((values || []).filter(Boolean)));
+  const orderedValues = [];
+  ANALYTICS_RESERVATION_STATES.forEach((value) => {
+    if (actualValues.includes(value)) {
+      orderedValues.push(value);
+      return;
+    }
+    if (value === "Pending Booking") {
+      orderedValues.push(value);
+    }
+  });
+  actualValues.forEach((value) => {
+    if (!orderedValues.includes(value)) orderedValues.push(value);
+  });
+  populateAnalyticsChipFilter(analyticsFilterStateChips, orderedValues);
 }
 
 function renderAnalyticsResultsContext({ count } = {}) {
@@ -7064,12 +7085,7 @@ async function performGroupDeleteFlow(groupKey) {
   const allowUserDirectBookedDelete = !canManageBookings() && lifecycleStatus === "booked";
   if (canEditBookingGroupDirect(group) || canManageBookings() || allowUserDirectBookedDelete) {
     if (!hasPayment) {
-      if (!window.confirm("Delete this booking?")) return false;
-      await updateGroupLifecycle(groupKey, { lifecycleStatus: "booked" });
-      for (const booking of group.bookings) {
-        await updateBooking(booking.id, { status: "Cancelled" });
-      }
-      return true;
+      return performGroupPermanentRemove(groupKey, "Delete this booking?");
     }
     if (!canManageBookings()) {
       if (!window.confirm("Advance payment found. This booking cannot be deleted and will move to Hold Room. Continue?")) return false;
@@ -7078,11 +7094,7 @@ async function performGroupDeleteFlow(groupKey) {
     }
     const refundPayment = window.confirm("Payments found. Press OK to refund and delete. Press Cancel to move this booking to hold without refund.");
     if (refundPayment) {
-      await updateGroupLifecycle(groupKey, { lifecycleStatus: "booked" });
-      for (const booking of group.bookings) {
-        await updateBooking(booking.id, { status: "Cancelled" });
-      }
-      return true;
+      return performGroupPermanentRemove(groupKey, "Delete this booking and refund the payment?");
     }
     await performGroupHold(groupKey, "Customer requested cancellation, but payment is not being refunded.", "Removed Booking");
     return true;
@@ -7107,6 +7119,17 @@ async function performGroupDeleteFlow(groupKey) {
       ? "Customer requested cancellation and refund."
       : "Customer requested cancellation without refund.",
   });
+  return true;
+}
+
+async function performGroupPermanentRemove(groupKey, confirmMessage = "Delete this booking?") {
+  const group = getBookingGroupByKey(groupKey);
+  if (!group) throw new Error("Booking group not found.");
+  if (!window.confirm(confirmMessage)) return false;
+  await updateGroupLifecycle(groupKey, { lifecycleStatus: "booked" });
+  for (const booking of group.bookings) {
+    await updateBooking(booking.id, { status: "Cancelled" });
+  }
   return true;
 }
 
@@ -8052,6 +8075,7 @@ function renderHoldBookings(bookings) {
     card.className = "booking-card booking-group-card";
     const note = group.bookings.map((booking) => parseBookingNotes(booking.notes).otherNotes.join(" | ")).filter(Boolean).join(" | ");
     const statusBadge = getLifecycleBadgeMarkup(group);
+    const hasPayment = Number(getAdvancePaymentInfo(group.bookings).amount || 0) > 0 || Number(getGroupCustomPriceTotal(group.bookings) || 0) > 0;
     card.innerHTML = `
       <div class="booking-group-head booking-group-head-dense">
         <div>
@@ -8064,6 +8088,11 @@ function renderHoldBookings(bookings) {
             <button class="secondary-btn action-btn-icon action-btn-icon-view compact-control" type="button" data-hold-open="${group.key}" aria-label="Open Booking" title="Open Booking">
               <span class="compact-label">Open Booking</span>
             </button>
+            ${!hasPayment ? `
+              <button class="secondary-btn remove-reservation-trigger action-btn-icon action-btn-icon-remove compact-control" type="button" data-hold-remove="${group.key}" aria-label="Remove Booking" title="Remove Booking">
+                <span class="compact-label">Remove</span>
+              </button>
+            ` : `<span class="booking-tag tag-pending">Advance Locked</span>`}
             ${getEffectiveProfile()?.role === "owner" ? `
               <button class="secondary-btn action-btn-icon action-btn-icon-reactivate compact-control" type="button" data-hold-reactivate="${group.key}" aria-label="Reactivate" title="Reactivate">
                 <span class="compact-label">Reactivate</span>
@@ -8077,6 +8106,16 @@ function renderHoldBookings(bookings) {
     `;
     card.querySelector('[data-hold-open]')?.addEventListener("click", () => {
       openBookingDetailsModal(group.key);
+    });
+    card.querySelector('[data-hold-remove]')?.addEventListener("click", async () => {
+      try {
+        const changed = await performGroupPermanentRemove(group.key, "Remove this hold booking completely?");
+        if (!changed) return;
+        showToast("Hold booking removed.");
+        await refreshLiveViews();
+      } catch (error) {
+        showToast(error.message, true);
+      }
     });
     card.querySelector('[data-hold-reactivate]')?.addEventListener("click", async () => {
       try {
