@@ -12,7 +12,7 @@ const CONFIG = {
   SUPABASE_NOTIFICATION_READS_TABLE: "booking_notification_reads",
   SUPABASE_SYSTEM_UPDATES_TABLE: "system_update_history",
   SUPABASE_DEDUCTIONS_TABLE: "monthly_deductions",
-  GOOGLE_SHEETS_BACKUP_URL: "/.netlify/functions/proxy",
+  GOOGLE_SHEETS_BACKUP_URL: "/api/google-backup",
 };
 
 const RESERVATION_WHATSAPP_NUMBER = "+94719707597";
@@ -196,9 +196,14 @@ const state = {
     bookingViewFields: BOOKING_VIEW_FIELD_DEFS.map((item) => item.key),
     notificationRoles: ["owner", "admin"],
     systemUpdateRoles: ["owner", "admin"],
+    shareAdvanceNote: SHARE_COPY_DEFAULTS.advanceNote,
+    shareFinalInvoiceNote: SHARE_COPY_DEFAULTS.finalInvoiceNote,
+    shareHoldNote: SHARE_COPY_DEFAULTS.holdNote,
     shareRebookingNote: SHARE_COPY_DEFAULTS.rebookingNote,
     shareContactNote: SHARE_COPY_DEFAULTS.contactNote,
     sharePdfKeepNote: SHARE_COPY_DEFAULTS.pdfKeepNote,
+    shareGroupBackupNote: SHARE_COPY_DEFAULTS.groupBackupNote,
+    shareWhatsappGroupLink: SHARE_COPY_DEFAULTS.whatsappGroupLink,
   },
   notifications: [],
   recentNotifications: [],
@@ -208,6 +213,10 @@ const state = {
   systemUpdatePreset: "this-week",
   deductions: [],
   currentAnalyticsSnapshot: null,
+  googleBookingBackups: [],
+  googlePaymentSlipBackups: [],
+  liveBackupCandidates: [],
+  selectedBackupDetail: null,
   bookingRangePicker: null,
   plannerDragBookingId: null,
   uiPreviewRole: "",
@@ -306,7 +315,7 @@ function getVisiblePageLabelsForRole(role = "user") {
     labels.push("System Updates");
   }
   if (["owner", "admin"].includes(role)) {
-    labels.push("Deductions", "Accounts", "Settings");
+    labels.push("Deductions", "Google Backup", "Accounts", "Settings");
   }
   return labels;
 }
@@ -1219,6 +1228,16 @@ const addDeductionRowBtn = qs("#add-deduction-row");
 const saveDeductionBtn = qs("#save-deduction");
 const deductionList = qs("#deduction-list");
 const deductionEmpty = qs("#deduction-empty");
+const backupRefreshBtn = qs("#backup-refresh");
+const backupSyncMissingBtn = qs("#backup-sync-missing");
+const backupBookingCount = qs("#backup-booking-count");
+const backupSlipCount = qs("#backup-slip-count");
+const backupMissingCount = qs("#backup-missing-count");
+const backupBookingList = qs("#backup-booking-list");
+const backupBookingEmpty = qs("#backup-booking-empty");
+const backupSlipList = qs("#backup-slip-list");
+const backupSlipEmpty = qs("#backup-slip-empty");
+const backupDetailBody = qs("#backup-detail-body");
 const guideBookContent = qs("#guide-book-content");
 const guideSearchInput = qs("#guide-search");
 const guideNav = qs("#guide-nav");
@@ -1233,6 +1252,7 @@ const navButtons = {
   planner: qs("#tab-planner"),
   analytics: qs("#tab-analytics"),
   deductions: qs("#tab-deductions"),
+  backup: qs("#tab-backup"),
   guide: qs("#tab-guide"),
   hold: qs("#tab-hold"),
   requests: qs("#tab-requests"),
@@ -1249,6 +1269,7 @@ const screens = {
   planner: qs("#screen-planner"),
   analytics: qs("#screen-analytics"),
   deductions: qs("#screen-deductions"),
+  backup: qs("#screen-backup"),
   guide: qs("#screen-guide"),
   hold: qs("#screen-hold"),
   requests: qs("#screen-requests"),
@@ -1280,6 +1301,143 @@ function isSheetsBackupConfigured() {
     return true;
   }
   return false;
+}
+
+function getGoogleBackupBaseUrl() {
+  if (!isSheetsBackupConfigured()) return "";
+  return CONFIG.GOOGLE_SHEETS_BACKUP_URL.startsWith("http")
+    ? CONFIG.GOOGLE_SHEETS_BACKUP_URL
+    : `${window.location.origin}${CONFIG.GOOGLE_SHEETS_BACKUP_URL}`;
+}
+
+async function callGoogleBackupApi(action, { method = "GET", params = {}, body = {} } = {}) {
+  const baseUrl = getGoogleBackupBaseUrl();
+  if (!baseUrl) {
+    throw new Error("Google backup is not configured for this deployment.");
+  }
+
+  if (method === "GET") {
+    const search = new URLSearchParams({ action, ...params });
+    const response = await fetch(`${baseUrl}?${search.toString()}`, { method: "GET" });
+    const text = await response.text();
+    if (!response.ok) throw new Error(text || "Google backup request failed.");
+    const parsed = JSON.parse(text || "{}");
+    if (parsed.success === false) throw new Error(parsed.message || "Google backup request failed.");
+    return parsed;
+  }
+
+  const payload = new URLSearchParams({ action, ...body }).toString();
+  const response = await fetch(baseUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: payload,
+  });
+  const text = await response.text();
+  if (!response.ok) throw new Error(text || "Google backup request failed.");
+  const parsed = JSON.parse(text || "{}");
+  if (parsed.success === false) throw new Error(parsed.message || "Google backup request failed.");
+  return parsed;
+}
+
+function getBookingBackupKey(source = {}) {
+  return [
+    String(source.trackCode || source.track_code || "").trim(),
+    normalizeRoomGroup(source.roomType || source.room_type || ""),
+    String(source.roomNumber ?? source.room_number ?? "").trim(),
+    String(source.checkIn || source.check_in || "").trim(),
+    String(source.checkOut || source.check_out || "").trim(),
+  ].join("|");
+}
+
+function buildSerializableBookingSnapshot(source = {}) {
+  const customPayments = normalizeCustomPayments(source.customPayments || source.custom_payments);
+  const hasExplicitRoomTotal = source.roomTotal != null || source.room_total != null;
+  const computedPricing = hasExplicitRoomTotal
+    ? null
+    : computeBookingPrice({
+        checkIn: source.checkIn || source.check_in || "",
+        checkOut: source.checkOut || source.check_out || "",
+        roomType: normalizeRoomGroup(source.roomType || source.room_type || ""),
+        guests: Number(source.guests || 0),
+        acEnabled: normalizeAcEnabled(source.roomType || source.room_type || "", source.acEnabled ?? source.ac_enabled),
+        weekendRateOverride: "weekendRate" in source ? source.weekendRate : ("weekend_rate" in source ? source.weekend_rate : null),
+        weekdayRateOverride: "weekdayRate" in source ? source.weekdayRate : ("weekday_rate" in source ? source.weekday_rate : null),
+      });
+  const roomTotal = hasExplicitRoomTotal
+    ? roundCurrency(Number(source.roomTotal || source.room_total || 0))
+    : applyOfferPercentage(roundCurrency(Number(computedPricing?.roomTotal || 0)), Number(source.offerPercentage || source.offer_percentage || 0));
+  return {
+    backupKey: getBookingBackupKey(source),
+    trackCode: source.trackCode || source.track_code || "",
+    guestName: source.guestName || source.guest_name || "",
+    phone: source.phone || "",
+    createdByName: source.createdByName || source.created_by_name || "",
+    checkIn: source.checkIn || source.check_in || "",
+    checkOut: source.checkOut || source.check_out || "",
+    guests: Number(source.guests || 0),
+    roomType: normalizeRoomGroup(source.roomType || source.room_type || ""),
+    roomTypeLabel: source.roomTypeLabel || source.room_type_label || "",
+    roomNumber: Number(source.roomNumber || source.room_number || 0),
+    roomsNeeded: Number(source.roomsNeeded || source.rooms_needed || 1),
+    notes: source.notes || "",
+    status: source.status || source.booking_status || "",
+    lifecycleStatus: source.lifecycleStatus || source.lifecycle_status || "booked",
+    advancePaid: Boolean(source.advancePaid ?? source.advance_paid),
+    advanceAmount: roundCurrency(Number(source.advanceAmount || source.advance_amount || 0)),
+    roomTotal,
+    customPayments,
+    closeDetails: source.closeDetails || source.close_details || {},
+    createdAt: source.createdAt || source.created_at || new Date().toISOString(),
+  };
+}
+
+function mapGoogleBackupRow(row = {}) {
+  return {
+    backupKey: row.backupKey || row.backup_key || "",
+    trackCode: row.trackCode || "",
+    guestName: row.guestName || "",
+    phone: row.phone || "",
+    createdByName: row.createdByName || "",
+    checkIn: row.checkIn || "",
+    checkOut: row.checkOut || "",
+    guests: Number(row.guests || 0),
+    roomType: row.roomType || "",
+    roomTypeLabel: row.roomTypeLabel || "",
+    roomNumber: Number(row.roomNumber || 0),
+    roomsNeeded: Number(row.roomsNeeded || 1),
+    notes: row.notes || "",
+    status: row.status || "",
+    lifecycleStatus: row.lifecycleStatus || "booked",
+    advancePaid: String(row.advancePaid || "").toLowerCase() === "true",
+    advanceAmount: Number(row.advanceAmount || 0),
+    roomTotal: Number(row.roomTotal || 0),
+    customPaymentsJson: row.customPaymentsJson || "[]",
+    bookingJson: row.bookingJson || "",
+    groupJson: row.groupJson || "",
+    backupCreatedAt: row.backupCreatedAt || row.createdAt || "",
+    updatedAt: row.updatedAt || "",
+  };
+}
+
+function mapGoogleSlipBackupRow(row = {}) {
+  return {
+    slipKey: row.slipKey || row.slip_key || "",
+    trackCode: row.trackCode || "",
+    guestName: row.guestName || "",
+    phone: row.phone || "",
+    documentLabel: row.documentLabel || "",
+    lifecycleStatus: row.lifecycleStatus || "booked",
+    advanceAmount: Number(row.advanceAmount || 0),
+    totalPrice: Number(row.totalPrice || 0),
+    balanceAmount: Number(row.balanceAmount || 0),
+    driveFileId: row.driveFileId || "",
+    driveFileUrl: row.driveFileUrl || "",
+    fileName: row.fileName || "",
+    bookingJson: row.bookingJson || "",
+    groupJson: row.groupJson || "",
+    savedAt: row.savedAt || "",
+    updatedAt: row.updatedAt || "",
+  };
 }
 
 function showToast(message, isError = false) {
@@ -3824,6 +3982,14 @@ async function updateGroupAdvancePayment(groupKey, advanceAmount) {
       advanceAmount: normalizedAmount,
     });
   }
+
+  if (advancePaid) {
+    try {
+      await savePaymentSlipBackupForGroup(groupKey);
+    } catch (error) {
+      showToast(`Advance updated, but slip backup failed: ${error.message}`, true);
+    }
+  }
 }
 
 async function promptGroupCustomPriceAdd(groupKey) {
@@ -4919,6 +5085,10 @@ function canAccessDeductions() {
   return isOwnerOrAdminRole();
 }
 
+function canAccessGoogleBackup() {
+  return isOwnerOrAdminRole();
+}
+
 function updateNotificationBadge() {
   if (!notificationBellBtn || !notificationBellBadge) return;
   const canOpenNotifications = canAccessNotifications();
@@ -4955,6 +5125,7 @@ function updateNavVisibility() {
   const showPlanner = Boolean(state.currentProfile?.approved);
   const showAnalytics = Boolean(state.currentProfile?.approved);
   const showDeductions = canAccessDeductions() || previewOwnerOverride;
+  const showBackup = canAccessGoogleBackup() || previewOwnerOverride;
   const showGuide = Boolean(state.currentProfile?.approved);
   const showHold = Boolean(state.currentProfile?.approved);
   const showAccounts = canManageAccounts();
@@ -4965,6 +5136,7 @@ function updateNavVisibility() {
   navButtons.planner?.classList.toggle("hidden", !showPlanner);
   navButtons.analytics?.classList.toggle("hidden", !showAnalytics);
   navButtons.deductions?.classList.toggle("hidden", !showDeductions);
+  navButtons.backup?.classList.toggle("hidden", !showBackup);
   navButtons.guide?.classList.toggle("hidden", !showGuide);
   navButtons.hold?.classList.toggle("hidden", !showHold);
   navButtons.requests?.classList.toggle("hidden", !showRequests);
@@ -4973,7 +5145,7 @@ function updateNavVisibility() {
   navButtons.accounts?.classList.toggle("hidden", !showAccounts);
   navButtons.pricing?.classList.toggle("hidden", !showPricing);
   analyticsDeductionsToggleRow?.classList.toggle("hidden", !showDeductions);
-  const visibleTabs = 2 + Number(showPlanner) + Number(showAnalytics) + Number(showDeductions) + Number(showGuide) + Number(showHold) + Number(showRequests) + Number(showNotifications) + Number(showSystemUpdates) + Number(showAccounts) + Number(showPricing);
+  const visibleTabs = 2 + Number(showPlanner) + Number(showAnalytics) + Number(showDeductions) + Number(showBackup) + Number(showGuide) + Number(showHold) + Number(showRequests) + Number(showNotifications) + Number(showSystemUpdates) + Number(showAccounts) + Number(showPricing);
   syncBottomNavLayout(visibleTabs);
   if (!showPlanner && screens.planner?.classList.contains("screen-active")) {
     setScreen("booking");
@@ -4982,6 +5154,9 @@ function updateNavVisibility() {
     setScreen("booking");
   }
   if (!showDeductions && screens.deductions?.classList.contains("screen-active")) {
+    setScreen("booking");
+  }
+  if (!showBackup && screens.backup?.classList.contains("screen-active")) {
     setScreen("booking");
   }
   if (!showGuide && screens.guide?.classList.contains("screen-active")) {
@@ -5022,6 +5197,9 @@ function setScreen(target) {
   }
   if (target === "deductions") {
     loadDeductions();
+  }
+  if (target === "backup") {
+    loadGoogleBackupPage();
   }
   if (target === "guide") {
     loadGuideBook();
@@ -6119,43 +6297,328 @@ async function backupBookingToSheets(payload) {
   if (!isSheetsBackupConfigured()) {
     return { skipped: true };
   }
-
-  const baseUrl = CONFIG.GOOGLE_SHEETS_BACKUP_URL.startsWith("http")
-    ? CONFIG.GOOGLE_SHEETS_BACKUP_URL
-    : `${window.location.origin}${CONFIG.GOOGLE_SHEETS_BACKUP_URL}`;
-
-  const body = new URLSearchParams({
-    trackCode: payload.trackCode,
-    guestName: payload.guestName,
-    phone: payload.phone,
-    checkIn: payload.checkIn,
-    checkOut: payload.checkOut,
-    guests: String(payload.guests),
-    roomType: payload.roomType,
-    roomTypeLabel: payload.roomTypeLabel,
-    roomNumber: String(payload.roomNumber),
-    roomsNeeded: String(payload.roomsNeeded || 1),
-    notes: payload.notes || "",
-    status: payload.status,
-    timestamp: new Date().toISOString(),
-  }).toString();
-
-  const response = await fetch(baseUrl, {
+  const bookingSnapshot = buildSerializableBookingSnapshot(payload);
+  return callGoogleBackupApi("backup_booking", {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
+    body: {
+      backupKey: bookingSnapshot.backupKey,
+      trackCode: bookingSnapshot.trackCode,
+      guestName: bookingSnapshot.guestName,
+      phone: bookingSnapshot.phone,
+      createdByName: bookingSnapshot.createdByName,
+      checkIn: bookingSnapshot.checkIn,
+      checkOut: bookingSnapshot.checkOut,
+      guests: String(bookingSnapshot.guests),
+      roomType: bookingSnapshot.roomType,
+      roomTypeLabel: bookingSnapshot.roomTypeLabel,
+      roomNumber: String(bookingSnapshot.roomNumber),
+      roomsNeeded: String(bookingSnapshot.roomsNeeded),
+      notes: bookingSnapshot.notes,
+      status: bookingSnapshot.status,
+      lifecycleStatus: bookingSnapshot.lifecycleStatus,
+      advancePaid: String(bookingSnapshot.advancePaid),
+      advanceAmount: String(bookingSnapshot.advanceAmount),
+      roomTotal: String(bookingSnapshot.roomTotal),
+      customPaymentsJson: JSON.stringify(bookingSnapshot.customPayments || []),
+      closeDetailsJson: JSON.stringify(bookingSnapshot.closeDetails || {}),
+      bookingJson: JSON.stringify(bookingSnapshot),
+      groupJson: JSON.stringify(payload.groupSnapshot || null),
+      backupCreatedAt: bookingSnapshot.createdAt || new Date().toISOString(),
+    },
+  });
+}
+
+async function fetchAllBookingsForBackup() {
+  ensureSupabase();
+  const { data, error } = await state.supabase
+    .from(CONFIG.SUPABASE_TABLE)
+    .select("*")
+    .neq("booking_status", "Cancelled")
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message || "Could not load bookings for backup.");
+  return (data || []).map(mapBooking);
+}
+
+function parseStoredJson(value, fallback = null) {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    return fallback;
+  }
+}
+
+function buildGoogleBookingBackupGroups(rows = []) {
+  const groups = new Map();
+  rows.forEach((row) => {
+    const key = row.trackCode || row.backupKey || "unknown";
+    const current = groups.get(key);
+    if (current) {
+      current.rows.push(row);
+      if (String(row.backupCreatedAt || "") > String(current.latestAt || "")) current.latestAt = row.backupCreatedAt;
+      return;
+    }
+    groups.set(key, {
+      key,
+      trackCode: row.trackCode || "-",
+      guestName: row.guestName || "Guest",
+      phone: row.phone || "-",
+      latestAt: row.backupCreatedAt || "",
+      rows: [row],
+    });
+  });
+  return Array.from(groups.values()).sort((a, b) => String(b.latestAt || "").localeCompare(String(a.latestAt || "")));
+}
+
+function renderGoogleBackupDetail() {
+  if (!backupDetailBody) return;
+  const detail = state.selectedBackupDetail;
+  if (!detail) {
+    backupDetailBody.innerHTML = '<p class="inline-note">Select a booking backup or payment slip to view the saved details.</p>';
+    return;
+  }
+
+  if (detail.type === "booking") {
+    const bookingGroup = buildGoogleBookingBackupGroups(state.googleBookingBackups).find((item) => item.key === detail.key);
+    if (!bookingGroup) {
+      backupDetailBody.innerHTML = '<p class="inline-note">Selected backup could not be found.</p>';
+      return;
+    }
+    const firstRow = bookingGroup.rows[0];
+    backupDetailBody.innerHTML = `
+      <div class="backup-detail-grid">
+        <div class="backup-detail-card"><strong>Track Code</strong><span>${escapeHtml(bookingGroup.trackCode || "-")}</span></div>
+        <div class="backup-detail-card"><strong>Guest</strong><span>${escapeHtml(bookingGroup.guestName || "-")}</span></div>
+        <div class="backup-detail-card"><strong>Phone</strong><span>${escapeHtml(bookingGroup.phone || "-")}</span></div>
+        <div class="backup-detail-card"><strong>Latest Backup</strong><span>${escapeHtml(firstRow?.backupCreatedAt ? new Date(firstRow.backupCreatedAt).toLocaleString("en-GB") : "-")}</span></div>
+      </div>
+      <div class="backup-room-list">
+        ${bookingGroup.rows.map((row) => {
+          const bookingSnapshot = parseStoredJson(row.bookingJson, null);
+          const notes = bookingSnapshot?.notes || row.notes || "-";
+          return `
+            <article class="backup-room-item">
+              <strong>${escapeHtml(getRoomLabel(normalizeRoomGroup(row.roomType), row.roomNumber))}</strong>
+              <p>${escapeHtml([
+                row.roomTypeLabel || getRoomTypeDisplay(row.roomType),
+                `${Number(row.guests || 0)} guests`,
+                `${row.checkIn || "-"} -> ${row.checkOut || "-"}`,
+                formatMoney(row.roomTotal || 0),
+                row.lifecycleStatus || "booked",
+              ].join(" · "))}</p>
+              <p>${escapeHtml(`Advance: ${formatMoney(row.advanceAmount || 0)} · Status: ${row.status || "-"}`)}</p>
+              <p>${escapeHtml(`Notes: ${notes || "-"}`)}</p>
+            </article>
+          `;
+        }).join("")}
+      </div>
+    `;
+    return;
+  }
+
+  const slip = state.googlePaymentSlipBackups.find((item) => item.slipKey === detail.key);
+  if (!slip) {
+    backupDetailBody.innerHTML = '<p class="inline-note">Selected slip backup could not be found.</p>';
+    return;
+  }
+  backupDetailBody.innerHTML = `
+    <div class="backup-detail-grid">
+      <div class="backup-detail-card"><strong>Track Code</strong><span>${escapeHtml(slip.trackCode || "-")}</span></div>
+      <div class="backup-detail-card"><strong>Document</strong><span>${escapeHtml(slip.documentLabel || "-")}</span></div>
+      <div class="backup-detail-card"><strong>Advance Amount</strong><span>${escapeHtml(formatMoney(slip.advanceAmount || 0))}</span></div>
+      <div class="backup-detail-card"><strong>Total / Balance</strong><span>${escapeHtml(`${formatMoney(slip.totalPrice || 0)} / ${formatMoney(slip.balanceAmount || 0)}`)}</span></div>
+      <div class="backup-detail-card"><strong>Saved At</strong><span>${escapeHtml(slip.savedAt ? new Date(slip.savedAt).toLocaleString("en-GB") : "-")}</span></div>
+      <div class="backup-detail-card"><strong>Drive File</strong><span>${slip.driveFileUrl ? `<a href="${escapeHtml(slip.driveFileUrl)}" target="_blank" rel="noopener">Open Saved Slip</a>` : "No file url"}</span></div>
+    </div>
+  `;
+}
+
+function renderGoogleBackupPage() {
+  if (!backupBookingList || !backupSlipList || !backupDetailBody) return;
+  const configured = isSheetsBackupConfigured();
+  const bookingGroups = buildGoogleBookingBackupGroups(state.googleBookingBackups);
+
+  setText(backupBookingCount, String(state.googleBookingBackups.length || 0));
+  setText(backupSlipCount, String(state.googlePaymentSlipBackups.length || 0));
+  setText(backupMissingCount, String(state.liveBackupCandidates.length || 0));
+
+  if (!configured) {
+    backupBookingList.innerHTML = "";
+    backupSlipList.innerHTML = "";
+    if (backupBookingEmpty) {
+      backupBookingEmpty.style.display = "block";
+      backupBookingEmpty.textContent = "Google backup is not configured for this deployment.";
+    }
+    if (backupSlipEmpty) {
+      backupSlipEmpty.style.display = "block";
+      backupSlipEmpty.textContent = "Enable the proxy + Apps Script backup first.";
+    }
+    backupDetailBody.innerHTML = '<p class="inline-note">Google backup needs the deployed proxy and Apps Script backend to load data here.</p>';
+    return;
+  }
+
+  if (backupBookingEmpty) backupBookingEmpty.style.display = bookingGroups.length ? "none" : "block";
+  if (backupSlipEmpty) backupSlipEmpty.style.display = state.googlePaymentSlipBackups.length ? "none" : "block";
+
+  backupBookingList.innerHTML = bookingGroups.map((group) => `
+    <article class="backup-item">
+      <div class="backup-item-head">
+        <div>
+          <strong>${escapeHtml(group.trackCode || "-")} · ${escapeHtml(group.guestName || "Guest")}</strong>
+          <span>${escapeHtml(group.phone || "-")}</span>
+        </div>
+        <span class="booking-tag tag-success">${escapeHtml(`${group.rows.length} Row${group.rows.length === 1 ? "" : "s"}`)}</span>
+      </div>
+      <div class="backup-item-meta">
+        <span class="backup-meta-pill">${escapeHtml(group.rows[0]?.checkIn || "-")} -> ${escapeHtml(group.rows[0]?.checkOut || "-")}</span>
+        <span class="backup-meta-pill">${escapeHtml(group.rows[0]?.status || "-")}</span>
+        <span class="backup-meta-pill">${escapeHtml(group.latestAt ? new Date(group.latestAt).toLocaleString("en-GB") : "-")}</span>
+      </div>
+      <div class="backup-item-actions">
+        <button class="secondary-btn small-btn" type="button" data-backup-detail="booking" data-backup-key="${escapeHtml(group.key)}">View Details</button>
+      </div>
+    </article>
+  `).join("");
+
+  backupSlipList.innerHTML = state.googlePaymentSlipBackups.map((slip) => `
+    <article class="backup-item">
+      <div class="backup-item-head">
+        <div>
+          <strong>${escapeHtml(slip.trackCode || "-")} · ${escapeHtml(slip.documentLabel || "Slip")}</strong>
+          <span>${escapeHtml(slip.guestName || "-")}</span>
+        </div>
+        <span class="booking-tag tag-pending">${escapeHtml(slip.lifecycleStatus || "-")}</span>
+      </div>
+      <div class="backup-item-meta">
+        <span class="backup-meta-pill">${escapeHtml(formatMoney(slip.advanceAmount || 0))}</span>
+        <span class="backup-meta-pill">${escapeHtml(slip.savedAt ? new Date(slip.savedAt).toLocaleString("en-GB") : "-")}</span>
+      </div>
+      <div class="backup-item-actions">
+        <button class="secondary-btn small-btn" type="button" data-backup-detail="slip" data-backup-key="${escapeHtml(slip.slipKey)}">View Slip</button>
+        ${slip.driveFileUrl ? `<a class="secondary-btn small-btn" href="${escapeHtml(slip.driveFileUrl)}" target="_blank" rel="noopener">Open Drive File</a>` : ""}
+      </div>
+    </article>
+  `).join("");
+
+  backupBookingList.querySelectorAll("[data-backup-detail]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedBackupDetail = { type: button.dataset.backupDetail, key: button.dataset.backupKey };
+      renderGoogleBackupDetail();
+    });
+  });
+  backupSlipList.querySelectorAll("[data-backup-detail]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedBackupDetail = { type: button.dataset.backupDetail, key: button.dataset.backupKey };
+      renderGoogleBackupDetail();
+    });
   });
 
-  const text = await response.text();
-  if (!response.ok) throw new Error(text || "Google Sheets backup failed.");
+  renderGoogleBackupDetail();
+}
+
+async function loadGoogleBackupPage() {
+  if (!canAccessGoogleBackup()) return;
+  if (!isSheetsBackupConfigured()) {
+    state.googleBookingBackups = [];
+    state.googlePaymentSlipBackups = [];
+    state.liveBackupCandidates = [];
+    renderGoogleBackupPage();
+    return;
+  }
 
   try {
-    const parsed = JSON.parse(text);
-    if (parsed.success === false) throw new Error(parsed.message || "Google Sheets backup failed.");
-    return parsed;
+    const [bookingResponse, slipResponse, liveBookings] = await Promise.all([
+      callGoogleBackupApi("list_booking_backups", { method: "GET", params: { limit: 300 } }),
+      callGoogleBackupApi("list_payment_slips", { method: "GET", params: { limit: 200 } }),
+      fetchAllBookingsForBackup(),
+    ]);
+    state.googleBookingBackups = (bookingResponse.rows || []).map(mapGoogleBackupRow);
+    state.googlePaymentSlipBackups = (slipResponse.rows || []).map(mapGoogleSlipBackupRow);
+    const backedKeys = new Set(state.googleBookingBackups.map((row) => row.backupKey).filter(Boolean));
+    state.liveBackupCandidates = liveBookings.filter((booking) => !backedKeys.has(getBookingBackupKey(booking)));
+    if (!state.selectedBackupDetail && state.googleBookingBackups.length) {
+      const first = buildGoogleBookingBackupGroups(state.googleBookingBackups)[0];
+      if (first) state.selectedBackupDetail = { type: "booking", key: first.key };
+    }
+    renderGoogleBackupPage();
   } catch (error) {
-    throw new Error(text || "Google Sheets backup failed.");
+    if (backupBookingEmpty) {
+      backupBookingEmpty.style.display = "block";
+      backupBookingEmpty.textContent = error.message || "Could not load Google backups.";
+    }
+    if (backupSlipEmpty) {
+      backupSlipEmpty.style.display = "block";
+      backupSlipEmpty.textContent = "Could not load payment slip backups.";
+    }
+    if (backupDetailBody) {
+      backupDetailBody.innerHTML = `<p class="inline-note">${escapeHtml(error.message || "Could not load Google backups.")}</p>`;
+    }
   }
+}
+
+async function backupUnbackedBookingsToGoogle() {
+  if (!canAccessGoogleBackup()) {
+    throw new Error("Only owner or admin can run manual Google backups.");
+  }
+  if (!state.liveBackupCandidates.length) return 0;
+
+  const candidateGroups = new Map(
+    groupBookingsForDisplay(state.liveBackupCandidates).map((group) => [group.key, group]),
+  );
+  let successCount = 0;
+  for (const booking of state.liveBackupCandidates) {
+    await backupBookingToSheets({
+      ...booking,
+      groupSnapshot: candidateGroups.get(getBookingGroupKey(booking)) || null,
+    });
+    successCount += 1;
+  }
+  return successCount;
+}
+
+async function fetchFreshBookingGroupByKey(groupKey) {
+  const group = getBookingGroupByKey(groupKey);
+  if (group?.trackCode) {
+    const bookings = await fetchBookingsByTrackCode(group.trackCode);
+    mergeBookingsIntoStateMap(bookings);
+    return groupBookingsForDisplay(bookings)[0] || null;
+  }
+  if (group?.bookings?.length) {
+    const bookings = await fetchBookingsByIds(group.bookings.map((item) => item.id));
+    mergeBookingsIntoStateMap(bookings);
+    return groupBookingsForDisplay(bookings)[0] || null;
+  }
+  return null;
+}
+
+async function savePaymentSlipBackupForGroup(groupKey) {
+  if (!isSheetsBackupConfigured()) {
+    return { skipped: true };
+  }
+  const group = await fetchFreshBookingGroupByKey(groupKey);
+  if (!group) throw new Error("Booking group not found for payment slip backup.");
+  const shareMeta = getReservationShareMeta(group);
+  const slipKey = `${group.trackCode || group.key}|${shareMeta.documentLabel}|${shareMeta.lifecycleStatus}`;
+  const markup = buildBookingPdfMarkup(group);
+  return callGoogleBackupApi("save_payment_slip", {
+    method: "POST",
+    body: {
+      slipKey,
+      trackCode: group.trackCode || group.key,
+      guestName: group.guestName || "",
+      phone: group.phone || "",
+      documentLabel: shareMeta.documentLabel,
+      lifecycleStatus: shareMeta.lifecycleStatus,
+      advanceAmount: String(roundCurrency(Number(shareMeta.advanceInfo?.amount || 0))),
+      totalPrice: String(roundCurrency(Number(group.totalPrice || 0))),
+      balanceAmount: String(roundCurrency(Number(shareMeta.balanceAmount || 0))),
+      fileName: `${(group.trackCode || "booking").replace(/[^\w-]+/g, "_")}-${shareMeta.documentLabel.replace(/[^\w-]+/g, "_")}.html`,
+      htmlMarkup: markup,
+      bookingJson: JSON.stringify(group.bookings || []),
+      groupJson: JSON.stringify(group),
+      savedAt: new Date().toISOString(),
+    },
+  });
 }
 
 async function getAvailability(checkIn, checkOut) {
@@ -12547,6 +13010,7 @@ navButtons.view.addEventListener("click", () => setScreen("view"));
 navButtons.planner.addEventListener("click", () => setScreen("planner"));
 navButtons.analytics.addEventListener("click", () => setScreen("analytics"));
 navButtons.deductions?.addEventListener("click", () => setScreen("deductions"));
+navButtons.backup?.addEventListener("click", () => setScreen("backup"));
 navButtons.guide?.addEventListener("click", () => setScreen("guide"));
 navButtons.hold?.addEventListener("click", () => setScreen("hold"));
 navButtons.requests?.addEventListener("click", () => setScreen("requests"));
@@ -12555,6 +13019,21 @@ navButtons.accounts?.addEventListener("click", () => setScreen("accounts"));
 navButtons.pricing?.addEventListener("click", () => setScreen("pricing"));
 notificationBellBtn?.addEventListener("click", () => setScreen("notifications"));
 refreshGuideBtn?.addEventListener("click", () => loadGuideBook());
+backupRefreshBtn?.addEventListener("click", () => loadGoogleBackupPage());
+backupSyncMissingBtn?.addEventListener("click", async () => {
+  try {
+    backupSyncMissingBtn.disabled = true;
+    backupSyncMissingBtn.textContent = "Backing Up...";
+    const savedCount = await backupUnbackedBookingsToGoogle();
+    showToast(savedCount ? `${savedCount} booking rows backed up to Google.` : "All current booking rows are already backed up.");
+    await loadGoogleBackupPage();
+  } catch (error) {
+    showToast(error.message || "Could not finish Google backup.", true);
+  } finally {
+    backupSyncMissingBtn.disabled = false;
+    backupSyncMissingBtn.textContent = "Backup Unbacked Bookings";
+  }
+});
 guideSearchInput?.addEventListener("input", () => renderGuideBookPage());
 previewBannerResetBtn?.addEventListener("click", () => {
   state.uiPreviewRole = "";
@@ -12591,6 +13070,7 @@ window.addEventListener("offline", updateOnlineStatus);
   renderDeductionEntryRows([createDeductionDraftRow(currentMonthValue)]);
   renderAnalyticsResultsContext();
   renderDeductions([]);
+  renderGoogleBackupPage();
   renderRoomStatus([]);
   updateStats([]);
   bootstrapSession();
