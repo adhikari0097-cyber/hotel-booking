@@ -204,6 +204,8 @@ create table if not exists public.booking_runtime_settings (
   share_rebooking_note text not null default 'For another booking, please inform us at least 3 days in advance.',
   share_contact_note text not null default 'For more information, call or WhatsApp +94719707597.',
   share_pdf_keep_note text not null default 'Please keep this PDF safe for your booking record.',
+  planner_accent_color text not null default '#93c0ec',
+  planner_track_colors jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now(),
   constraint booking_runtime_settings_singleton check (id = true)
 );
@@ -238,6 +240,12 @@ alter table public.booking_runtime_settings
 alter table public.booking_runtime_settings
   add column if not exists share_pdf_keep_note text not null default 'Please keep this PDF safe for your booking record.';
 
+alter table public.booking_runtime_settings
+  add column if not exists planner_accent_color text not null default '#93c0ec';
+
+alter table public.booking_runtime_settings
+  add column if not exists planner_track_colors jsonb not null default '{}'::jsonb;
+
 insert into public.booking_runtime_settings (id, check_in_time, check_out_time, pdf_fields, whatsapp_fields, share_rebooking_note, share_contact_note, share_pdf_keep_note)
 values (
   true,
@@ -257,6 +265,14 @@ set booking_view_fields = coalesce(
   '["stay","rooms","totalPax","lifecycle","balance","trackCode","customer","bookedBy","phone","checkIn","checkOut","status","statusNote","checkInAt","checkOutAt","totalPrice","advance","customPrice","advanceAmount"]'::jsonb
 )
 where booking_view_fields is null;
+
+update public.booking_runtime_settings
+set planner_accent_color = coalesce(nullif(trim(planner_accent_color), ''), '#93c0ec')
+where planner_accent_color is null or trim(planner_accent_color) = '';
+
+update public.booking_runtime_settings
+set planner_track_colors = coalesce(planner_track_colors, '{}'::jsonb)
+where planner_track_colors is null;
 
 update public.booking_runtime_settings
 set room_fix_section_order = coalesce(

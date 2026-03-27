@@ -341,16 +341,21 @@ function getStoredPlannerAccentColor() {
   }
 }
 
+function normalizePlannerTrackColors(trackColors = {}) {
+  if (!trackColors || typeof trackColors !== "object" || Array.isArray(trackColors)) return {};
+  return Object.entries(trackColors).reduce((acc, [key, value]) => {
+    const normalizedKey = String(key || "").trim();
+    const normalizedColor = /^#[0-9a-f]{6}$/i.test(String(value || "").trim()) ? String(value).trim() : "";
+    if (!normalizedKey || !normalizedColor) return acc;
+    acc[normalizedKey] = normalizedColor;
+    return acc;
+  }, {});
+}
+
 function getStoredPlannerTrackColors() {
   try {
     const raw = JSON.parse(window.localStorage.getItem("planner-track-colors") || "{}");
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-    return Object.entries(raw).reduce((acc, [key, value]) => {
-      if (!key) return acc;
-      const normalized = /^#[0-9a-f]{6}$/i.test(String(value || "").trim()) ? String(value).trim() : "";
-      if (normalized) acc[String(key)] = normalized;
-      return acc;
-    }, {});
+    return normalizePlannerTrackColors(raw);
   } catch (error) {
     return {};
   }
@@ -420,12 +425,16 @@ function setStoredPlannerAccentColor(color) {
 }
 
 function setStoredPlannerTrackColors(trackColors = {}) {
-  state.plannerTrackColors = { ...trackColors };
+  state.plannerTrackColors = normalizePlannerTrackColors(trackColors);
   try {
     window.localStorage.setItem("planner-track-colors", JSON.stringify(state.plannerTrackColors));
   } catch (error) {
     // Ignore local storage failures and keep the in-memory map.
   }
+}
+
+function canEditPlannerColors() {
+  return isOwnerOrAdminRole();
 }
 
 function applyAnalyticsPreset(presetKey) {
@@ -2148,6 +2157,10 @@ async function loadRuntimeSettings() {
       .limit(1)
       .maybeSingle();
     if (error) throw error;
+    const plannerAccentColor = /^#[0-9a-f]{6}$/i.test(String(data?.planner_accent_color || "").trim())
+      ? String(data.planner_accent_color).trim()
+      : getStoredPlannerAccentColor();
+    const plannerTrackColors = normalizePlannerTrackColors(data?.planner_track_colors || getStoredPlannerTrackColors());
     state.runtimeSettings = {
       checkInTime: data?.check_in_time || "14:00",
       checkOutTime: data?.check_out_time || "11:00",
@@ -2160,7 +2173,11 @@ async function loadRuntimeSettings() {
       shareRebookingNote: data?.share_rebooking_note || SHARE_COPY_DEFAULTS.rebookingNote,
       shareContactNote: data?.share_contact_note || SHARE_COPY_DEFAULTS.contactNote,
       sharePdfKeepNote: data?.share_pdf_keep_note || SHARE_COPY_DEFAULTS.pdfKeepNote,
+      plannerAccentColor,
+      plannerTrackColors,
     };
+    setStoredPlannerAccentColor(plannerAccentColor);
+    setStoredPlannerTrackColors(plannerTrackColors);
   } catch (error) {
     state.runtimeSettings = {
       checkInTime: "14:00",
@@ -2174,6 +2191,8 @@ async function loadRuntimeSettings() {
       shareRebookingNote: SHARE_COPY_DEFAULTS.rebookingNote,
       shareContactNote: SHARE_COPY_DEFAULTS.contactNote,
       sharePdfKeepNote: SHARE_COPY_DEFAULTS.pdfKeepNote,
+      plannerAccentColor: getStoredPlannerAccentColor(),
+      plannerTrackColors: getStoredPlannerTrackColors(),
     };
     if (canManagePricing()) {
       showToast("Booking runtime settings table is not ready. Run the updated Supabase schema.sql.", true);
@@ -2181,6 +2200,8 @@ async function loadRuntimeSettings() {
   }
   if (runtimeCheckInTimeInput) runtimeCheckInTimeInput.value = getRuntimeCheckInTime();
   if (runtimeCheckOutTimeInput) runtimeCheckOutTimeInput.value = getRuntimeCheckOutTime();
+  syncPlannerColorPicker();
+  if (state.currentPlannerStartDate) renderCurrentPlannerView();
   updateNavVisibility();
   updateNotificationBadge();
 }
@@ -2196,6 +2217,8 @@ async function saveRuntimeSettings() {
     shareRebookingNote: String(state.runtimeSettings?.shareRebookingNote || SHARE_COPY_DEFAULTS.rebookingNote),
     shareContactNote: String(state.runtimeSettings?.shareContactNote || SHARE_COPY_DEFAULTS.contactNote),
     sharePdfKeepNote: String(state.runtimeSettings?.sharePdfKeepNote || SHARE_COPY_DEFAULTS.pdfKeepNote),
+    plannerAccentColor: state.runtimeSettings?.plannerAccentColor || state.plannerAccentColor || "#93c0ec",
+    plannerTrackColors: normalizePlannerTrackColors(state.runtimeSettings?.plannerTrackColors || state.plannerTrackColors),
   };
   const row = {
     id: true,
@@ -2210,6 +2233,8 @@ async function saveRuntimeSettings() {
     share_rebooking_note: String(state.runtimeSettings?.shareRebookingNote || SHARE_COPY_DEFAULTS.rebookingNote).trim() || SHARE_COPY_DEFAULTS.rebookingNote,
     share_contact_note: String(state.runtimeSettings?.shareContactNote || SHARE_COPY_DEFAULTS.contactNote).trim() || SHARE_COPY_DEFAULTS.contactNote,
     share_pdf_keep_note: String(state.runtimeSettings?.sharePdfKeepNote || SHARE_COPY_DEFAULTS.pdfKeepNote).trim() || SHARE_COPY_DEFAULTS.pdfKeepNote,
+    planner_accent_color: state.runtimeSettings?.plannerAccentColor || state.plannerAccentColor || "#93c0ec",
+    planner_track_colors: normalizePlannerTrackColors(state.runtimeSettings?.plannerTrackColors || state.plannerTrackColors),
   };
   const { error } = await state.supabase
     .from(CONFIG.SUPABASE_RUNTIME_SETTINGS_TABLE)
@@ -2229,7 +2254,11 @@ async function saveRuntimeSettings() {
     shareRebookingNote: row.share_rebooking_note,
     shareContactNote: row.share_contact_note,
     sharePdfKeepNote: row.share_pdf_keep_note,
+    plannerAccentColor: row.planner_accent_color,
+    plannerTrackColors: normalizePlannerTrackColors(row.planner_track_colors),
   };
+  setStoredPlannerAccentColor(state.runtimeSettings.plannerAccentColor);
+  setStoredPlannerTrackColors(state.runtimeSettings.plannerTrackColors);
   const changedBits = [];
   if (previousSettings.checkInTime !== state.runtimeSettings.checkInTime) changedBits.push(`Check-In ${previousSettings.checkInTime} -> ${state.runtimeSettings.checkInTime}`);
   if (previousSettings.checkOutTime !== state.runtimeSettings.checkOutTime) changedBits.push(`Check-Out ${previousSettings.checkOutTime} -> ${state.runtimeSettings.checkOutTime}`);
@@ -2239,6 +2268,8 @@ async function saveRuntimeSettings() {
   if (previousSettings.shareRebookingNote !== state.runtimeSettings.shareRebookingNote) changedBits.push("Share Rebooking Note");
   if (previousSettings.shareContactNote !== state.runtimeSettings.shareContactNote) changedBits.push("Share Contact Note");
   if (previousSettings.sharePdfKeepNote !== state.runtimeSettings.sharePdfKeepNote) changedBits.push("PDF Keep Note");
+  if (previousSettings.plannerAccentColor !== state.runtimeSettings.plannerAccentColor) changedBits.push("Planner Default Color");
+  if (JSON.stringify(previousSettings.plannerTrackColors) !== JSON.stringify(normalizePlannerTrackColors(state.runtimeSettings.plannerTrackColors))) changedBits.push("Planner Track Colors");
   if (changedBits.length) {
     await insertSystemUpdate({
       updateType: "runtime_settings_updated",
@@ -2249,6 +2280,30 @@ async function saveRuntimeSettings() {
   }
   updateNavVisibility();
   updateNotificationBadge();
+}
+
+async function savePlannerColorSettings() {
+  if (!canEditPlannerColors()) throw new Error("Only owner or admin can change planner colors.");
+  ensureSupabase();
+  const plannerAccentColor = state.plannerAccentColor || "#93c0ec";
+  const plannerTrackColors = normalizePlannerTrackColors(state.plannerTrackColors);
+  const { error } = await state.supabase
+    .from(CONFIG.SUPABASE_RUNTIME_SETTINGS_TABLE)
+    .upsert({
+      id: true,
+      planner_accent_color: plannerAccentColor,
+      planner_track_colors: plannerTrackColors,
+    }, { onConflict: "id" });
+  if (error) {
+    throw new Error(error.message || "Could not save planner colors.");
+  }
+  state.runtimeSettings = {
+    ...state.runtimeSettings,
+    plannerAccentColor,
+    plannerTrackColors,
+  };
+  setStoredPlannerAccentColor(plannerAccentColor);
+  setStoredPlannerTrackColors(plannerTrackColors);
 }
 
 function moveRoomFixSection(fromKey, toKey) {
@@ -6107,14 +6162,21 @@ function getPlannerSelectedGroupLabel(group) {
 
 function syncPlannerColorPicker() {
   if (!plannerColorInput || !plannerColorTarget) return;
+  const canEditColors = canEditPlannerColors();
   const selectedGroup = getPlannerSelectedGroup();
   const selectedKey = String(selectedGroup?.key || state.selectedPlannerGroupKey || "").trim();
   const pendingCollections = getLatestPendingRequestCollections();
   const representativeBooking = selectedGroup?.bookings?.[0] || null;
-  if (!selectedGroup || !selectedKey) {
+  if (!canEditColors) {
     plannerColorInput.disabled = true;
+    plannerColorInput.value = getPlannerBaseColorForGroup(selectedKey);
+    plannerColorTarget.textContent = "Only owner or admin can change planner colors.";
+    return;
+  }
+  if (!selectedGroup || !selectedKey) {
+    plannerColorInput.disabled = false;
     plannerColorInput.value = state.plannerAccentColor || getStoredPlannerAccentColor();
-    plannerColorTarget.textContent = "Click a booking node to change only that track code color.";
+    plannerColorTarget.textContent = "Changing the default planner color for everyone. Click a booking node to change only that track code.";
     return;
   }
   if (representativeBooking && isPlannerPendingBooking(representativeBooking, pendingCollections)) {
@@ -6125,7 +6187,7 @@ function syncPlannerColorPicker() {
   }
   plannerColorInput.disabled = false;
   plannerColorInput.value = getPlannerBaseColorForGroup(selectedKey);
-  plannerColorTarget.textContent = `Changing color for ${getPlannerSelectedGroupLabel(selectedGroup)} only.`;
+  plannerColorTarget.textContent = `Changing color for ${getPlannerSelectedGroupLabel(selectedGroup)} for everyone.`;
 }
 
 function getFilteredPlannerBookings(bookings = []) {
@@ -11709,9 +11771,40 @@ plannerSearchInput?.addEventListener("input", () => {
 });
 
 plannerColorInput?.addEventListener("input", (event) => {
-  if (!state.selectedPlannerGroupKey) return;
-  setPlannerTrackColor(state.selectedPlannerGroupKey, event.target.value);
+  if (!canEditPlannerColors()) {
+    syncPlannerColorPicker();
+    return;
+  }
+  if (state.selectedPlannerGroupKey) {
+    setPlannerTrackColor(state.selectedPlannerGroupKey, event.target.value);
+  } else {
+    setStoredPlannerAccentColor(event.target.value);
+  }
   renderCurrentPlannerView();
+});
+
+plannerColorInput?.addEventListener("change", async (event) => {
+  if (!canEditPlannerColors()) {
+    syncPlannerColorPicker();
+    return;
+  }
+  const previousAccentColor = state.runtimeSettings?.plannerAccentColor || state.plannerAccentColor || "#93c0ec";
+  const previousTrackColors = normalizePlannerTrackColors(state.runtimeSettings?.plannerTrackColors || state.plannerTrackColors);
+  try {
+    if (state.selectedPlannerGroupKey) {
+      setPlannerTrackColor(state.selectedPlannerGroupKey, event.target.value);
+    } else {
+      setStoredPlannerAccentColor(event.target.value);
+    }
+    await savePlannerColorSettings();
+    showToast("Planner colors updated.");
+  } catch (error) {
+    setStoredPlannerAccentColor(previousAccentColor);
+    setStoredPlannerTrackColors(previousTrackColors);
+    renderCurrentPlannerView();
+    syncPlannerColorPicker();
+    showToast(error.message, true);
+  }
 });
 
 monthPrevBtn.addEventListener("click", async () => {
