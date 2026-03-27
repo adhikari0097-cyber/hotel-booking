@@ -693,38 +693,11 @@
               </div>
             </div>
             <form id="deduction-form" class="request-form-layout deduction-form">
-              <div class="request-form-grid">
-                <label class="field compact-field">
-                  <span>Deduction Month</span>
-                  <input id="deduction-month" type="month" required />
-                </label>
-                <label class="field compact-field">
-                  <span>Category</span>
-                  <select id="deduction-category" required>
-                    <option value="Salary">Salary</option>
-                    <option value="Campaign Payment">Campaign Payment</option>
-                    <option value="Utilities">Utilities</option>
-                    <option value="Supplies">Supplies</option>
-                    <option value="Transport">Transport</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </label>
+              <div id="deduction-entry-list" class="deduction-entry-list"></div>
+              <div class="deduction-form-actions">
+                <button id="add-deduction-row" class="secondary-btn" type="button">Add Another Deduction</button>
+                <button id="save-deduction" class="primary-btn" type="submit">Save Deductions</button>
               </div>
-              <div class="request-form-grid">
-                <label class="field">
-                  <span>Title</span>
-                  <input id="deduction-title" type="text" placeholder="Example: Staff salary / April campaign payment" required />
-                </label>
-                <label class="field compact-field">
-                  <span>Amount</span>
-                  <input id="deduction-amount" type="number" min="0" step="0.01" placeholder="0.00" required />
-                </label>
-              </div>
-              <label class="field">
-                <span>Details</span>
-                <textarea id="deduction-details" rows="3" placeholder="Add more details for this deduction."></textarea>
-              </label>
-              <button id="save-deduction" class="primary-btn" type="submit">Save Deduction</button>
             </form>
             <div id="deduction-list" class="pricing-list deduction-list"></div>
             <p id="deduction-empty" class="empty-state">No deductions saved for this month.</p>

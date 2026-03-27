@@ -4410,6 +4410,48 @@ h4 {
   margin-top: 18px;
 }
 
+.deduction-entry-list {
+  display: grid;
+  gap: 14px;
+}
+
+.deduction-entry-card {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: #fffdf9;
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+}
+
+.deduction-entry-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.deduction-entry-index {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.deduction-form-actions {
+  margin-top: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.deduction-form-actions .primary-btn {
+  flex: 1 1 260px;
+}
+
 .deduction-list {
   margin-top: 18px;
 }

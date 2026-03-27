@@ -1178,11 +1178,8 @@ const deductionMonthTotal = qs("#deduction-month-total");
 const deductionMonthCount = qs("#deduction-month-count");
 const deductionMonthFilterInput = qs("#deduction-month-filter");
 const deductionForm = qs("#deduction-form");
-const deductionMonthInput = qs("#deduction-month");
-const deductionCategoryInput = qs("#deduction-category");
-const deductionTitleInput = qs("#deduction-title");
-const deductionAmountInput = qs("#deduction-amount");
-const deductionDetailsInput = qs("#deduction-details");
+const deductionEntryList = qs("#deduction-entry-list");
+const addDeductionRowBtn = qs("#add-deduction-row");
 const saveDeductionBtn = qs("#save-deduction");
 const deductionList = qs("#deduction-list");
 const deductionEmpty = qs("#deduction-empty");
@@ -5136,6 +5133,81 @@ function normalizeDeductionRow(row = {}) {
   };
 }
 
+const DEDUCTION_CATEGORY_OPTIONS = [
+  "Salary",
+  "Campaign Payment",
+  "Utilities",
+  "Supplies",
+  "Transport",
+  "Other",
+];
+
+function getDeductionCategoryOptionsMarkup(selectedValue = "Other") {
+  return DEDUCTION_CATEGORY_OPTIONS.map((option) => `
+    <option value="${escapeHtml(option)}" ${option === selectedValue ? "selected" : ""}>${escapeHtml(option)}</option>
+  `).join("");
+}
+
+function createDeductionDraftRow(monthValue = "") {
+  return {
+    monthValue: normalizeMonthInputValue(monthValue) || toMonthInputValue(new Date()),
+    category: "Salary",
+    title: "",
+    amount: "",
+    details: "",
+  };
+}
+
+function collectDeductionDraftRows() {
+  if (!deductionEntryList) return [];
+  return Array.from(deductionEntryList.querySelectorAll("[data-deduction-entry]")).map((row) => ({
+    monthValue: normalizeMonthInputValue(row.querySelector("[data-deduction-month]")?.value || ""),
+    category: String(row.querySelector("[data-deduction-category]")?.value || "Other").trim() || "Other",
+    title: String(row.querySelector("[data-deduction-title]")?.value || "").trim(),
+    amount: String(row.querySelector("[data-deduction-amount]")?.value || "").trim(),
+    details: String(row.querySelector("[data-deduction-details]")?.value || "").trim(),
+  }));
+}
+
+function renderDeductionEntryRows(rows = [createDeductionDraftRow(deductionMonthFilterInput?.value || "")]) {
+  if (!deductionEntryList) return;
+  const safeRows = rows.length ? rows : [createDeductionDraftRow(deductionMonthFilterInput?.value || "")];
+  deductionEntryList.innerHTML = safeRows.map((row, index) => `
+    <section class="deduction-entry-card" data-deduction-entry="${index}">
+      <div class="deduction-entry-head">
+        <span class="deduction-entry-index">Deduction ${index + 1}</span>
+        ${safeRows.length > 1 ? `<button class="ghost-btn small-btn" type="button" data-remove-deduction-row="${index}">Remove</button>` : ""}
+      </div>
+      <div class="request-form-grid">
+        <label class="field compact-field">
+          <span>Deduction Month</span>
+          <input type="month" value="${escapeHtml(normalizeMonthInputValue(row.monthValue) || toMonthInputValue(new Date()))}" data-deduction-month required />
+        </label>
+        <label class="field compact-field">
+          <span>Category</span>
+          <select data-deduction-category required>
+            ${getDeductionCategoryOptionsMarkup(row.category)}
+          </select>
+        </label>
+      </div>
+      <div class="request-form-grid">
+        <label class="field">
+          <span>Title</span>
+          <input type="text" value="${escapeHtml(row.title || "")}" placeholder="Example: Staff salary / April campaign payment" data-deduction-title required />
+        </label>
+        <label class="field compact-field">
+          <span>Amount</span>
+          <input type="number" min="0" step="0.01" value="${escapeHtml(row.amount || "")}" placeholder="0.00" data-deduction-amount required />
+        </label>
+      </div>
+      <label class="field">
+        <span>Details</span>
+        <textarea rows="3" placeholder="Add more details for this deduction." data-deduction-details>${escapeHtml(row.details || "")}</textarea>
+      </label>
+    </section>
+  `).join("");
+}
+
 async function fetchDeductionsForRange(from, to) {
   if (!canAccessDeductions()) return [];
   const fromDate = parseDate(from);
@@ -5204,7 +5276,8 @@ function renderDeductions(items = []) {
     return;
   }
   deductionList.innerHTML = "";
-  const monthValue = normalizeMonthInputValue(deductionMonthFilterInput?.value || deductionMonthInput?.value || "");
+  const firstDraftMonth = collectDeductionDraftRows()[0]?.monthValue || "";
+  const monthValue = normalizeMonthInputValue(deductionMonthFilterInput?.value || firstDraftMonth || "");
   setText(deductionMonthLabel, formatMonthValueLabel(monthValue));
   setText(deductionMonthTotal, formatMoney(items.reduce((sum, item) => sum + Number(item.amount || 0), 0)));
   setText(deductionMonthCount, String(items.length));
@@ -5254,7 +5327,6 @@ function renderDeductions(items = []) {
 async function loadDeductions(monthValue = deductionMonthFilterInput?.value || toMonthInputValue(new Date())) {
   const normalizedMonth = normalizeMonthInputValue(monthValue) || toMonthInputValue(new Date());
   if (deductionMonthFilterInput) deductionMonthFilterInput.value = normalizedMonth;
-  if (deductionMonthInput) deductionMonthInput.value = normalizedMonth;
   if (!canAccessDeductions()) {
     renderDeductions([]);
     return;
@@ -11962,39 +12034,54 @@ analyticsFilterMetric?.addEventListener("change", () => loadAnalytics());
 deductionMonthFilterInput?.addEventListener("change", () => {
   loadDeductions(deductionMonthFilterInput.value);
 });
+addDeductionRowBtn?.addEventListener("click", () => {
+  const currentRows = collectDeductionDraftRows();
+  currentRows.push(createDeductionDraftRow(deductionMonthFilterInput?.value || currentRows[0]?.monthValue || ""));
+  renderDeductionEntryRows(currentRows);
+});
+deductionEntryList?.addEventListener("click", (event) => {
+  const removeBtn = event.target.closest("[data-remove-deduction-row]");
+  if (!removeBtn) return;
+  const currentRows = collectDeductionDraftRows();
+  const index = Number(removeBtn.dataset.removeDeductionRow);
+  currentRows.splice(index, 1);
+  renderDeductionEntryRows(currentRows);
+});
 deductionForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
     if (!canAccessDeductions()) throw new Error("Only owner or admin can save deductions.");
+    const rows = collectDeductionDraftRows();
+    if (!rows.length) throw new Error("Add at least one deduction.");
     saveDeductionBtn.disabled = true;
-    saveDeductionBtn.textContent = "Saving...";
-    await insertDeduction({
-      monthValue: deductionMonthInput?.value,
-      category: deductionCategoryInput?.value,
-      title: deductionTitleInput?.value,
-      details: deductionDetailsInput?.value,
-      amount: deductionAmountInput?.value,
-    });
+    if (addDeductionRowBtn) addDeductionRowBtn.disabled = true;
+    saveDeductionBtn.textContent = rows.length > 1 ? "Saving Deductions..." : "Saving...";
+    for (const row of rows) {
+      await insertDeduction(row);
+    }
+    const totalAmount = roundCurrency(rows.reduce((sum, row) => sum + Number(row.amount || 0), 0));
     await insertSystemUpdate({
       updateType: "deduction_saved",
-      title: "Deduction Saved",
-      message: `${deductionTitleInput?.value || "Deduction"} saved for ${formatMonthValueLabel(deductionMonthInput?.value || "")}.`,
+      title: rows.length > 1 ? "Deductions Saved" : "Deduction Saved",
+      message: rows.length > 1
+        ? `${rows.length} deductions saved.`
+        : `${rows[0]?.title || "Deduction"} saved for ${formatMonthValueLabel(rows[0]?.monthValue || "")}.`,
       metadata: {
-        monthValue: deductionMonthInput?.value || "",
-        category: deductionCategoryInput?.value || "",
-        amount: Number(deductionAmountInput?.value || 0),
+        entryCount: rows.length,
+        monthValues: Array.from(new Set(rows.map((row) => row.monthValue).filter(Boolean))),
+        totalAmount,
       },
     });
-    deductionForm.reset();
-    if (deductionMonthInput) deductionMonthInput.value = deductionMonthFilterInput?.value || toMonthInputValue(new Date());
-    showToast("Deduction saved.");
-    await loadDeductions(deductionMonthFilterInput?.value || deductionMonthInput?.value || toMonthInputValue(new Date()));
+    renderDeductionEntryRows([createDeductionDraftRow(deductionMonthFilterInput?.value || toMonthInputValue(new Date()))]);
+    showToast(rows.length > 1 ? `${rows.length} deductions saved.` : "Deduction saved.");
+    await loadDeductions(deductionMonthFilterInput?.value || rows[0]?.monthValue || toMonthInputValue(new Date()));
     if (screens.analytics?.classList.contains("screen-active")) await loadAnalytics();
   } catch (error) {
     showToast(error.message, true);
   } finally {
     saveDeductionBtn.disabled = false;
-    saveDeductionBtn.textContent = "Save Deduction";
+    if (addDeductionRowBtn) addDeductionRowBtn.disabled = false;
+    saveDeductionBtn.textContent = "Save Deductions";
   }
 });
 notificationPresetButtons.forEach((button) => {
@@ -12295,7 +12382,7 @@ window.addEventListener("offline", updateOnlineStatus);
   if (analyticsDateFromInput) analyticsDateFromInput.value = toDateInputValue(monthStart);
   if (analyticsDateToInput) analyticsDateToInput.value = toDateInputValue(today);
   if (deductionMonthFilterInput) deductionMonthFilterInput.value = currentMonthValue;
-  if (deductionMonthInput) deductionMonthInput.value = currentMonthValue;
+  renderDeductionEntryRows([createDeductionDraftRow(currentMonthValue)]);
   renderAnalyticsResultsContext();
   renderDeductions([]);
   renderRoomStatus([]);
