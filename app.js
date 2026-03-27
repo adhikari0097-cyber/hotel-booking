@@ -315,7 +315,7 @@ function getVisiblePageLabelsForRole(role = "user") {
     labels.push("System Updates");
   }
   if (["owner", "admin"].includes(role)) {
-    labels.push("Deductions", "Google Backup", "Accounts", "Settings");
+    labels.push("Deductions", "Accounts", "Settings");
   }
   return labels;
 }
@@ -1252,7 +1252,6 @@ const navButtons = {
   planner: qs("#tab-planner"),
   analytics: qs("#tab-analytics"),
   deductions: qs("#tab-deductions"),
-  backup: qs("#tab-backup"),
   guide: qs("#tab-guide"),
   hold: qs("#tab-hold"),
   requests: qs("#tab-requests"),
@@ -1269,7 +1268,6 @@ const screens = {
   planner: qs("#screen-planner"),
   analytics: qs("#screen-analytics"),
   deductions: qs("#screen-deductions"),
-  backup: qs("#screen-backup"),
   guide: qs("#screen-guide"),
   hold: qs("#screen-hold"),
   requests: qs("#screen-requests"),
@@ -4235,11 +4233,7 @@ async function promptGroupPaymentUpdate(groupKey) {
   if (Number.isNaN(nextAmount) || nextAmount < 0) {
     throw new Error("Enter a valid advance amount.");
   }
-  let slipFile = null;
-  if (nextAmount > 0) {
-    slipFile = await promptCustomerBankSlipFile();
-  }
-  return updateGroupAdvancePayment(groupKey, nextAmount, { slipFile });
+  return updateGroupAdvancePayment(groupKey, nextAmount);
 }
 
 async function removeBookingRoomDirect(bookingId) {
@@ -5226,7 +5220,6 @@ function updateNavVisibility() {
   const showPlanner = Boolean(state.currentProfile?.approved);
   const showAnalytics = Boolean(state.currentProfile?.approved);
   const showDeductions = canAccessDeductions() || previewOwnerOverride;
-  const showBackup = canAccessGoogleBackup() || previewOwnerOverride;
   const showGuide = Boolean(state.currentProfile?.approved);
   const showHold = Boolean(state.currentProfile?.approved);
   const showAccounts = canManageAccounts();
@@ -5237,7 +5230,6 @@ function updateNavVisibility() {
   navButtons.planner?.classList.toggle("hidden", !showPlanner);
   navButtons.analytics?.classList.toggle("hidden", !showAnalytics);
   navButtons.deductions?.classList.toggle("hidden", !showDeductions);
-  navButtons.backup?.classList.toggle("hidden", !showBackup);
   navButtons.guide?.classList.toggle("hidden", !showGuide);
   navButtons.hold?.classList.toggle("hidden", !showHold);
   navButtons.requests?.classList.toggle("hidden", !showRequests);
@@ -5246,7 +5238,7 @@ function updateNavVisibility() {
   navButtons.accounts?.classList.toggle("hidden", !showAccounts);
   navButtons.pricing?.classList.toggle("hidden", !showPricing);
   analyticsDeductionsToggleRow?.classList.toggle("hidden", !showDeductions);
-  const visibleTabs = 2 + Number(showPlanner) + Number(showAnalytics) + Number(showDeductions) + Number(showBackup) + Number(showGuide) + Number(showHold) + Number(showRequests) + Number(showNotifications) + Number(showSystemUpdates) + Number(showAccounts) + Number(showPricing);
+  const visibleTabs = 2 + Number(showPlanner) + Number(showAnalytics) + Number(showDeductions) + Number(showGuide) + Number(showHold) + Number(showRequests) + Number(showNotifications) + Number(showSystemUpdates) + Number(showAccounts) + Number(showPricing);
   syncBottomNavLayout(visibleTabs);
   if (!showPlanner && screens.planner?.classList.contains("screen-active")) {
     setScreen("booking");
@@ -5255,9 +5247,6 @@ function updateNavVisibility() {
     setScreen("booking");
   }
   if (!showDeductions && screens.deductions?.classList.contains("screen-active")) {
-    setScreen("booking");
-  }
-  if (!showBackup && screens.backup?.classList.contains("screen-active")) {
     setScreen("booking");
   }
   if (!showGuide && screens.guide?.classList.contains("screen-active")) {
@@ -5298,9 +5287,6 @@ function setScreen(target) {
   }
   if (target === "deductions") {
     loadDeductions();
-  }
-  if (target === "backup") {
-    loadGoogleBackupPage();
   }
   if (target === "guide") {
     loadGuideBook();
@@ -8565,7 +8551,6 @@ function openBookingDetailsModal(groupKey) {
   const displayTrackCode = getGroupDisplayTrackCode(group);
   bookingDetailsTitle.textContent = `${displayTrackCode ? `${displayTrackCode} · ` : ""}${group.guestName || "Guest"}`;
   const advanceInfo = getAdvancePaymentInfo(group.bookings);
-  const canUploadAdvanceSlip = canUpdateBookingAdvance(group) && (advanceInfo.amount > 0 || advanceInfo.allPaid || advanceInfo.partiallyPaid);
   const customPriceItems = getGroupCustomPriceEntries(group.bookings);
   const customPriceTotal = getGroupCustomPriceTotal(group.bookings);
   const balanceAmount = getBookingBalanceAmount(group);
@@ -8673,7 +8658,6 @@ function openBookingDetailsModal(groupKey) {
     ${requestHistoryMarkup}
     <div class="booking-details-actions">
       ${canUpdateBookingAdvance(group) ? `<button class="action-btn action-btn-icon action-btn-icon-advance" type="button" data-booking-group-action="advance">Update Advance</button>` : ""}
-      ${canUploadAdvanceSlip ? `<button class="action-btn" type="button" data-booking-group-action="upload-slip">Upload Slip</button>` : ""}
       <button class="action-btn action-btn-icon action-btn-icon-whatsapp" type="button" data-booking-group-action="whatsapp">WhatsApp Customer</button>
       <button class="action-btn" type="button" data-booking-group-action="whatsapp-group-copy">Copy Backup Note</button>
       <button class="action-btn" type="button" data-booking-group-action="whatsapp-group-open">Open Group</button>
@@ -8782,32 +8766,11 @@ function openBookingDetailsModal(groupKey) {
       try {
         const result = await promptGroupPaymentUpdate(group.key);
         if (!result?.changed) return;
-        showToast(result.slipUploaded
-          ? "Advance payment updated and customer bank slip saved."
-          : result.slipError
-            ? `Advance payment updated. Slip backup failed: ${result.slipError}`
-            : result.slipRequested
-              ? "Advance payment updated. Upload the customer bank slip when available."
-              : "Advance payment updated.");
+        showToast("Advance payment updated.");
         await refreshLiveViews();
         openBookingDetailsModal(group.key);
       } catch (error) {
         showToast(error.message || "Unable to update advance payment.", true);
-      }
-    });
-  }
-  const uploadSlipBtn = bookingDetailsBody.querySelector('[data-booking-group-action="upload-slip"]');
-  if (uploadSlipBtn) {
-    uploadSlipBtn.addEventListener("click", async () => {
-      try {
-        const result = await promptCustomerSlipUploadForGroup(group.key);
-        if (!result?.changed) return;
-        showToast("Customer bank slip saved to Google Drive.");
-        if (state.activePage === "backup") {
-          await loadGoogleBackupPage();
-        }
-      } catch (error) {
-        showToast(error.message || "Unable to upload customer bank slip.", true);
       }
     });
   }
@@ -9055,7 +9018,6 @@ function renderBookings(bookings) {
     const directEditAllowed = canEditBookingGroupDirect(group);
     const checkInWindowStarted = hasCheckInWindowStarted(group);
     const advanceInfo = getAdvancePaymentInfo(group.bookings);
-    const canUploadAdvanceSlip = canUpdateBookingAdvance(group) && (advanceInfo.amount > 0 || advanceInfo.allPaid || advanceInfo.partiallyPaid);
     const groupRequest = pendingCollections.byTrack.get(group.trackCode || group.key);
     const groupServices = getGroupServices(group.bookings);
     const roomRows = group.bookings
@@ -9140,11 +9102,6 @@ function renderBookings(bookings) {
             ${canUpdateBookingAdvance(group) ? `
               <button class="secondary-btn action-btn-icon action-btn-icon-advance compact-control" type="button" data-booking-group-advance="${group.key}" aria-label="Update Advance" title="Update Advance">
                 <span class="compact-label">Update Advance</span>
-              </button>
-            ` : ""}
-            ${canUploadAdvanceSlip ? `
-              <button class="secondary-btn compact-control" type="button" data-booking-group-upload-slip="${group.key}" aria-label="Upload Customer Slip" title="Upload Customer Slip">
-                <span class="compact-label">Upload Slip</span>
               </button>
             ` : ""}
             <button class="secondary-btn action-btn-icon action-btn-icon-whatsapp compact-control" type="button" data-booking-group-whatsapp="${group.key}" aria-label="WhatsApp Customer" title="WhatsApp Customer">
@@ -9397,31 +9354,10 @@ function renderBookings(bookings) {
         try {
           const result = await promptGroupPaymentUpdate(advanceGroupBtn.dataset.bookingGroupAdvance);
           if (!result?.changed) return;
-          showToast(result.slipUploaded
-            ? "Advance payment updated and customer bank slip saved."
-            : result.slipError
-              ? `Advance payment updated. Slip backup failed: ${result.slipError}`
-              : result.slipRequested
-                ? "Advance payment updated. Upload the customer bank slip when available."
-                : "Advance payment updated.");
+          showToast("Advance payment updated.");
           await refreshLiveViews();
         } catch (error) {
           showToast(error.message || "Unable to update advance payment.", true);
-        }
-      });
-    }
-    const uploadSlipGroupBtn = card.querySelector("[data-booking-group-upload-slip]");
-    if (uploadSlipGroupBtn) {
-      uploadSlipGroupBtn.addEventListener("click", async () => {
-        try {
-          const result = await promptCustomerSlipUploadForGroup(uploadSlipGroupBtn.dataset.bookingGroupUploadSlip);
-          if (!result?.changed) return;
-          showToast("Customer bank slip saved to Google Drive.");
-          if (state.activePage === "backup") {
-            await loadGoogleBackupPage();
-          }
-        } catch (error) {
-          showToast(error.message || "Unable to upload customer bank slip.", true);
         }
       });
     }
