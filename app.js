@@ -1191,17 +1191,6 @@ const notificationPresetButtons = Array.from(document.querySelectorAll("[data-no
 const notificationRangeLabel = qs("#notification-range-label");
 const notificationTotalCount = qs("#notification-total-count");
 const notificationUnreadCount = qs("#notification-unread-count");
-const refreshSystemUpdatesBtn = qs("#refresh-system-updates");
-const systemUpdatePresetButtons = Array.from(document.querySelectorAll("[data-system-update-preset]"));
-const systemUpdateRangeLabel = qs("#system-update-range-label");
-const systemUpdateTotalCount = qs("#system-update-total-count");
-const systemUpdateLatestTime = qs("#system-update-latest-time");
-const systemUpdatesList = qs("#system-updates-list");
-const systemUpdatesEmpty = qs("#system-updates-empty");
-const systemUpdateDeleteFromInput = qs("#system-update-delete-from");
-const systemUpdateDeleteToInput = qs("#system-update-delete-to");
-const deleteSystemUpdatesRangeBtn = qs("#delete-system-updates-range");
-const deleteSystemUpdatesAllBtn = qs("#delete-system-updates-all");
 const settingsJumpButtons = Array.from(document.querySelectorAll("[data-settings-jump]"));
 const requestModal = qs("#request-modal");
 const closeModalBtn = qs("#close-modal");
@@ -1322,7 +1311,6 @@ const navButtons = {
   hold: qs("#tab-hold"),
   requests: qs("#tab-requests"),
   notifications: qs("#tab-notifications"),
-  systemUpdates: qs("#tab-system-updates"),
   accounts: qs("#tab-accounts"),
   pricing: qs("#tab-pricing"),
 };
@@ -1339,7 +1327,6 @@ const screens = {
   hold: qs("#screen-hold"),
   requests: qs("#screen-requests"),
   notifications: qs("#screen-notifications"),
-  systemUpdates: qs("#screen-system-updates"),
   accounts: qs("#screen-accounts"),
   pricing: qs("#screen-pricing"),
 };
@@ -4944,9 +4931,7 @@ function canAccessNotifications() {
 }
 
 function canAccessSystemUpdates() {
-  const effectiveProfile = getEffectiveProfile();
-  if (!effectiveProfile?.approved) return false;
-  return normalizeSystemUpdateRoleList(state.runtimeSettings?.systemUpdateRoles).includes(effectiveProfile.role);
+  return false;
 }
 
 function canAccessDeductions() {
@@ -12209,38 +12194,10 @@ notificationPresetButtons.forEach((button) => {
     loadNotifications({ presetKey: button.dataset.notificationPreset, markVisibleRead: true });
   });
 });
-systemUpdatePresetButtons.forEach((button) => {
-  button.addEventListener("click", () => {
-    loadSystemUpdates({ presetKey: button.dataset.systemUpdatePreset });
-  });
-});
 settingsJumpButtons.forEach((button) => {
   button.addEventListener("click", () => {
     jumpToSettingsSection(button.dataset.settingsJump);
   });
-});
-refreshSystemUpdatesBtn?.addEventListener("click", () => loadSystemUpdates());
-deleteSystemUpdatesRangeBtn?.addEventListener("click", async () => {
-  try {
-    if (!canManagePricing()) throw new Error("You do not have access to delete system update history.");
-    const changed = await deleteSystemUpdatesRange();
-    if (!changed) return;
-    showToast("System update range deleted.");
-    await loadSystemUpdates();
-  } catch (error) {
-    showToast(error.message, true);
-  }
-});
-deleteSystemUpdatesAllBtn?.addEventListener("click", async () => {
-  try {
-    if (!canManagePricing()) throw new Error("You do not have access to delete system update history.");
-    const changed = await deleteAllSystemUpdates();
-    if (!changed) return;
-    showToast("All system update history deleted.");
-    await loadSystemUpdates();
-  } catch (error) {
-    showToast(error.message, true);
-  }
 });
 refreshPricingBtn?.addEventListener("click", async () => {
   await loadRoomInventory();
@@ -12464,7 +12421,6 @@ navButtons.guide?.addEventListener("click", () => setScreen("guide"));
 navButtons.hold?.addEventListener("click", () => setScreen("hold"));
 navButtons.requests?.addEventListener("click", () => setScreen("requests"));
 navButtons.notifications?.addEventListener("click", () => setScreen("notifications"));
-navButtons.systemUpdates?.addEventListener("click", () => setScreen("systemUpdates"));
 navButtons.accounts?.addEventListener("click", () => setScreen("accounts"));
 navButtons.pricing?.addEventListener("click", () => setScreen("pricing"));
 notificationBellBtn?.addEventListener("click", () => setScreen("notifications"));

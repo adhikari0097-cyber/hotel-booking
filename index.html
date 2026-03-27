@@ -842,63 +842,6 @@
           </div>
         </section>
 
-        <section class="screen" id="screen-system-updates" aria-labelledby="tab-system-updates">
-          <div class="card analytics-card">
-            <div class="accounts-header">
-              <div>
-                <p class="eyebrow">Audit Trail</p>
-                <h3>System Updates</h3>
-              </div>
-              <button id="refresh-system-updates" class="secondary-btn small-btn" type="button">Refresh</button>
-            </div>
-            <p class="inline-note">Check the latest system-level changes such as settings saves, room setup updates, service changes, and room price edits.</p>
-            <div class="preset-chip-row">
-              <button class="filter-chip filter-chip-active" type="button" data-system-update-preset="this-week">This Week</button>
-              <button class="filter-chip" type="button" data-system-update-preset="this-month">This Month</button>
-              <button class="filter-chip" type="button" data-system-update-preset="this-year">This Year</button>
-              <button class="filter-chip" type="button" data-system-update-preset="last-month">Last Month</button>
-            </div>
-            <div class="analytics-summary-grid notification-summary-grid">
-              <div class="analytics-stat-card">
-                <span>Range</span>
-                <strong id="system-update-range-label">-</strong>
-              </div>
-              <div class="analytics-stat-card">
-                <span>Total</span>
-                <strong id="system-update-total-count">0</strong>
-              </div>
-              <div class="analytics-stat-card">
-                <span>Latest</span>
-                <strong id="system-update-latest-time">-</strong>
-              </div>
-            </div>
-            <div class="settings-overview-card system-update-delete-card">
-              <div class="settings-overview-head">
-                <div>
-                  <h4>Delete History</h4>
-                  <p>Delete saved system update history by date range or remove all records.</p>
-                </div>
-              </div>
-              <div class="room-fix-settings-grid">
-                <label class="field compact-field">
-                  <span>From Date</span>
-                  <input id="system-update-delete-from" type="date" />
-                </label>
-                <label class="field compact-field">
-                  <span>To Date</span>
-                  <input id="system-update-delete-to" type="date" />
-                </label>
-              </div>
-              <div class="settings-jump-grid system-update-delete-actions">
-                <button id="delete-system-updates-range" class="secondary-btn small-btn" type="button">Delete Range</button>
-                <button id="delete-system-updates-all" class="secondary-btn small-btn danger" type="button">Delete All</button>
-              </div>
-            </div>
-            <div id="system-updates-list" class="notification-list"></div>
-            <p id="system-updates-empty" class="empty-state">No system updates in this range.</p>
-          </div>
-        </section>
-
         <section class="screen" id="screen-accounts" aria-labelledby="tab-accounts">
           <div class="card">
             <div class="accounts-header">
@@ -1089,13 +1032,6 @@
           <span class="nav-btn-text">
             <span class="nav-btn-label">Alerts</span>
             <span class="nav-btn-note">Updates</span>
-          </span>
-        </button>
-        <button id="tab-system-updates" class="nav-btn hidden" type="button">
-          <span class="nav-btn-icon" aria-hidden="true">&#10227;</span>
-          <span class="nav-btn-text">
-            <span class="nav-btn-label">Logs</span>
-            <span class="nav-btn-note">History</span>
           </span>
         </button>
         <button id="tab-accounts" class="nav-btn hidden" type="button">
