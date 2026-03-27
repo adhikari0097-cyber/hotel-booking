@@ -7105,8 +7105,6 @@ function printMarkup(markup) {
   pdfPrintFrame.style.border = "0";
   pdfPrintFrame.setAttribute("aria-hidden", "true");
   document.body.appendChild(pdfPrintFrame);
-
-  const markup = buildBookingPdfMarkup(group);
   const frameWindow = pdfPrintFrame.contentWindow;
   if (!frameWindow) {
     showToast("Could not prepare PDF export.", true);
