@@ -170,6 +170,8 @@ const state = {
   currentPlannerStartDate: "",
   currentPlannerRangeDays: 14,
   plannerAccentColor: "#93c0ec",
+  plannerTrackColors: {},
+  selectedPlannerGroupKey: "",
   requestsFilterMode: "recent",
   requestsFilterStatus: "pending",
   bookingViewMode: "mobile",
@@ -339,6 +341,21 @@ function getStoredPlannerAccentColor() {
   }
 }
 
+function getStoredPlannerTrackColors() {
+  try {
+    const raw = JSON.parse(window.localStorage.getItem("planner-track-colors") || "{}");
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+    return Object.entries(raw).reduce((acc, [key, value]) => {
+      if (!key) return acc;
+      const normalized = /^#[0-9a-f]{6}$/i.test(String(value || "").trim()) ? String(value).trim() : "";
+      if (normalized) acc[String(key)] = normalized;
+      return acc;
+    }, {});
+  } catch (error) {
+    return {};
+  }
+}
+
 function getPresetRangeDates(presetKey) {
   const today = parseDate(new Date());
   const currentYear = today.getFullYear();
@@ -395,11 +412,19 @@ function applyPlannerPreset(presetKey) {
 function setStoredPlannerAccentColor(color) {
   const normalized = /^#[0-9a-f]{6}$/i.test(String(color || "").trim()) ? String(color).trim() : "#93c0ec";
   state.plannerAccentColor = normalized;
-  if (plannerColorInput) plannerColorInput.value = normalized;
   try {
     window.localStorage.setItem("planner-accent-color", normalized);
   } catch (error) {
     // Ignore local storage failures and keep the in-memory color.
+  }
+}
+
+function setStoredPlannerTrackColors(trackColors = {}) {
+  state.plannerTrackColors = { ...trackColors };
+  try {
+    window.localStorage.setItem("planner-track-colors", JSON.stringify(state.plannerTrackColors));
+  } catch (error) {
+    // Ignore local storage failures and keep the in-memory map.
   }
 }
 
@@ -409,6 +434,78 @@ function applyAnalyticsPreset(presetKey) {
   analyticsDateFromInput.value = toDateInputValue(from);
   analyticsDateToInput.value = toDateInputValue(to);
   loadAnalytics();
+}
+
+function openNativeDatePicker(input) {
+  if (!input) return;
+  try {
+    if (typeof input.showPicker === "function") {
+      input.showPicker();
+      return;
+    }
+  } catch (error) {
+    // Some browsers only allow showPicker during trusted click events.
+  }
+  input.focus({ preventScroll: true });
+  input.click();
+}
+
+async function setViewDateSelection(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime()) || !viewDateInput) return;
+  const nextValue = toDateInputValue(date);
+  viewDateInput.value = nextValue;
+  state.currentMonthDate = startOfMonth(date);
+  await loadMonthCalendar();
+  await loadBookingsForDate(nextValue);
+}
+
+function applyAnalyticsQuickRange(fromDate, toDate) {
+  if (!(fromDate instanceof Date) || !(toDate instanceof Date) || !analyticsDateFromInput || !analyticsDateToInput) return;
+  analyticsDateFromInput.value = toDateInputValue(fromDate);
+  analyticsDateToInput.value = toDateInputValue(toDate);
+  loadAnalytics();
+}
+
+function formatAnalyticsDateLabel(dateString) {
+  const date = parseDate(dateString);
+  if (!date) return "Not selected";
+  return date.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function getAnalyticsFilterDisplayValue(select, allLabel) {
+  if (!select) return allLabel;
+  if (!select.value || select.value === "all") return allLabel;
+  return select.selectedOptions?.[0]?.textContent?.trim() || select.value;
+}
+
+function renderAnalyticsResultsContext({ count } = {}) {
+  if (!analyticsResultsContext) return;
+  const dateValue = analyticsDateFromInput?.value && analyticsDateToInput?.value
+    ? `${formatAnalyticsDateLabel(analyticsDateFromInput.value)} -> ${formatAnalyticsDateLabel(analyticsDateToInput.value)}`
+    : "Select From and To dates";
+  const metricValue = analyticsFilterMetric?.selectedOptions?.[0]?.textContent?.trim() || "Revenue";
+  const items = [
+    { label: "Date Range", value: dateValue },
+    { label: "Lifecycle", value: getAnalyticsFilterDisplayValue(analyticsFilterLifecycle, "All Lifecycle") },
+    { label: "Source", value: getAnalyticsFilterDisplayValue(analyticsFilterSource, "All Sources") },
+    { label: "Booked By", value: getAnalyticsFilterDisplayValue(analyticsFilterStaff, "All Staff") },
+    { label: "Trend View", value: metricValue },
+    { label: "Results", value: typeof count === "number" ? `${count} reservations` : "Load analytics to refresh" },
+  ];
+  setHTML(analyticsResultsContext, `
+    <div class="analytics-results-head">
+      <strong>Results Based On</strong>
+      <span>These analytics cards and charts follow the filters shown below.</span>
+    </div>
+    <div class="analytics-results-chip-list">
+      ${items.map((item) => `
+        <div class="analytics-results-chip">
+          <strong>${escapeHtml(item.label)}</strong>
+          <span>${escapeHtml(item.value)}</span>
+        </div>
+      `).join("")}
+    </div>
+  `);
 }
 
 function jumpToSettingsSection(sectionId) {
@@ -796,6 +893,7 @@ const plannerLoadBtn = qs("#loadPlanner");
 const plannerPresetButtons = Array.from(document.querySelectorAll("[data-planner-preset]"));
 const plannerSearchInput = qs("#planner-search");
 const plannerColorInput = qs("#planner-color");
+const plannerColorTarget = qs("#planner-color-target");
 const plannerSummaryRange = qs("#plannerSummaryRange");
 const plannerSummaryReservations = qs("#plannerSummaryReservations");
 const plannerSummaryNights = qs("#plannerSummaryNights");
@@ -813,6 +911,9 @@ const monthGrid = qs("#month-grid");
 const monthPrevBtn = qs("#month-prev");
 const monthNextBtn = qs("#month-next");
 const viewDateInput = qs("#viewDate");
+const viewDateTodayBtn = qs("#view-date-today");
+const viewDateTomorrowBtn = qs("#view-date-tomorrow");
+const viewDateOpenBtn = qs("#view-date-open");
 const loadBookingsBtn = qs("#loadBookings");
 const checkAvailabilityBtn = qs("#checkAvailability");
 const availNormal = qs("#avail-normal");
@@ -943,7 +1044,12 @@ const closeBookingDetailsBtn = qs("#close-booking-details");
 const analyticsDateFromInput = qs("#analytics-date-from");
 const analyticsDateToInput = qs("#analytics-date-to");
 const loadAnalyticsBtn = qs("#load-analytics");
+const analyticsQuickTodayBtn = qs("#analytics-quick-today");
+const analyticsQuickWeekBtn = qs("#analytics-quick-week");
+const analyticsPickFromBtn = qs("#analytics-pick-from");
+const analyticsPickToBtn = qs("#analytics-pick-to");
 const analyticsPresetButtons = Array.from(document.querySelectorAll("[data-analytics-preset]"));
+const analyticsResultsContext = qs("#analytics-results-context");
 const analyticsTotalEarn = qs("#analytics-total-earn");
 const analyticsTotalBookings = qs("#analytics-total-bookings");
 const analyticsAverageBooking = qs("#analytics-average-booking");
@@ -4808,6 +4914,7 @@ async function loadAnalytics() {
   const to = analyticsDateToInput.value;
 
   if (!from || !to) {
+    renderAnalyticsResultsContext();
     if (analyticsEmpty) {
       analyticsEmpty.textContent = "Select a date range to load analytics.";
       analyticsEmpty.style.display = "block";
@@ -4816,6 +4923,7 @@ async function loadAnalytics() {
   }
 
   if (from > to) {
+    renderAnalyticsResultsContext();
     showToast("Analytics end date must be after the start date.", true);
     return;
   }
@@ -4841,6 +4949,7 @@ async function loadAnalytics() {
       if ((analyticsFilterStaff?.value || "all") !== "all" && analyticsFilterStaff.value !== staffLabel) return false;
       return true;
     });
+    renderAnalyticsResultsContext({ count: filteredGroups.length });
     const totalRevenue = roundCurrency(filteredGroups.reduce((sum, group) => sum + Number(group.totalPrice || 0), 0));
     const totalBookings = filteredGroups.length;
     const totalPendingBalance = roundCurrency(filteredGroups.reduce((sum, group) => sum + getBookingBalanceAmount(group), 0));
@@ -4957,6 +5066,7 @@ async function loadAnalytics() {
       analyticsEmpty.textContent = filteredGroups.length ? "" : "No analytics data for this filter.";
     }
   } catch (error) {
+    renderAnalyticsResultsContext();
     if (analyticsEmpty) {
       analyticsEmpty.textContent = error.message;
       analyticsEmpty.style.display = "block";
@@ -5859,6 +5969,58 @@ function getPlannerAccentPalette(color) {
   return { bg, border, text };
 }
 
+function getPlannerTrackColor(groupKey) {
+  return state.plannerTrackColors?.[String(groupKey || "").trim()] || "";
+}
+
+function setPlannerTrackColor(groupKey, color) {
+  const normalizedKey = String(groupKey || "").trim();
+  const normalizedColor = /^#[0-9a-f]{6}$/i.test(String(color || "").trim()) ? String(color).trim() : "";
+  if (!normalizedKey || !normalizedColor) return;
+  setStoredPlannerTrackColors({
+    ...(state.plannerTrackColors || {}),
+    [normalizedKey]: normalizedColor,
+  });
+}
+
+function getPlannerBaseColorForGroup(groupKey) {
+  return getPlannerTrackColor(groupKey) || state.plannerAccentColor || getStoredPlannerAccentColor();
+}
+
+function getPlannerSelectedGroup(groupKey = state.selectedPlannerGroupKey) {
+  if (!groupKey) return null;
+  return getBookingGroupByKey(groupKey);
+}
+
+function getPlannerSelectedGroupLabel(group) {
+  if (!group) return "";
+  const groupStatus = group.statuses?.size === 1 ? Array.from(group.statuses)[0] : "Pending";
+  return getVisibleTrackCode(group.trackCode, groupStatus) || group.trackCode || group.key || "Booking";
+}
+
+function syncPlannerColorPicker() {
+  if (!plannerColorInput || !plannerColorTarget) return;
+  const selectedGroup = getPlannerSelectedGroup();
+  const selectedKey = String(selectedGroup?.key || state.selectedPlannerGroupKey || "").trim();
+  const pendingCollections = getLatestPendingRequestCollections();
+  const representativeBooking = selectedGroup?.bookings?.[0] || null;
+  if (!selectedGroup || !selectedKey) {
+    plannerColorInput.disabled = true;
+    plannerColorInput.value = state.plannerAccentColor || getStoredPlannerAccentColor();
+    plannerColorTarget.textContent = "Click a booking node to change only that track code color.";
+    return;
+  }
+  if (representativeBooking && isPlannerPendingBooking(representativeBooking, pendingCollections)) {
+    plannerColorInput.disabled = true;
+    plannerColorInput.value = "#9b68dd";
+    plannerColorTarget.textContent = `${getPlannerSelectedGroupLabel(selectedGroup)} is pending, so it keeps the pending color until fixed.`;
+    return;
+  }
+  plannerColorInput.disabled = false;
+  plannerColorInput.value = getPlannerBaseColorForGroup(selectedKey);
+  plannerColorTarget.textContent = `Changing color for ${getPlannerSelectedGroupLabel(selectedGroup)} only.`;
+}
+
 function getFilteredPlannerBookings(bookings = []) {
   const items = Array.isArray(bookings) ? bookings : [];
   const searchTerm = plannerSearchInput?.value || "";
@@ -5878,6 +6040,7 @@ function renderCurrentPlannerView() {
     state.currentPlannerStartDate,
     state.currentPlannerRangeDays || 14,
   );
+  syncPlannerColorPicker();
 }
 
 function mergeBookingsIntoStateMap(bookings = []) {
@@ -8959,7 +9122,7 @@ function getPlannerBookingColors(booking, pendingCollections) {
   if (isPlannerPendingBooking(booking, pendingCollections)) {
     return { bg: "#d9c3f7", border: "#9b68dd", text: "#44206b" };
   }
-  return getPlannerAccentPalette(state.plannerAccentColor || getStoredPlannerAccentColor());
+  return getPlannerAccentPalette(getPlannerBaseColorForGroup(getBookingGroupKey(booking)));
 }
 
 function getPlannerPendingLabel(booking, pendingCollections) {
@@ -9035,7 +9198,14 @@ function getPlannerMobileBookingShortLabel(booking) {
 function bindPlannerBookingButtons() {
   reservationPlannerBoard.querySelectorAll("[data-planner-group]").forEach((button) => {
     button.addEventListener("click", () => {
-      openBookingDetailsModal(button.dataset.plannerGroup);
+      const nextGroupKey = button.dataset.plannerGroup || "";
+      if (!nextGroupKey) return;
+      if (state.selectedPlannerGroupKey === nextGroupKey) {
+        openBookingDetailsModal(nextGroupKey);
+        return;
+      }
+      state.selectedPlannerGroupKey = nextGroupKey;
+      renderCurrentPlannerView();
     });
   });
   reservationPlannerBoard.querySelectorAll("[data-planner-booking-id]").forEach((button) => {
@@ -9227,7 +9397,7 @@ function renderReservationPlannerMobile(bookings, plannerRooms, startDate, days,
 
   const mobileGroupCards = groupBookingsForDisplay(bookings).map((group) => `
     <button
-      class="reservation-planner-mobile-summary-card"
+      class="reservation-planner-mobile-summary-card${state.selectedPlannerGroupKey === group.key ? " reservation-planner-mobile-summary-card-selected" : ""}"
       type="button"
       data-planner-group="${escapeHtml(group.key)}"
     >
@@ -9250,7 +9420,7 @@ function renderReservationPlannerMobile(bookings, plannerRooms, startDate, days,
           marker
             ? `
               <button
-                class="reservation-planner-mobile-marker${marker.pending ? " reservation-planner-mobile-marker-pending" : ""}"
+                class="reservation-planner-mobile-marker${marker.pending ? " reservation-planner-mobile-marker-pending" : ""}${state.selectedPlannerGroupKey === marker.groupKey ? " reservation-planner-mobile-marker-selected" : ""}"
                 type="button"
                 data-planner-group="${escapeHtml(marker.groupKey)}"
                 aria-label="${escapeHtml(marker.label)}"
@@ -9306,6 +9476,9 @@ function renderReservationPlanner(bookings, startDate, days) {
   const visibleBookings = getFilteredPlannerBookings(bookings);
   const groupedBookings = groupBookingsForDisplay(visibleBookings);
   state.plannerBookingGroups = new Map(groupedBookings.map((group) => [group.key, group]));
+  if (state.selectedPlannerGroupKey && !state.plannerBookingGroups.has(state.selectedPlannerGroupKey)) {
+    state.selectedPlannerGroupKey = "";
+  }
 
   const plannerRooms = getPlannerRooms(visibleBookings);
   const rangeStart = parseDate(startDate);
@@ -9403,7 +9576,7 @@ function renderReservationPlanner(bookings, startDate, days) {
 
     return `
       <button
-        class="reservation-planner-booking${isPlannerPendingBooking(booking, pendingCollections) ? " reservation-planner-booking-pending" : ""}"
+        class="reservation-planner-booking${isPlannerPendingBooking(booking, pendingCollections) ? " reservation-planner-booking-pending" : ""}${state.selectedPlannerGroupKey === getBookingGroupKey(booking) ? " reservation-planner-booking-selected" : ""}"
         type="button"
         draggable="true"
         data-planner-group="${escapeHtml(getBookingGroupKey(booking))}"
@@ -11062,6 +11235,15 @@ authTabSignup.addEventListener("click", () => setAuthTab("signup"));
 pendingLogoutBtn.addEventListener("click", handleLogout);
 logoutBtn.addEventListener("click", handleLogout);
 loadBookingsBtn.addEventListener("click", () => loadBookingsForDate(viewDateInput.value));
+viewDateTodayBtn?.addEventListener("click", async () => {
+  await setViewDateSelection(new Date());
+});
+viewDateTomorrowBtn?.addEventListener("click", async () => {
+  await setViewDateSelection(addDays(new Date(), 1));
+});
+viewDateOpenBtn?.addEventListener("click", () => {
+  openNativeDatePicker(viewDateInput);
+});
 plannerPresetButtons.forEach((button) => {
   button.addEventListener("click", () => applyPlannerPreset(button.dataset.plannerPreset));
 });
@@ -11069,9 +11251,25 @@ refreshAccountsBtn.addEventListener("click", () => loadAccounts());
 refreshRequestsBtn.addEventListener("click", () => loadRequests());
 refreshNotificationsBtn?.addEventListener("click", () => loadNotifications({ markVisibleRead: true }));
 loadAnalyticsBtn?.addEventListener("click", () => loadAnalytics());
+analyticsQuickTodayBtn?.addEventListener("click", () => {
+  const today = new Date();
+  applyAnalyticsQuickRange(today, today);
+});
+analyticsQuickWeekBtn?.addEventListener("click", () => {
+  const today = new Date();
+  applyAnalyticsQuickRange(addDays(today, -6), today);
+});
+analyticsPickFromBtn?.addEventListener("click", () => {
+  openNativeDatePicker(analyticsDateFromInput);
+});
+analyticsPickToBtn?.addEventListener("click", () => {
+  openNativeDatePicker(analyticsDateToInput);
+});
 analyticsPresetButtons.forEach((button) => {
   button.addEventListener("click", () => applyAnalyticsPreset(button.dataset.analyticsPreset));
 });
+analyticsDateFromInput?.addEventListener("change", () => renderAnalyticsResultsContext());
+analyticsDateToInput?.addEventListener("change", () => renderAnalyticsResultsContext());
 analyticsFilterLifecycle?.addEventListener("change", () => loadAnalytics());
 analyticsFilterSource?.addEventListener("change", () => loadAnalytics());
 analyticsFilterStaff?.addEventListener("change", () => loadAnalytics());
@@ -11242,6 +11440,8 @@ handleRequestOfferChange();
 syncAdvanceAmountField();
 syncRequestAdvanceAmountField();
 setStoredPlannerAccentColor(getStoredPlannerAccentColor());
+state.plannerTrackColors = getStoredPlannerTrackColors();
+syncPlannerColorPicker();
 requestRoomTypeInput.addEventListener("change", () => {
   populateRequestRoomNumbers(requestRoomTypeInput.value, 1);
   populateRequestGuestsOptions(requestRoomTypeInput.value, requestGuestsInput?.value || 1);
@@ -11277,7 +11477,8 @@ plannerSearchInput?.addEventListener("input", () => {
 });
 
 plannerColorInput?.addEventListener("input", (event) => {
-  setStoredPlannerAccentColor(event.target.value);
+  if (!state.selectedPlannerGroupKey) return;
+  setPlannerTrackColor(state.selectedPlannerGroupKey, event.target.value);
   renderCurrentPlannerView();
 });
 
@@ -11337,6 +11538,7 @@ window.addEventListener("offline", updateOnlineStatus);
   viewDateInput.value = toDateInputValue(today);
   if (analyticsDateFromInput) analyticsDateFromInput.value = toDateInputValue(monthStart);
   if (analyticsDateToInput) analyticsDateToInput.value = toDateInputValue(today);
+  renderAnalyticsResultsContext();
   renderRoomStatus([]);
   updateStats([]);
   bootstrapSession();

@@ -196,6 +196,20 @@ h4 {
   margin-bottom: 14px;
 }
 
+.view-date-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.view-date-actions .secondary-btn {
+  flex: 1 1 120px;
+}
+
+.view-date-note {
+  margin-bottom: 0;
+}
+
 .primary-btn,
 .secondary-btn {
   width: 100%;
@@ -655,6 +669,19 @@ h4 {
 .planner-search-field,
 .planner-color-field {
   margin-bottom: 0;
+}
+
+.planner-color-target {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.planner-color-field input[type="color"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .planner-color-field input[type="color"] {
@@ -2334,6 +2361,12 @@ h4 {
   overflow: hidden;
 }
 
+.reservation-planner-booking-selected {
+  box-shadow:
+    0 0 0 3px rgba(11, 61, 46, 0.18),
+    0 12px 24px rgba(50, 40, 20, 0.12);
+}
+
 .reservation-planner-booking-dragging {
   opacity: 0.55;
   cursor: grabbing;
@@ -2511,6 +2544,12 @@ h4 {
   box-shadow: 0 6px 12px rgba(107, 56, 151, 0.2);
 }
 
+.reservation-planner-mobile-marker-selected {
+  box-shadow:
+    0 0 0 2px rgba(11, 61, 46, 0.22),
+    0 8px 14px rgba(50, 40, 20, 0.16);
+}
+
 .reservation-planner-mobile-summary-list {
   display: grid;
   gap: 10px;
@@ -2525,6 +2564,11 @@ h4 {
   display: grid;
   gap: 4px;
   color: var(--text);
+}
+
+.reservation-planner-mobile-summary-card-selected {
+  border-color: #0b3d2e;
+  box-shadow: 0 0 0 2px rgba(11, 61, 46, 0.1);
 }
 
 .reservation-planner-mobile-summary-head {
@@ -4321,6 +4365,64 @@ h4 {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 10px;
+}
+
+.analytics-results-context {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid #eadfcd;
+  background: linear-gradient(180deg, #fffefb 0%, #f8f3ea 100%);
+}
+
+.analytics-results-head {
+  display: grid;
+  gap: 4px;
+}
+
+.analytics-results-head strong {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--primary);
+}
+
+.analytics-results-head span {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.analytics-results-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.analytics-results-chip {
+  min-width: 148px;
+  flex: 1 1 160px;
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid #efe3d1;
+  background: #fff;
+}
+
+.analytics-results-chip strong {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8a7d6f;
+}
+
+.analytics-results-chip span {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
 }
 
 .analytics-trend-chart {

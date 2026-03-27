@@ -335,7 +335,13 @@
                 <label for="viewDate">Select Date</label>
                 <input id="viewDate" type="date" />
               </div>
+              <div class="view-date-actions">
+                <button class="secondary-btn small-btn subtle-btn" id="view-date-today" type="button">Today</button>
+                <button class="secondary-btn small-btn subtle-btn" id="view-date-tomorrow" type="button">Tomorrow</button>
+                <button class="secondary-btn small-btn" id="view-date-open" type="button">Open Calendar</button>
+              </div>
               <button class="secondary-btn" id="loadBookings" type="button">View Bookings</button>
+              <p class="inline-note view-date-note">Use quick buttons if selecting a date from the calendar feels slow.</p>
 
               <div class="stats">
                 <div>
@@ -417,9 +423,10 @@
               <label class="field compact-field planner-color-field">
                 <span>Booking Color</span>
                 <input id="planner-color" type="color" value="#93c0ec" />
+                <small id="planner-color-target" class="planner-color-target">Click a booking node to change only that track code color.</small>
               </label>
             </div>
-            <p class="inline-note">Pick a 7 to 60 day range. Pending reservations stay purple. The same track code keeps the same color across rooms and nights.</p>
+            <p class="inline-note">Pick a 7 to 60 day range. Click a booking once to select its track color, and click it again to open details. Pending reservations stay purple.</p>
             <div class="planner-summary-strip">
               <div class="planner-summary-card">
                 <span>Range</span>
@@ -478,6 +485,12 @@
               <button class="filter-chip" type="button" data-analytics-preset="this-year">This Year</button>
               <button class="filter-chip" type="button" data-analytics-preset="last-year">Last Year</button>
             </div>
+            <div class="preset-chip-row analytics-date-shortcuts">
+              <button class="filter-chip" id="analytics-quick-today" type="button">Today</button>
+              <button class="filter-chip" id="analytics-quick-week" type="button">Last 7 Days</button>
+              <button class="filter-chip" id="analytics-pick-from" type="button">Pick From</button>
+              <button class="filter-chip" id="analytics-pick-to" type="button">Pick To</button>
+            </div>
             <p class="inline-note">Track revenue, room demand, service income, and top customers for the selected date range.</p>
             <div class="analytics-filter-grid">
               <label class="field compact-field">
@@ -507,6 +520,7 @@
                 </select>
               </label>
             </div>
+            <div id="analytics-results-context" class="analytics-results-context" aria-live="polite"></div>
 
             <div class="analytics-summary-grid">
               <div class="analytics-stat-card">
