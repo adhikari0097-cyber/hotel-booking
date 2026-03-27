@@ -3375,6 +3375,12 @@ function canEditBookingGroupDirect(group) {
   return true;
 }
 
+function canUpdateBookingAdvance(group) {
+  if (canManageBookings()) return true;
+  const lifecycle = getGroupLifecycleStatus(group);
+  return lifecycle !== "checked_out" && lifecycle !== "hold";
+}
+
 function getBookingStayedHours(group) {
   const sample = group?.bookings?.find((booking) => booking.checkedInAt && booking.checkedOutAt) || group?.bookings?.[0];
   if (!sample?.checkedInAt || !sample?.checkedOutAt) return "-";
@@ -6051,6 +6057,7 @@ function getReservationShareMeta(group) {
 function buildBookingPdfMarkup(group) {
   const shareMeta = getReservationShareMeta(group);
   const shareMessages = getRuntimeShareMessages();
+  const muthugalaLogoUrl = new URL("Logo.png", window.location.href).href;
   const advanceInfo = shareMeta.advanceInfo;
   const customPriceItems = getGroupCustomPriceEntries(group.bookings);
   const customPriceTotal = getGroupCustomPriceTotal(group.bookings);
@@ -6141,6 +6148,11 @@ function buildBookingPdfMarkup(group) {
           .pdf-tone-advance .pdf-hero-panel { background: linear-gradient(135deg, #765514 0%, #b88925 52%, #d9b96d 100%); color: #fffaf1; }
           .pdf-tone-final .pdf-hero-panel { background: linear-gradient(135deg, #204868 0%, #2d6d97 55%, #5ea5cf 100%); }
           .pdf-tone-hold .pdf-hero-panel { background: linear-gradient(135deg, #6f5322 0%, #8c6a2d 50%, #b08d4e 100%); }
+          .pdf-branding { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+          .pdf-brand-logo { width: 72px; height: 72px; object-fit: contain; border-radius: 16px; background: rgba(255, 255, 255, 0.14); padding: 8px; }
+          .pdf-brand-copy { display: grid; gap: 3px; }
+          .pdf-brand-copy strong { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; }
+          .pdf-brand-copy span { font-size: 10px; opacity: 0.9; }
           .pdf-track { font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.78; margin-bottom: 8px; }
           .pdf-hero-panel h1 { margin: 0; font-size: 28px; line-height: 1.04; letter-spacing: -0.04em; }
           .pdf-hero-copy { margin: 8px 0 0; font-size: 12px; line-height: 1.45; max-width: 42ch; opacity: 0.92; }
@@ -6209,6 +6221,13 @@ function buildBookingPdfMarkup(group) {
             </div>
             <section class="pdf-hero">
               <div class="pdf-hero-panel">
+                <div class="pdf-branding">
+                  <img class="pdf-brand-logo" src="${escapeHtml(muthugalaLogoUrl)}" alt="Muthugala Resort logo" />
+                  <div class="pdf-brand-copy">
+                    <strong>Muthugala Resort</strong>
+                    <span>Reservation Summary</span>
+                  </div>
+                </div>
                 ${hasField("trackCode") ? `<div class="pdf-track">${escapeHtml(group.trackCode || "-")}</div>` : ""}
                 <h1>${escapeHtml(hasField("customer") ? customerName : shareMeta.documentLabel)}</h1>
                 <p class="pdf-hero-copy">${escapeHtml(shareMeta.heroNote)}</p>
@@ -6720,23 +6739,20 @@ async function performGroupDeleteFlow(groupKey) {
       bookingId: group.bookings[0].id,
       reason: "delete_booking",
       requestScope: "group",
-      requestNote: "Customer requested booking deletion after check-in lock window.",
+      requestNote: "Customer requested booking deletion.",
     });
     return true;
   }
 
-  const refundPayment = window.confirm("Payments found. Press OK to request refund and delete. Press Cancel to move booking to hold without refund.");
-  if (refundPayment) {
-    await insertChangeRequest({
-      bookingId: group.bookings[0].id,
-      reason: "delete_booking",
-      requestScope: "group",
-      requestNote: "Customer requested cancellation and refund.",
-    });
-    return true;
-  }
-
-  await performGroupHold(groupKey, "Customer requested cancellation, but payment is not being refunded.", "Removed Booking");
+  const refundPayment = window.confirm("Payments found. Press OK to request refund and delete. Press Cancel to request deletion without refund.");
+  await insertChangeRequest({
+    bookingId: group.bookings[0].id,
+    reason: "delete_booking",
+    requestScope: "group",
+    requestNote: refundPayment
+      ? "Customer requested cancellation and refund."
+      : "Customer requested cancellation without refund.",
+  });
   return true;
 }
 
@@ -6957,7 +6973,7 @@ function openBookingDetailsModal(groupKey) {
     ` : ""}
     ${requestHistoryMarkup}
     <div class="booking-details-actions">
-      ${canManageBookings() ? `<button class="action-btn action-btn-icon action-btn-icon-advance" type="button" data-booking-group-action="advance">Update Advance</button>` : ""}
+      ${canUpdateBookingAdvance(group) ? `<button class="action-btn action-btn-icon action-btn-icon-advance" type="button" data-booking-group-action="advance">Update Advance</button>` : ""}
       <button class="action-btn action-btn-icon action-btn-icon-whatsapp" type="button" data-booking-group-action="whatsapp">WhatsApp</button>
       <button class="action-btn" type="button" data-booking-group-action="email">Email Slip</button>
       <button class="action-btn action-btn-icon action-btn-icon-pdf" type="button" data-booking-group-action="pdf">Export PDF</button>
@@ -6971,10 +6987,12 @@ function openBookingDetailsModal(groupKey) {
       ${lifecycleStatus === "checked_out" ? `<span class="booking-tag tag-rejected">Checked Out</span>` : ""}
       ${lifecycleStatus === "hold" && getEffectiveProfile()?.role === "owner" ? `<button class="action-btn action-btn-icon action-btn-icon-reactivate" type="button" data-booking-group-action="reactivate">Reactivate</button>` : ""}
       ${(hasCheckInWindowStarted(group) && lifecycleStatus === "booked") ? `<button class="action-btn" type="button" data-booking-group-action="hold">Hold Room</button>` : ""}
-      ${isPendingGroupRemovalRequest(groupRequest)
+      ${(canManageBookings() || ((hasCheckInWindowStarted(group) && lifecycleStatus === "booked") || lifecycleStatus === "checked_in")) && isPendingGroupRemovalRequest(groupRequest)
         ? `<span class="booking-tag tag-pending">Pending Remove</span>`
-        : ((directEditAllowed || canManageBookings()) || (hasCheckInWindowStarted(group) && lifecycleStatus === "booked"))
-          ? `<button class="action-btn subtle-btn" type="button" data-booking-group-action="remove">${hasCheckInWindowStarted(group) && !directEditAllowed && !canManageBookings() ? "Delete Booking" : "Remove Full Booking"}</button>`
+        : canManageBookings()
+          ? `<button class="action-btn subtle-btn" type="button" data-booking-group-action="remove">Remove Full Booking</button>`
+          : ((hasCheckInWindowStarted(group) && lifecycleStatus === "booked") || lifecycleStatus === "checked_in")
+            ? `<button class="action-btn subtle-btn" type="button" data-booking-group-action="remove">Request Delete Booking</button>`
           : ""}
     </div>
     <div class="booking-room-list booking-details-room-list">${roomRows}</div>
@@ -7361,7 +7379,7 @@ function renderBookings(bookings) {
           <span class="booking-tag ${String(groupStatus || "").toLowerCase() === "pending" ? "tag-pending" : "tag-success"}">${groupStatusLabel}</span>
           <span class="booking-tag ${lifecycleStatus === "checked_out" ? "tag-rejected" : lifecycleStatus === "checked_in" ? "tag-success" : lifecycleStatus === "hold" ? "tag-pending" : "tag-success"}">${lifecycleLabel}</span>
           <div class="booking-quick-actions">
-            ${canManageBookings() ? `
+            ${canUpdateBookingAdvance(group) ? `
               <button class="secondary-btn action-btn-icon action-btn-icon-advance compact-control" type="button" data-booking-group-advance="${group.key}" aria-label="Update Advance" title="Update Advance">
                 <span class="compact-label">Update Advance</span>
               </button>
@@ -7395,9 +7413,13 @@ function renderBookings(bookings) {
                 <span class="compact-label">Hold Room</span>
               </button>
             ` : ""}
-            ${((directEditAllowed || canManageBookings()) || (checkInWindowStarted && lifecycleStatus === "booked")) ? `
-              <button class="secondary-btn remove-reservation-trigger action-btn-icon action-btn-icon-remove compact-control" type="button" data-booking-group-remove="${group.bookings[0].id}" aria-label="${checkInWindowStarted && !directEditAllowed && !canManageBookings() ? "Delete Booking" : "Remove Reservation"}" title="${checkInWindowStarted && !directEditAllowed && !canManageBookings() ? "Delete Booking" : "Remove Reservation"}">
-                <span class="compact-label">${checkInWindowStarted && !directEditAllowed && !canManageBookings() ? "Delete Booking" : "Remove Reservation"}</span>
+            ${canManageBookings() ? `
+              <button class="secondary-btn remove-reservation-trigger action-btn-icon action-btn-icon-remove compact-control" type="button" data-booking-group-remove="${group.bookings[0].id}" aria-label="Remove Reservation" title="Remove Reservation">
+                <span class="compact-label">Remove Reservation</span>
+              </button>
+            ` : ((checkInWindowStarted && lifecycleStatus === "booked") || lifecycleStatus === "checked_in") ? `
+              <button class="secondary-btn remove-reservation-trigger action-btn-icon action-btn-icon-remove compact-control" type="button" data-booking-group-remove="${group.bookings[0].id}" aria-label="Request Delete Booking" title="Request Delete Booking">
+                <span class="compact-label">Request Delete</span>
               </button>
             ` : ""}
           </div>
@@ -7727,6 +7749,11 @@ function closeRequestModal() {
 
 async function openRequestModal(bookingId, mode, scope = "single") {
   ensureRequestModalSections();
+  const deleteBookingOption = requestReasonInput?.querySelector('option[value="delete_booking"]');
+  if (deleteBookingOption) {
+    deleteBookingOption.hidden = !canManageBookings();
+    deleteBookingOption.disabled = !canManageBookings();
+  }
   let booking = state.bookingMap.get(bookingId);
   if (!booking) {
     const fetched = await fetchBookingsByIds([bookingId]);
@@ -8175,6 +8202,54 @@ async function updateRequestStatus(requestId, values) {
 
   const { error } = await state.supabase.from(CONFIG.SUPABASE_REQUESTS_TABLE).update(row).eq("id", requestId);
   if (error) throw new Error(error.message);
+}
+
+function getPendingRequestsForTargets({ trackCode = "", bookingIds = [] } = {}) {
+  const normalizedTrackCode = String(trackCode || "").trim();
+  const bookingIdSet = new Set(
+    (Array.isArray(bookingIds) ? bookingIds : [])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean),
+  );
+
+  return Array.from(state.requestMap.values()).filter((request) => {
+    if (String(request.status || "").toLowerCase() !== "pending") return false;
+
+    const requestTrackCode = String(request.booking?.trackCode || "").trim();
+    if (normalizedTrackCode && requestTrackCode && requestTrackCode === normalizedTrackCode) {
+      return true;
+    }
+
+    const requestBookingId = String(request.bookingId || "").trim();
+    if (requestBookingId && bookingIdSet.has(requestBookingId)) {
+      return true;
+    }
+
+    return request.reason === "remove_rooms"
+      && Array.isArray(request.requestedRemoveRooms)
+      && request.requestedRemoveRooms.some((room) => bookingIdSet.has(String(room.bookingId || "").trim()));
+  });
+}
+
+async function resolvePendingRequestsForTargets({ trackCode = "", bookingIds = [], adminNote = "" } = {}) {
+  const matchingRequests = getPendingRequestsForTargets({ trackCode, bookingIds });
+  if (!matchingRequests.length) return 0;
+
+  const reviewedAt = new Date().toISOString();
+  const reviewedBy = state.currentSession?.user?.id || null;
+
+  for (const request of matchingRequests) {
+    await updateRequestStatus(request.id, { status: "approved", adminNote });
+    state.requestMap.set(request.id, {
+      ...request,
+      status: "approved",
+      adminNote,
+      reviewedAt,
+      reviewedBy,
+    });
+  }
+
+  return matchingRequests.length;
 }
 
 async function finalizeRequestStatus(request, status, adminNote = "") {
@@ -10378,6 +10453,10 @@ async function handleRequestSubmit(event) {
   }
 
   const reason = requestReasonInput.value;
+  if (reason === "delete_booking" && !canManageBookings()) {
+    showToast("Only owner/admin can delete full bookings.", true);
+    return;
+  }
   const effectiveScope = state.requestScope === "group" || reason === "edit_booking_data"
     ? "group"
     : state.requestScope;
@@ -10461,6 +10540,26 @@ async function handleRequestSubmit(event) {
 
   try {
     if (state.modalMode === "edit") {
+      const pendingRequestTrackCode = String(
+        (effectiveScope === "group"
+          ? (state.activeBookingGroup[0]?.trackCode || state.activeBooking.trackCode || "")
+          : (state.activeBooking.trackCode || ""))
+        || "",
+      ).trim();
+      const pendingRequestBookingIds = new Set(
+        (effectiveScope === "group"
+          ? (state.activeBookingGroup.length ? state.activeBookingGroup : [state.activeBooking]).map((booking) => booking?.id)
+          : [state.activeBooking.id])
+          .map((id) => String(id || "").trim())
+          .filter(Boolean),
+      );
+      if (reason === "remove_rooms") {
+        payload.requestedRemoveRooms.forEach((room) => {
+          const bookingId = String(room?.bookingId || "").trim();
+          if (bookingId) pendingRequestBookingIds.add(bookingId);
+        });
+      }
+
       if (reason === "additional_rooms") {
         for (const roomConfig of payload.requestedExtraRooms) {
           const roomType = roomConfig.roomType;
@@ -10583,6 +10682,11 @@ async function handleRequestSubmit(event) {
         adminNote: payload.requestNote,
         reviewedBy: state.currentSession.user.id,
         reviewedAt: new Date().toISOString(),
+      });
+      await resolvePendingRequestsForTargets({
+        trackCode: pendingRequestTrackCode,
+        bookingIds: Array.from(pendingRequestBookingIds),
+        adminNote: payload.requestNote || "Resolved while owner/admin updated the booking.",
       });
       await insertNotification({
         bookingId: state.activeBooking.id,
