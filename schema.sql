@@ -201,9 +201,14 @@ create table if not exists public.booking_runtime_settings (
   room_fix_section_order jsonb not null default '["pdf","whatsapp","shareMessages","bookingView","notifications","systemUpdates"]'::jsonb,
   notification_roles jsonb not null default '["owner","admin"]'::jsonb,
   system_update_roles jsonb not null default '["owner","admin"]'::jsonb,
+  share_advance_note text not null default 'Advance payment has been received and your booking is confirmed.',
+  share_final_invoice_note text not null default 'This is the final invoice for your full booking amount.',
+  share_hold_note text not null default 'This booking is now on hold. Please inform us at least 1 week in advance if you want to confirm it again.',
   share_rebooking_note text not null default 'For another booking, please inform us at least 3 days in advance.',
   share_contact_note text not null default 'For more information, call or WhatsApp +94719707597.',
   share_pdf_keep_note text not null default 'Please keep this PDF safe for your booking record.',
+  share_group_backup_note text not null default 'Backup note for the Muthugala Resort WhatsApp group. Share only the key booking details and notes needed by the team.',
+  share_whatsapp_group_link text not null default 'https://chat.whatsapp.com/FqzmdNxlm9sCzpasqcYcsQ?mode=gi_t',
   planner_accent_color text not null default '#93c0ec',
   planner_track_colors jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now(),
@@ -232,6 +237,15 @@ alter table public.booking_runtime_settings
   add column if not exists system_update_roles jsonb not null default '["owner","admin"]'::jsonb;
 
 alter table public.booking_runtime_settings
+  add column if not exists share_advance_note text not null default 'Advance payment has been received and your booking is confirmed.';
+
+alter table public.booking_runtime_settings
+  add column if not exists share_final_invoice_note text not null default 'This is the final invoice for your full booking amount.';
+
+alter table public.booking_runtime_settings
+  add column if not exists share_hold_note text not null default 'This booking is now on hold. Please inform us at least 1 week in advance if you want to confirm it again.';
+
+alter table public.booking_runtime_settings
   add column if not exists share_rebooking_note text not null default 'For another booking, please inform us at least 3 days in advance.';
 
 alter table public.booking_runtime_settings
@@ -241,21 +255,46 @@ alter table public.booking_runtime_settings
   add column if not exists share_pdf_keep_note text not null default 'Please keep this PDF safe for your booking record.';
 
 alter table public.booking_runtime_settings
+  add column if not exists share_group_backup_note text not null default 'Backup note for the Muthugala Resort WhatsApp group. Share only the key booking details and notes needed by the team.';
+
+alter table public.booking_runtime_settings
+  add column if not exists share_whatsapp_group_link text not null default 'https://chat.whatsapp.com/FqzmdNxlm9sCzpasqcYcsQ?mode=gi_t';
+
+alter table public.booking_runtime_settings
   add column if not exists planner_accent_color text not null default '#93c0ec';
 
 alter table public.booking_runtime_settings
   add column if not exists planner_track_colors jsonb not null default '{}'::jsonb;
 
-insert into public.booking_runtime_settings (id, check_in_time, check_out_time, pdf_fields, whatsapp_fields, share_rebooking_note, share_contact_note, share_pdf_keep_note)
+insert into public.booking_runtime_settings (
+  id,
+  check_in_time,
+  check_out_time,
+  pdf_fields,
+  whatsapp_fields,
+  share_advance_note,
+  share_final_invoice_note,
+  share_hold_note,
+  share_rebooking_note,
+  share_contact_note,
+  share_pdf_keep_note,
+  share_group_backup_note,
+  share_whatsapp_group_link
+)
 values (
   true,
   '14:00',
   '11:00',
   '["trackCode","customer","phone","bookedBy","stay","notes","totalPax","rooms","totalPrice","customPrice","lifecycle","advance","advanceAmount","balance","checkInAt","checkOutAt","exportedAt","services","servicePrices","customPriceEntries","roomDetails"]'::jsonb,
   '["trackCode","customer","phone","bookedBy","stay","notes","totalPax","rooms","totalPrice","customPrice","lifecycle","advance","advanceAmount","balance","checkInAt","checkOutAt","exportedAt","services","servicePrices","customPriceEntries","roomDetails"]'::jsonb,
+  'Advance payment has been received and your booking is confirmed.',
+  'This is the final invoice for your full booking amount.',
+  'This booking is now on hold. Please inform us at least 1 week in advance if you want to confirm it again.',
   'For another booking, please inform us at least 3 days in advance.',
   'For more information, call or WhatsApp +94719707597.',
-  'Please keep this PDF safe for your booking record.'
+  'Please keep this PDF safe for your booking record.',
+  'Backup note for the Muthugala Resort WhatsApp group. Share only the key booking details and notes needed by the team.',
+  'https://chat.whatsapp.com/FqzmdNxlm9sCzpasqcYcsQ?mode=gi_t'
 )
 on conflict (id) do nothing;
 

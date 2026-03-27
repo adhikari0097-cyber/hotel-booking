@@ -83,9 +83,14 @@ const ROOM_FIX_SECTION_DEFS = [
 ];
 
 const SHARE_COPY_DEFAULTS = {
+  advanceNote: "Advance payment has been received and your booking is confirmed.",
+  finalInvoiceNote: "This is the final invoice for your full booking amount.",
+  holdNote: "This booking is now on hold. Please inform us at least 1 week in advance if you want to confirm it again.",
   rebookingNote: "For another booking, please inform us at least 3 days in advance.",
   contactNote: "For more information, call or WhatsApp +94719707597.",
   pdfKeepNote: "Please keep this PDF safe for your booking record.",
+  groupBackupNote: "Backup note for the Muthugala Resort WhatsApp group. Share only the key booking details and notes needed by the team.",
+  whatsappGroupLink: "https://chat.whatsapp.com/FqzmdNxlm9sCzpasqcYcsQ?mode=gi_t",
 };
 
 const NOTIFICATION_ROLE_DEFS = [
@@ -1561,9 +1566,14 @@ function normalizeNotificationRoleList(value, fallbackToDefaults = true) {
 
 function getRuntimeShareMessages() {
   return {
+    advanceNote: String(state.runtimeSettings?.shareAdvanceNote || SHARE_COPY_DEFAULTS.advanceNote).trim() || SHARE_COPY_DEFAULTS.advanceNote,
+    finalInvoiceNote: String(state.runtimeSettings?.shareFinalInvoiceNote || SHARE_COPY_DEFAULTS.finalInvoiceNote).trim() || SHARE_COPY_DEFAULTS.finalInvoiceNote,
+    holdNote: String(state.runtimeSettings?.shareHoldNote || SHARE_COPY_DEFAULTS.holdNote).trim() || SHARE_COPY_DEFAULTS.holdNote,
     rebookingNote: String(state.runtimeSettings?.shareRebookingNote || SHARE_COPY_DEFAULTS.rebookingNote).trim() || SHARE_COPY_DEFAULTS.rebookingNote,
     contactNote: String(state.runtimeSettings?.shareContactNote || SHARE_COPY_DEFAULTS.contactNote).trim() || SHARE_COPY_DEFAULTS.contactNote,
     pdfKeepNote: String(state.runtimeSettings?.sharePdfKeepNote || SHARE_COPY_DEFAULTS.pdfKeepNote).trim() || SHARE_COPY_DEFAULTS.pdfKeepNote,
+    groupBackupNote: String(state.runtimeSettings?.shareGroupBackupNote || SHARE_COPY_DEFAULTS.groupBackupNote).trim() || SHARE_COPY_DEFAULTS.groupBackupNote,
+    whatsappGroupLink: String(state.runtimeSettings?.shareWhatsappGroupLink || SHARE_COPY_DEFAULTS.whatsappGroupLink).trim() || SHARE_COPY_DEFAULTS.whatsappGroupLink,
   };
 }
 
@@ -2250,9 +2260,14 @@ async function loadRuntimeSettings() {
       roomFixSectionOrder: normalizeRoomFixSectionOrder(data?.room_fix_section_order),
       notificationRoles: normalizeNotificationRoleList(data?.notification_roles),
       systemUpdateRoles: normalizeSystemUpdateRoleList(data?.system_update_roles),
+      shareAdvanceNote: data?.share_advance_note || SHARE_COPY_DEFAULTS.advanceNote,
+      shareFinalInvoiceNote: data?.share_final_invoice_note || SHARE_COPY_DEFAULTS.finalInvoiceNote,
+      shareHoldNote: data?.share_hold_note || SHARE_COPY_DEFAULTS.holdNote,
       shareRebookingNote: data?.share_rebooking_note || SHARE_COPY_DEFAULTS.rebookingNote,
       shareContactNote: data?.share_contact_note || SHARE_COPY_DEFAULTS.contactNote,
       sharePdfKeepNote: data?.share_pdf_keep_note || SHARE_COPY_DEFAULTS.pdfKeepNote,
+      shareGroupBackupNote: data?.share_group_backup_note || SHARE_COPY_DEFAULTS.groupBackupNote,
+      shareWhatsappGroupLink: data?.share_whatsapp_group_link || SHARE_COPY_DEFAULTS.whatsappGroupLink,
       plannerAccentColor,
       plannerTrackColors,
     };
@@ -2268,9 +2283,14 @@ async function loadRuntimeSettings() {
       roomFixSectionOrder: normalizeRoomFixSectionOrder(null),
       notificationRoles: normalizeNotificationRoleList(null),
       systemUpdateRoles: normalizeSystemUpdateRoleList(null),
+      shareAdvanceNote: SHARE_COPY_DEFAULTS.advanceNote,
+      shareFinalInvoiceNote: SHARE_COPY_DEFAULTS.finalInvoiceNote,
+      shareHoldNote: SHARE_COPY_DEFAULTS.holdNote,
       shareRebookingNote: SHARE_COPY_DEFAULTS.rebookingNote,
       shareContactNote: SHARE_COPY_DEFAULTS.contactNote,
       sharePdfKeepNote: SHARE_COPY_DEFAULTS.pdfKeepNote,
+      shareGroupBackupNote: SHARE_COPY_DEFAULTS.groupBackupNote,
+      shareWhatsappGroupLink: SHARE_COPY_DEFAULTS.whatsappGroupLink,
       plannerAccentColor: getStoredPlannerAccentColor(),
       plannerTrackColors: getStoredPlannerTrackColors(),
     };
@@ -2294,9 +2314,14 @@ async function saveRuntimeSettings() {
     notificationRoles: normalizeNotificationRoleList(state.runtimeSettings?.notificationRoles),
     systemUpdateRoles: normalizeSystemUpdateRoleList(state.runtimeSettings?.systemUpdateRoles),
     bookingViewFields: normalizeBookingViewFieldList(state.runtimeSettings?.bookingViewFields),
+    shareAdvanceNote: String(state.runtimeSettings?.shareAdvanceNote || SHARE_COPY_DEFAULTS.advanceNote),
+    shareFinalInvoiceNote: String(state.runtimeSettings?.shareFinalInvoiceNote || SHARE_COPY_DEFAULTS.finalInvoiceNote),
+    shareHoldNote: String(state.runtimeSettings?.shareHoldNote || SHARE_COPY_DEFAULTS.holdNote),
     shareRebookingNote: String(state.runtimeSettings?.shareRebookingNote || SHARE_COPY_DEFAULTS.rebookingNote),
     shareContactNote: String(state.runtimeSettings?.shareContactNote || SHARE_COPY_DEFAULTS.contactNote),
     sharePdfKeepNote: String(state.runtimeSettings?.sharePdfKeepNote || SHARE_COPY_DEFAULTS.pdfKeepNote),
+    shareGroupBackupNote: String(state.runtimeSettings?.shareGroupBackupNote || SHARE_COPY_DEFAULTS.groupBackupNote),
+    shareWhatsappGroupLink: String(state.runtimeSettings?.shareWhatsappGroupLink || SHARE_COPY_DEFAULTS.whatsappGroupLink),
     plannerAccentColor: state.runtimeSettings?.plannerAccentColor || state.plannerAccentColor || "#93c0ec",
     plannerTrackColors: normalizePlannerTrackColors(state.runtimeSettings?.plannerTrackColors || state.plannerTrackColors),
   };
@@ -2310,9 +2335,14 @@ async function saveRuntimeSettings() {
     room_fix_section_order: normalizeRoomFixSectionOrder(state.runtimeSettings?.roomFixSectionOrder),
     notification_roles: normalizeNotificationRoleList(state.runtimeSettings?.notificationRoles),
     system_update_roles: normalizeSystemUpdateRoleList(state.runtimeSettings?.systemUpdateRoles),
+    share_advance_note: String(state.runtimeSettings?.shareAdvanceNote || SHARE_COPY_DEFAULTS.advanceNote).trim() || SHARE_COPY_DEFAULTS.advanceNote,
+    share_final_invoice_note: String(state.runtimeSettings?.shareFinalInvoiceNote || SHARE_COPY_DEFAULTS.finalInvoiceNote).trim() || SHARE_COPY_DEFAULTS.finalInvoiceNote,
+    share_hold_note: String(state.runtimeSettings?.shareHoldNote || SHARE_COPY_DEFAULTS.holdNote).trim() || SHARE_COPY_DEFAULTS.holdNote,
     share_rebooking_note: String(state.runtimeSettings?.shareRebookingNote || SHARE_COPY_DEFAULTS.rebookingNote).trim() || SHARE_COPY_DEFAULTS.rebookingNote,
     share_contact_note: String(state.runtimeSettings?.shareContactNote || SHARE_COPY_DEFAULTS.contactNote).trim() || SHARE_COPY_DEFAULTS.contactNote,
     share_pdf_keep_note: String(state.runtimeSettings?.sharePdfKeepNote || SHARE_COPY_DEFAULTS.pdfKeepNote).trim() || SHARE_COPY_DEFAULTS.pdfKeepNote,
+    share_group_backup_note: String(state.runtimeSettings?.shareGroupBackupNote || SHARE_COPY_DEFAULTS.groupBackupNote).trim() || SHARE_COPY_DEFAULTS.groupBackupNote,
+    share_whatsapp_group_link: String(state.runtimeSettings?.shareWhatsappGroupLink || SHARE_COPY_DEFAULTS.whatsappGroupLink).trim() || SHARE_COPY_DEFAULTS.whatsappGroupLink,
     planner_accent_color: state.runtimeSettings?.plannerAccentColor || state.plannerAccentColor || "#93c0ec",
     planner_track_colors: normalizePlannerTrackColors(state.runtimeSettings?.plannerTrackColors || state.plannerTrackColors),
   };
@@ -2331,9 +2361,14 @@ async function saveRuntimeSettings() {
     roomFixSectionOrder: normalizeRoomFixSectionOrder(row.room_fix_section_order),
     notificationRoles: normalizeNotificationRoleList(row.notification_roles),
     systemUpdateRoles: normalizeSystemUpdateRoleList(row.system_update_roles),
+    shareAdvanceNote: row.share_advance_note,
+    shareFinalInvoiceNote: row.share_final_invoice_note,
+    shareHoldNote: row.share_hold_note,
     shareRebookingNote: row.share_rebooking_note,
     shareContactNote: row.share_contact_note,
     sharePdfKeepNote: row.share_pdf_keep_note,
+    shareGroupBackupNote: row.share_group_backup_note,
+    shareWhatsappGroupLink: row.share_whatsapp_group_link,
     plannerAccentColor: row.planner_accent_color,
     plannerTrackColors: normalizePlannerTrackColors(row.planner_track_colors),
   };
@@ -2345,9 +2380,14 @@ async function saveRuntimeSettings() {
   if (previousSettings.notificationRoles.join("|") !== normalizeNotificationRoleList(state.runtimeSettings.notificationRoles).join("|")) changedBits.push("Notification Access");
   if (previousSettings.systemUpdateRoles.join("|") !== normalizeSystemUpdateRoleList(state.runtimeSettings.systemUpdateRoles).join("|")) changedBits.push("System Updates Access");
   if (previousSettings.bookingViewFields.join("|") !== normalizeBookingViewFieldList(state.runtimeSettings.bookingViewFields).join("|")) changedBits.push("Booking View Fields");
+  if (previousSettings.shareAdvanceNote !== state.runtimeSettings.shareAdvanceNote) changedBits.push("Advance Share Note");
+  if (previousSettings.shareFinalInvoiceNote !== state.runtimeSettings.shareFinalInvoiceNote) changedBits.push("Final Invoice Note");
+  if (previousSettings.shareHoldNote !== state.runtimeSettings.shareHoldNote) changedBits.push("Hold Share Note");
   if (previousSettings.shareRebookingNote !== state.runtimeSettings.shareRebookingNote) changedBits.push("Share Rebooking Note");
   if (previousSettings.shareContactNote !== state.runtimeSettings.shareContactNote) changedBits.push("Share Contact Note");
   if (previousSettings.sharePdfKeepNote !== state.runtimeSettings.sharePdfKeepNote) changedBits.push("PDF Keep Note");
+  if (previousSettings.shareGroupBackupNote !== state.runtimeSettings.shareGroupBackupNote) changedBits.push("Group Backup Note");
+  if (previousSettings.shareWhatsappGroupLink !== state.runtimeSettings.shareWhatsappGroupLink) changedBits.push("WhatsApp Group Link");
   if (previousSettings.plannerAccentColor !== state.runtimeSettings.plannerAccentColor) changedBits.push("Planner Default Color");
   if (JSON.stringify(previousSettings.plannerTrackColors) !== JSON.stringify(normalizePlannerTrackColors(state.runtimeSettings.plannerTrackColors))) changedBits.push("Planner Track Colors");
   if (changedBits.length) {
@@ -2837,12 +2877,24 @@ function renderPricingScreen() {
       <button class="room-fix-drag-handle" type="button" aria-label="Drag panel to reorder" title="Drag panel to reorder">⋮⋮</button>
       <div>
         <h4>Customer Share Messages</h4>
-        <p>These notes appear in advance-payment WhatsApp and PDF sharing so the customer gets clear next steps.</p>
+        <p>These notes appear in customer PDF and WhatsApp sharing so advance, final invoice, and hold messages can be customized separately.</p>
       </div>
     </div>
     <div class="export-message-stack">
       <label class="field compact-field">
-        <span>Rebooking Reminder</span>
+        <span>Advance Confirmation Note</span>
+        <textarea data-share-message="shareAdvanceNote" rows="3">${escapeHtml(state.runtimeSettings?.shareAdvanceNote || SHARE_COPY_DEFAULTS.advanceNote)}</textarea>
+      </label>
+      <label class="field compact-field">
+        <span>Final Invoice Note</span>
+        <textarea data-share-message="shareFinalInvoiceNote" rows="3">${escapeHtml(state.runtimeSettings?.shareFinalInvoiceNote || SHARE_COPY_DEFAULTS.finalInvoiceNote)}</textarea>
+      </label>
+      <label class="field compact-field">
+        <span>Hold Reminder Note</span>
+        <textarea data-share-message="shareHoldNote" rows="3">${escapeHtml(state.runtimeSettings?.shareHoldNote || SHARE_COPY_DEFAULTS.holdNote)}</textarea>
+      </label>
+      <label class="field compact-field">
+        <span>General Reminder</span>
         <textarea data-share-message="shareRebookingNote" rows="3">${escapeHtml(state.runtimeSettings?.shareRebookingNote || SHARE_COPY_DEFAULTS.rebookingNote)}</textarea>
       </label>
       <label class="field compact-field">
@@ -2852,6 +2904,14 @@ function renderPricingScreen() {
       <label class="field compact-field">
         <span>PDF Keep Note</span>
         <textarea data-share-message="sharePdfKeepNote" rows="3">${escapeHtml(state.runtimeSettings?.sharePdfKeepNote || SHARE_COPY_DEFAULTS.pdfKeepNote)}</textarea>
+      </label>
+      <label class="field compact-field">
+        <span>WhatsApp Group Backup Note</span>
+        <textarea data-share-message="shareGroupBackupNote" rows="3">${escapeHtml(state.runtimeSettings?.shareGroupBackupNote || SHARE_COPY_DEFAULTS.groupBackupNote)}</textarea>
+      </label>
+      <label class="field compact-field">
+        <span>WhatsApp Group Link</span>
+        <textarea data-share-message="shareWhatsappGroupLink" rows="2">${escapeHtml(state.runtimeSettings?.shareWhatsappGroupLink || SHARE_COPY_DEFAULTS.whatsappGroupLink)}</textarea>
       </label>
     </div>
   `;
@@ -6897,9 +6957,19 @@ function getReservationShareMeta(group) {
   };
 }
 
+function getPrimaryCustomerShareNote(shareMeta, shareMessages) {
+  if (shareMeta.lifecycleStatus === "hold") return shareMessages.holdNote;
+  if (shareMeta.lifecycleStatus === "checked_out") return shareMessages.finalInvoiceNote;
+  if (shareMeta.advanceInfo.amount > 0 || shareMeta.advanceInfo.allPaid || shareMeta.advanceInfo.partiallyPaid) {
+    return shareMessages.advanceNote;
+  }
+  return shareMeta.heroNote;
+}
+
 function buildBookingPdfMarkup(group) {
   const shareMeta = getReservationShareMeta(group);
   const shareMessages = getRuntimeShareMessages();
+  const primaryShareNote = getPrimaryCustomerShareNote(shareMeta, shareMessages);
   const muthugalaLogoUrl = new URL("Logo.png", window.location.href).href;
   const advanceInfo = shareMeta.advanceInfo;
   const customPriceItems = getGroupCustomPriceEntries(group.bookings);
@@ -7073,7 +7143,7 @@ function buildBookingPdfMarkup(group) {
                 </div>
                 ${hasField("trackCode") ? `<div class="pdf-track">${escapeHtml(group.trackCode || "-")}</div>` : ""}
                 <h1>${escapeHtml(hasField("customer") ? customerName : shareMeta.documentLabel)}</h1>
-                <p class="pdf-hero-copy">${escapeHtml(shareMeta.heroNote)}</p>
+                <p class="pdf-hero-copy">${escapeHtml(primaryShareNote)}</p>
                 <div class="pdf-thankyou">${escapeHtml(shareMeta.thankYouMessage)}</div>
               </div>
               <aside class="pdf-status-panel">
@@ -7149,6 +7219,7 @@ function buildBookingPdfMarkup(group) {
                 <span>Customer Notice</span>
               </div>
               <div class="pdf-note-list">
+                <div class="pdf-note-item">${escapeHtml(primaryShareNote)}</div>
                 <div class="pdf-note-item">${escapeHtml(shareMessages.rebookingNote)}</div>
                 <div class="pdf-note-item">${escapeHtml(shareMessages.contactNote)}</div>
                 <div class="pdf-note-item">${escapeHtml(shareMessages.pdfKeepNote)}</div>
@@ -7333,13 +7404,20 @@ function exportAnalyticsReport() {
 }
 
 function normalizeWhatsappPhone(value) {
-  return String(value || "").replace(/[^\d]/g, "");
+  const digits = String(value || "").replace(/[^\d]/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("94")) return digits;
+  if (digits.startsWith("0") && digits.length === 10) return `94${digits.slice(1)}`;
+  if (digits.length === 9) return `94${digits}`;
+  return digits;
 }
 
-function buildReservationWhatsappMessage(group) {
+function buildReservationWhatsappMessage(group, options = {}) {
+  const target = options.target === "group" ? "group" : "customer";
   const shareMeta = getReservationShareMeta(group);
   const shareMessages = getRuntimeShareMessages();
   const customerName = group.guestName || group.bookings?.[0]?.guestName || "Guest";
+  const primaryShareNote = getPrimaryCustomerShareNote(shareMeta, shareMessages);
   const groupNotes = getGroupOtherNotes(group.bookings);
   const advanceInfo = shareMeta.advanceInfo;
   const customPriceItems = getGroupCustomPriceEntries(group.bookings);
@@ -7398,11 +7476,36 @@ function buildReservationWhatsappMessage(group) {
   const roomDetailLines = hasField("roomDetails")
     ? roomLines.map((line, index) => plainBullet(`${index + 1}. ${line}`))
     : [];
-  const moreInfoLines = [
-    plainBullet(shareMessages.rebookingNote),
-    plainBullet(shareMessages.contactNote),
-    plainBullet(shareMessages.pdfKeepNote),
-  ];
+  const moreInfoLines = target === "group"
+    ? [
+        plainBullet(shareMessages.groupBackupNote),
+        ...(groupNotes ? [plainBullet(`Booking notes: ${groupNotes}`)] : []),
+      ]
+    : [
+        plainBullet(primaryShareNote),
+        plainBullet(shareMessages.rebookingNote),
+        plainBullet(shareMessages.contactNote),
+        plainBullet(shareMessages.pdfKeepNote),
+      ];
+
+  if (target === "group") {
+    return [
+      `*MUTHUGALA RESORT*`,
+      `*GROUP BACKUP NOTE*`,
+      ...(hasField("trackCode") ? [`_${group.trackCode || "-"}_`] : []),
+      ``,
+      `*BOOKING SUMMARY*`,
+      ...bookingInfoLines,
+      ...(paymentLines.length ? [``, `*PAYMENT SUMMARY*`, ...paymentLines] : []),
+      ...(roomDetailLines.length ? [``, `*ROOM BREAKDOWN*`, ...roomDetailLines] : []),
+      ...(serviceLines.length ? [``, `*SERVICE PRICES*`, ...serviceLines] : []),
+      ...(customEntryLines.length ? [``, `*CUSTOM PRICE ENTRIES*`, ...customEntryLines] : []),
+      ...(selectedServicesLines.length ? [``, `*SELECTED SERVICES*`, ...selectedServicesLines] : []),
+      ``,
+      `*TEAM NOTE*`,
+      ...moreInfoLines,
+    ].join("\n");
+  }
 
   return [
     `*MUTHUGALA RESORT*`,
@@ -7410,7 +7513,7 @@ function buildReservationWhatsappMessage(group) {
     ...(hasField("trackCode") ? [`_${group.trackCode || "-"}_`] : []),
     ``,
     `Dear *${customerName}*,`,
-    `${shareMeta.heroNote}`,
+    `${primaryShareNote}`,
     `${shareMeta.thankYouMessage}`,
     ``,
     `*BOOKING INFORMATION*`,
@@ -7434,10 +7537,64 @@ function openReservationWhatsapp(groupKey) {
     return;
   }
 
-  const phone = normalizeWhatsappPhone(RESERVATION_WHATSAPP_NUMBER);
+  const phone = normalizeWhatsappPhone(group.phone || "");
+  if (!phone) {
+    showToast("Customer phone number is missing for WhatsApp.", true);
+    return;
+  }
   const message = encodeURIComponent(buildReservationWhatsappMessage(group));
   const url = `https://wa.me/${phone}?text=${message}`;
   window.open(url, "_blank", "noopener,noreferrer");
+}
+
+async function copyTextToClipboard(text) {
+  const normalizedText = String(text || "");
+  if (!normalizedText) return false;
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(normalizedText);
+    return true;
+  }
+  const input = document.createElement("textarea");
+  input.value = normalizedText;
+  input.setAttribute("readonly", "true");
+  input.style.position = "fixed";
+  input.style.opacity = "0";
+  document.body.appendChild(input);
+  input.select();
+  const copied = document.execCommand("copy");
+  input.remove();
+  return copied;
+}
+
+async function openReservationWhatsappGroupBackup(groupKey) {
+  const group = getBookingGroupByKey(groupKey);
+  if (!group) {
+    showToast("Booking details not found.", true);
+    return;
+  }
+
+  const shareMessages = getRuntimeShareMessages();
+  const groupLink = String(shareMessages.whatsappGroupLink || "").trim();
+  const backupMessage = buildReservationWhatsappMessage(group, { target: "group" });
+
+  let copied = false;
+  try {
+    copied = await copyTextToClipboard(backupMessage);
+  } catch (error) {
+    copied = false;
+  }
+
+  if (groupLink) {
+    window.open(groupLink, "_blank", "noopener,noreferrer");
+    showToast(copied
+      ? "Group backup note copied. Paste it into your WhatsApp group."
+      : "Opened your WhatsApp group. Copy the backup note manually if needed.");
+    return;
+  }
+
+  showToast(copied
+    ? "Group backup note copied. Add a WhatsApp group link in settings to open it directly."
+    : "Add a WhatsApp group link in settings to open it directly.");
 }
 
 function openReservationEmail(groupKey) {
@@ -7916,7 +8073,8 @@ function openBookingDetailsModal(groupKey) {
     ${requestHistoryMarkup}
     <div class="booking-details-actions">
       ${canUpdateBookingAdvance(group) ? `<button class="action-btn action-btn-icon action-btn-icon-advance" type="button" data-booking-group-action="advance">Update Advance</button>` : ""}
-      <button class="action-btn action-btn-icon action-btn-icon-whatsapp" type="button" data-booking-group-action="whatsapp">WhatsApp</button>
+      <button class="action-btn action-btn-icon action-btn-icon-whatsapp" type="button" data-booking-group-action="whatsapp">WhatsApp Customer</button>
+      <button class="action-btn" type="button" data-booking-group-action="whatsapp-group">To WhatsApp Group</button>
       <button class="action-btn" type="button" data-booking-group-action="email">Email Slip</button>
       <button class="action-btn action-btn-icon action-btn-icon-pdf" type="button" data-booking-group-action="pdf">Export PDF</button>
       ${(directEditAllowed || canManageBookings()) ? `<button class="primary-btn" type="button" data-booking-group-action="manage">Edit Booking</button>` : ""}
@@ -7992,6 +8150,16 @@ function openBookingDetailsModal(groupKey) {
   if (whatsappBtn) {
     whatsappBtn.addEventListener("click", () => {
       openReservationWhatsapp(group.key);
+    });
+  }
+  const whatsappGroupBtn = bookingDetailsBody.querySelector('[data-booking-group-action="whatsapp-group"]');
+  if (whatsappGroupBtn) {
+    whatsappGroupBtn.addEventListener("click", async () => {
+      try {
+        await openReservationWhatsappGroupBackup(group.key);
+      } catch (error) {
+        showToast(error.message || "Unable to open WhatsApp group backup.", true);
+      }
     });
   }
   const emailBtn = bookingDetailsBody.querySelector('[data-booking-group-action="email"]');
@@ -8344,8 +8512,11 @@ function renderBookings(bookings) {
                 <span class="compact-label">Update Advance</span>
               </button>
             ` : ""}
-            <button class="secondary-btn action-btn-icon action-btn-icon-whatsapp compact-control" type="button" data-booking-group-whatsapp="${group.key}" aria-label="WhatsApp" title="WhatsApp">
-              <span class="compact-label">WhatsApp</span>
+            <button class="secondary-btn action-btn-icon action-btn-icon-whatsapp compact-control" type="button" data-booking-group-whatsapp="${group.key}" aria-label="WhatsApp Customer" title="WhatsApp Customer">
+              <span class="compact-label">WA Customer</span>
+            </button>
+            <button class="secondary-btn compact-control" type="button" data-booking-group-whatsapp-group="${group.key}" aria-label="To WhatsApp Group" title="To WhatsApp Group">
+              <span class="compact-label">WA Group</span>
             </button>
             <button class="secondary-btn compact-control" type="button" data-booking-group-email="${group.key}" aria-label="Email Slip" title="Email Slip">
               <span class="compact-label">Email Slip</span>
@@ -8558,6 +8729,16 @@ function renderBookings(bookings) {
     if (whatsappGroupBtn) {
       whatsappGroupBtn.addEventListener("click", () => {
         openReservationWhatsapp(whatsappGroupBtn.dataset.bookingGroupWhatsapp);
+      });
+    }
+    const whatsappBackupBtn = card.querySelector("[data-booking-group-whatsapp-group]");
+    if (whatsappBackupBtn) {
+      whatsappBackupBtn.addEventListener("click", async () => {
+        try {
+          await openReservationWhatsappGroupBackup(whatsappBackupBtn.dataset.bookingGroupWhatsappGroup);
+        } catch (error) {
+          showToast(error.message || "Unable to open WhatsApp group backup.", true);
+        }
       });
     }
     const emailGroupBtn = card.querySelector("[data-booking-group-email]");
