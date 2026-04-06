@@ -2,1272 +2,550 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#0b3d2e" />
-    <title>Hotel Booking Mobile</title>
-    <link rel="manifest" href="manifest.json" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Sigiri Resort in Avudangawa, Sigiriya. See your hotel room live on a video call before you book, then reserve on WhatsApp with confidence."
+    />
+    <meta name="theme-color" content="#13372f" />
+    <title>Sigiri Resort | See The Hotel Live Before You Book</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link
-      rel="stylesheet"
-      href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css"
-    />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <section id="auth-shell" class="auth-shell">
-      <div class="auth-card">
-        <div class="auth-brand-row">
-          <img class="auth-brand-logo auth-brand-logo-ourway" src="Ourway_Logo.jpg" alt="Ourway logo" />
-          <img class="auth-brand-logo auth-brand-logo-muthugala" src="Logo.png" alt="Muthugala Resort logo" />
-        </div>
-        <p class="eyebrow">Staff Access</p>
-        <h1>Hotel Booking Login</h1>
-        <p class="auth-copy">Use your username and password. New staff can request access here.</p>
+    <a class="skip-link" href="#main-content">Skip to content</a>
 
-        <div class="auth-tabs">
-          <button id="auth-tab-login" class="auth-tab auth-tab-active" type="button">Login</button>
-          <button id="auth-tab-signup" class="auth-tab" type="button">Request Account</button>
-        </div>
+    <header class="site-header" id="top">
+      <div class="container header-inner">
+        <a class="brand" href="#top" aria-label="Sigiri Resort home">
+          <span class="brand-mark">SR</span>
+          <span>
+            <strong>Sigiri Resort</strong>
+            <small>Avudangawa, Sigiriya</small>
+          </span>
+        </a>
 
-        <form id="login-form" class="auth-form auth-form-active">
-          <div class="field">
-            <label for="login-username">Username</label>
-            <input id="login-username" name="username" type="text" autocomplete="username" required />
-          </div>
-          <div class="field">
-            <label for="login-password">Password</label>
-            <input id="login-password" name="password" type="password" autocomplete="current-password" required />
-          </div>
-          <button class="primary-btn" type="submit">Login</button>
-        </form>
+        <nav class="desktop-nav" aria-label="Primary">
+          <a href="#rooms">Rooms</a>
+          <a href="#experience">Experience</a>
+          <a href="#availability">Availability</a>
+          <a href="#reviews">Reviews</a>
+          <a href="#faq">FAQ</a>
+        </nav>
 
-        <form id="signup-form" class="auth-form">
-          <div class="field">
-            <label for="signup-fullname">Full Name</label>
-            <input id="signup-fullname" name="fullName" type="text" required />
-          </div>
-          <div class="field">
-            <label for="signup-username">Username</label>
-            <input id="signup-username" name="username" type="text" required />
-          </div>
-          <div class="field">
-            <label for="signup-phone">Phone Number</label>
-            <input
-              id="signup-phone"
-              name="phone"
-              type="tel"
-              inputmode="numeric"
-              pattern="[0-9]*"
-              maxlength="15"
-              autocomplete="tel-national"
-              required
-            />
-          </div>
-          <div class="field">
-            <label for="signup-password">Password</label>
-            <input id="signup-password" name="password" type="password" autocomplete="new-password" required />
-          </div>
-          <button class="primary-btn" type="submit">Submit Account Request</button>
-        </form>
-
-        <p id="auth-message" class="auth-message"></p>
+        <a class="button button-primary button-small" data-whatsapp-link href="#">
+          Book on WhatsApp
+        </a>
       </div>
-    </section>
+    </header>
 
-    <section id="pending-shell" class="auth-shell hidden">
-      <div class="auth-card">
-        <p class="eyebrow">Pending Approval</p>
-        <h1>Account Waiting</h1>
-        <p class="auth-copy" id="pending-copy">Your account is waiting for owner or admin approval.</p>
-        <button id="pending-logout" class="secondary-btn" type="button">Logout</button>
-      </div>
-    </section>
+    <main id="main-content">
+      <section class="hero-section section">
+        <div class="container">
+          <div class="hero-shell reveal">
+            <div class="hero-scene">
+              <div class="hero-story">
+                <p class="hero-overline">Live room preview in Sigiriya</p>
+                <h1 class="hero-title">
+                  <span>See the hotel live</span>
+                  <span>before you book</span>
+                  <span>No surprises.</span>
+                </h1>
+                <p class="hero-subtitle">
+                  First time in Sri Lanka — join a live video call, explore the
+                  real room, and book only if you’re satisfied.
+                </p>
+              </div>
 
-    <div id="app-shell" class="hidden">
-      <header class="app-header">
-        <div class="app-header-main">
-          <div class="app-brand">
-            <img class="app-brand-logo" src="Logo.png" alt="Muthugala Resort logo" />
-            <div class="app-brand-copy">
-              <p class="eyebrow">Muthugala Resort</p>
-              <h1>Muthugala Resort</h1>
+              <div class="hero-floating-card card">
+                <div class="hero-offer-row">
+                  <span class="badge">35% OFF Early Booking</span>
+                  <p class="hero-inline-price">
+                    <span>Was Rs. 15,000</span>
+                    <strong>Now from Rs. 9,750</strong>
+                  </p>
+                </div>
+
+                <ul class="hero-benefit-grid" aria-label="Included with stay">
+                  <li>Room</li>
+                  <li>Breakfast</li>
+                  <li>Dinner</li>
+                  <li>Rooftop</li>
+                  <li>Pool</li>
+                </ul>
+
+                <div class="hero-cta">
+                  <a class="button button-primary" data-whatsapp-link href="#">
+                    Check Room Live Now
+                  </a>
+                  <a class="button button-secondary" href="#availability">
+                    View Availability
+                  </a>
+                </div>
+
+                <div class="hero-trust-strip" aria-label="Trust points">
+                  <span>Live room walkthrough</span>
+                  <span>No edited photo surprises</span>
+                  <span>WhatsApp booking support</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
-        <div class="header-actions">
-          <div class="view-mode-toggle app-view-toggle" id="app-view-toggle" aria-label="App view mode">
-            <button id="app-view-mobile" class="view-mode-btn view-mode-btn-active" type="button">Mobile View</button>
-            <button id="app-view-desktop" class="view-mode-btn" type="button">Desktop View</button>
-          </div>
-          <div class="header-meta">
-            <button id="notification-bell" class="ghost-btn notification-bell hidden" type="button" aria-label="Open notifications">
-              <span class="notification-bell-icon" aria-hidden="true">&#128276;</span>
-              <span id="notification-bell-badge" class="notification-bell-badge hidden">0</span>
-            </button>
-            <div id="preview-banner" class="preview-banner hidden">
-              <span id="preview-banner-text">Preview</span>
-              <button id="preview-banner-reset" class="ghost-btn small-btn" type="button">Real View</button>
-            </div>
-            <div class="status-pill" id="sync-status">Offline</div>
-            <div id="user-chip" class="user-chip"></div>
-            <button id="logout-btn" class="ghost-btn" type="button">Logout</button>
-          </div>
-        </div>
-      </header>
+      </section>
 
-      <main class="app-main">
-        <section class="screen screen-active" id="screen-booking" aria-labelledby="tab-booking">
-          <form id="booking-form" class="card">
-            <div class="field">
-              <label for="guestName">Guest Name *</label>
-              <div class="guest-name-grid">
-                <select id="guestTitle" name="guestTitle">
-                  <option value="">Title</option>
-                  <option value="Mr">Mr</option>
-                  <option value="Ms">Ms</option>
-                  <option value="Rev">Rev</option>
-                </select>
-                <input id="guestName" name="guestName" type="text" placeholder="Full name" required />
-              </div>
-            </div>
-            <div class="field">
-              <label for="phone">Phone Number *</label>
-              <input
-                id="phone"
-                name="phone"
-                type="tel"
-                inputmode="numeric"
-                pattern="[0-9]*"
-                maxlength="15"
-                autocomplete="tel-national"
-                placeholder="Phone number"
-                required
-              />
-            </div>
-            <div class="field">
-              <label for="bookingDateRange">Stay Dates *</label>
-              <input
-                id="bookingDateRange"
-                type="text"
-                placeholder="Select check-in and check-out"
-                readonly
-                required
-              />
-              <input id="checkIn" name="checkIn" type="hidden" />
-              <input id="checkOut" name="checkOut" type="hidden" />
-              <p class="inline-note">Select the full stay in one calendar. Past dates are disabled.</p>
-            </div>
-            <div class="field">
-              <label for="notes">Notes</label>
-              <textarea id="notes" name="notes" placeholder="Special requests"></textarea>
-            </div>
-            <button class="secondary-btn" id="checkAvailability" type="button">Check Availability</button>
-            <div class="availability-panel">
-              <h3>Availability</h3>
-              <div class="availability-stats availability-stats-wide">
-                <div>
-                  <p>Normal Rooms</p>
-                  <h4 id="avail-normal">-</h4>
-                  <span id="booked-normal" class="availability-sub">-</span>
-                </div>
-                <div>
-                  <p>Kitchen Rooms</p>
-                  <h4 id="avail-kitchen">-</h4>
-                  <span id="booked-kitchen" class="availability-sub">-</span>
-                </div>
-                <div>
-                  <p>Driver Room</p>
-                  <h4 id="avail-driver">-</h4>
-                  <span id="booked-driver" class="availability-sub">-</span>
-                </div>
-              </div>
-              <div class="availability-detail">
-                <p>Choose rooms, nights, pax, and extra pax / kids.</p>
-                <p id="availability-hint" class="availability-hint"></p>
-              </div>
-              <div class="planner-sections">
-                <section class="planner-group">
-                  <div class="planner-group-header">
-                    <h4>Kitchen Rooms</h4>
-                    <span>2 rooms x 6 pax</span>
-                  </div>
-                  <div id="planner-kitchen" class="planner-grid planner-grid-kitchen"></div>
-                </section>
-                <section class="planner-group">
-                  <div class="planner-group-header">
-                    <h4>Normal Rooms</h4>
-                    <span>4 rooms x 4 pax</span>
-                  </div>
-                  <div id="planner-normal" class="planner-grid planner-grid-normal"></div>
-                </section>
-                <section class="planner-group driver-room-group">
-                  <div class="planner-group-header">
-                    <h4>Driver Room</h4>
-                    <span>1 room x 4 pax</span>
-                  </div>
-                  <div id="planner-driver" class="driver-room-panel"></div>
-                </section>
-              </div>
-            </div>
-            <div class="totals-grid">
-              <div class="field">
-                <label for="guests">Number of Guests *</label>
-                <input id="guests" name="guests" type="number" min="0" max="60" placeholder="Auto total" readonly />
-              </div>
-              <div class="field">
-                <label for="driversTotal">Number of Drivers</label>
-                <input id="driversTotal" type="number" min="0" max="4" placeholder="Auto total" readonly />
-              </div>
-              <div class="field">
-                <label for="extraGuestsTotal">Extra Pax / Kids</label>
-                <input id="extraGuestsTotal" type="number" min="0" max="40" placeholder="Auto total" readonly />
-              </div>
-            </div>
-            <div class="pricing-summary-panel">
-              <div class="pricing-summary-head">
-                <div>
-                  <p class="services-title">Room Pricing</p>
-                  <p class="inline-note">Room price is calculated from the saved room price and optional offer.</p>
-                </div>
-                <div id="pricing-summary-total" class="pricing-summary-total">LKR 0.00</div>
-              </div>
-              <div id="pricing-summary-list" class="pricing-summary-list">
-                <p id="pricing-summary-empty" class="inline-note">Select rooms and nights to see the total price.</p>
-              </div>
-            </div>
-            <div id="customPaymentsField" class="custom-price-panel">
-              <div class="payment-entry-head">
-                <div>
-                  <p class="services-title">Custom Price</p>
-                  <p class="inline-note">Add extra custom prices with notes. This total is added to the booking total.</p>
-                </div>
-                <button id="addCustomPayment" class="subtle-btn" type="button">Add Price</button>
-              </div>
-              <div id="customPaymentList" class="payment-entry-list">
-                <p class="inline-note">No custom price entries added.</p>
-              </div>
-              <p id="customPaymentsTotal" class="inline-note">Total custom price: LKR 0.00</p>
-            </div>
-            <div class="offer-panel">
-              <p class="services-title">Offer</p>
-              <p class="inline-note">Select the offer after room pricing. This offer applies to all rooms in this booking.</p>
-              <div class="offer-choice-list" id="booking-offer-options">
-                <label class="offer-option"><input type="radio" name="booking-offer" value="0" checked /><span>No Offer</span></label>
-                <label class="offer-option"><input type="radio" name="booking-offer" value="10" /><span>10%</span></label>
-                <label class="offer-option"><input type="radio" name="booking-offer" value="15" /><span>15%</span></label>
-                <label class="offer-option"><input type="radio" name="booking-offer" value="20" /><span>20%</span></label>
-                <label class="offer-option"><input type="radio" name="booking-offer" value="25" /><span>25%</span></label>
-                <label class="offer-option"><input type="radio" name="booking-offer" value="custom" /><span>Custom</span></label>
-              </div>
-              <div id="booking-offer-custom-field" class="field hidden">
-                <label for="booking-offer-custom">Custom Offer %</label>
-                <input id="booking-offer-custom" type="number" min="0" max="100" step="0.01" inputmode="decimal" />
-              </div>
-              <p id="booking-offer-preview" class="inline-note">Final price: LKR 0.00</p>
-            </div>
-            <div class="payment-panel">
-              <p class="services-title">Advance Payment</p>
-              <label class="check-card" for="advancePaid">
-                <input id="advancePaid" name="advancePaid" type="checkbox" />
-                <span>Advance payment received</span>
-              </label>
-              <div id="advanceAmountField" class="field hidden">
-                <label for="advanceAmount">Advance Amount</label>
-                <input id="advanceAmount" name="advanceAmount" type="number" min="0" step="0.01" inputmode="decimal" placeholder="LKR 0.00" />
-              </div>
-              <p id="advanceBalancePreview" class="inline-note">Balance after advance: LKR 0.00</p>
-              <p class="inline-note">Turn this on if the customer has already paid the advance. Balance is calculated from total price minus advance payment.</p>
-            </div>
-            <div class="services-panel">
-              <p class="services-title">Booking Services</p>
-              <p class="inline-note">Select the services for this whole booking. The same service set applies to all selected rooms.</p>
-              <div id="room-service-assignments" class="room-service-assignments">
-                <p class="inline-note">Select rooms first to assign services.</p>
-              </div>
-            </div>
-            <div class="field">
-              <label for="status">Booking Status *</label>
-              <select id="status" name="status" required>
-                <option value="Campaign">Campaign Booking</option>
-                <option value="Visit">Visit Booking</option>
-                <option value="BKC">BKC Booking</option>
-                <option value="Call">Call Booking</option>
-                <option value="Pending">Pending Booking</option>
-              </select>
-            </div>
-
-            <div class="inline-note">Booked rooms are locked. Selected rooms will be saved one by one.</div>
-
-            <button class="primary-btn" type="submit">Save Booking</button>
-          </form>
-        </section>
-
-        <section class="screen" id="screen-view" aria-labelledby="tab-view">
-          <div class="card month-card">
-            <div class="month-header">
-              <button class="month-nav-btn" id="month-prev" type="button" aria-label="Previous month">Prev</button>
-              <div>
-                <p class="eyebrow">Monthly Calendar</p>
-                <h3 id="month-label">Month</h3>
-              </div>
-              <button class="month-nav-btn" id="month-next" type="button" aria-label="Next month">Next</button>
-            </div>
-            <div class="calendar-weekdays">
-              <span>Sun</span>
-              <span>Mon</span>
-              <span>Tue</span>
-              <span>Wed</span>
-              <span>Thu</span>
-              <span>Fri</span>
-              <span>Sat</span>
-            </div>
-            <div id="month-grid" class="month-grid"></div>
+      <section class="section">
+        <div class="container">
+          <div class="section-intro centered reveal">
+            <span class="section-kicker">Live Viewing</span>
+            <h2>Don’t trust hotel photos? We’ll show you LIVE.</h2>
+            <p>
+              No edited photos. No fake expectations. What you see live is what
+              you get.
+            </p>
           </div>
 
-          <aside class="view-control-column">
-            <div class="card view-insights-card">
-              <div class="field">
-                <label for="viewDate">Select Date</label>
-                <input id="viewDate" type="date" />
-              </div>
-              <div class="view-date-actions">
-                <button class="secondary-btn small-btn subtle-btn" id="view-date-today" type="button">Today</button>
-                <button class="secondary-btn small-btn subtle-btn" id="view-date-tomorrow" type="button">Tomorrow</button>
-                <button class="secondary-btn small-btn" id="view-date-open" type="button">Open Calendar</button>
-              </div>
-              <button class="secondary-btn" id="loadBookings" type="button">View Bookings</button>
-              <p class="inline-note view-date-note">Use quick buttons if selecting a date from the calendar feels slow.</p>
-
-              <div class="stats">
-                <div>
-                  <p>Total bookings</p>
-                  <h2 id="stat-total">0</h2>
-                </div>
-                <div>
-                  <p>Occupied rooms</p>
-                  <h2 id="stat-occupied">0</h2>
-                </div>
-                <div>
-                  <p>Available rooms</p>
-                  <h2 id="stat-available">6</h2>
-                </div>
-              </div>
-            </div>
-
-            <div class="card room-status-card" id="room-status">
-              <h3>Room Status</h3>
-              <div id="room-status-list" class="room-list"></div>
-            </div>
-          </aside>
-
-          <div class="card booking-board-card" id="booking-list">
-            <div class="booking-list-head">
-              <h3>Bookings</h3>
-            </div>
-            <div class="booking-list-filters">
-              <button id="booking-filter-active" class="filter-chip filter-chip-active" type="button">Active</button>
-              <button id="booking-filter-cancelled" class="filter-chip" type="button">Cancelled</button>
-              <button id="booking-filter-all" class="filter-chip" type="button">All</button>
-              <button id="booking-filter-pending" class="filter-chip" type="button">Pending</button>
-            </div>
-            <div id="booking-cards" class="booking-cards"></div>
-            <p id="booking-empty" class="empty-state">Select a date to see bookings.</p>
-          </div>
-        </section>
-
-        <section class="screen" id="screen-planner" aria-labelledby="tab-planner">
-          <div class="card planner-toolbar-card">
-            <div class="planner-toolbar-head">
-              <div>
-                <p class="eyebrow">Reservation Planner</p>
-                <h3>Booking Timeline</h3>
-              </div>
-              <div class="planner-toolbar-actions">
-                <div class="field compact-field">
-                  <label for="plannerStartDate">Start Date</label>
-                  <input id="plannerStartDate" type="date" />
-                </div>
-                <div class="field compact-field">
-                  <label for="plannerRangeDays">Range</label>
-                  <select id="plannerRangeDays">
-                    <option value="7">7 Days</option>
-                    <option value="14" selected>14 Days</option>
-                    <option value="21">21 Days</option>
-                    <option value="30">30 Days</option>
-                    <option value="45">45 Days</option>
-                    <option value="60">60 Days</option>
-                  </select>
-                </div>
-                <button id="loadPlanner" class="secondary-btn" type="button">Load Planner</button>
-              </div>
-            </div>
-            <div class="preset-chip-row">
-              <button class="filter-chip" type="button" data-planner-preset="this-week">This Week</button>
-              <button class="filter-chip" type="button" data-planner-preset="two-weeks">Two Weeks</button>
-              <button class="filter-chip" type="button" data-planner-preset="this-month">This Month</button>
-              <button class="filter-chip" type="button" data-planner-preset="next-month">Next Month</button>
-              <button class="filter-chip" type="button" data-planner-preset="last-month">Last Month</button>
-              <button class="filter-chip" type="button" data-planner-preset="this-year">This Year</button>
-              <button class="filter-chip" type="button" data-planner-preset="last-year">Last Year</button>
-            </div>
-            <div class="planner-toolbar-extras">
-              <label class="field compact-field planner-search-field">
-                <span>Search Planner</span>
-                <input id="planner-search" type="search" placeholder="Track code, customer name, or phone number" />
-              </label>
-              <label class="field compact-field planner-color-field">
-                <span>Booking Color</span>
-                <input id="planner-color" type="color" value="#93c0ec" />
-                <small id="planner-color-target" class="planner-color-target">Owner or admin can change the shared planner colors here.</small>
-              </label>
-            </div>
-            <p class="inline-note">Pick a 7 to 60 day range. Owner or admin can change the default planner color or click a booking once to change only that track code. Pending reservations stay purple.</p>
-            <div class="planner-summary-strip">
-              <div class="planner-summary-card">
-                <span>Range</span>
-                <strong id="plannerSummaryRange">-</strong>
-              </div>
-              <div class="planner-summary-card">
-                <span>Reservations</span>
-                <strong id="plannerSummaryReservations">0</strong>
-              </div>
-              <div class="planner-summary-card">
-                <span>Occupied Room Nights</span>
-                <strong id="plannerSummaryNights">0</strong>
-              </div>
-              <div class="planner-summary-card">
-                <span>Rooms Shown</span>
-                <strong id="plannerSummaryRooms">0</strong>
-              </div>
-            </div>
-          </div>
-
-          <div class="card reservation-planner-card">
-            <div class="planner-legend">
-              <span class="planner-legend-item"><span class="planner-legend-swatch planner-legend-swatch-pending"></span>Pending</span>
-              <span class="planner-legend-item"><span class="planner-legend-swatch planner-legend-swatch-track"></span>Track Code Color</span>
-              <span class="planner-legend-item"><span class="planner-legend-swatch planner-legend-swatch-click"></span>Click a booking to open details and edit</span>
-            </div>
-            <div class="reservation-planner-scroll">
-              <div id="reservation-planner-board" class="reservation-planner-board"></div>
-            </div>
-            <p id="reservation-planner-empty" class="empty-state">Select a range to load the booking planner.</p>
-          </div>
-        </section>
-
-        <section class="screen" id="screen-analytics" aria-labelledby="tab-analytics">
-          <div class="card analytics-card analytics-dashboard-card">
-            <div class="analytics-dashboard-shell">
-              <section class="analytics-overview-hero">
-                <div class="analytics-overview-copy">
-                  <div class="analytics-overview-kicker">Business Intelligence</div>
-                  <h3>Revenue Analytics</h3>
-                  <p>Professional day-to-day business dashboard for revenue, booking flow, room demand, business costs, and net profit trends.</p>
-                </div>
-                <div class="analytics-overview-actions">
-                  <div class="analytics-date-range-card">
-                    <div class="field compact-field">
-                      <label for="analytics-date-from">From</label>
-                      <input id="analytics-date-from" type="date" />
-                    </div>
-                    <div class="field compact-field">
-                      <label for="analytics-date-to">To</label>
-                      <input id="analytics-date-to" type="date" />
-                    </div>
-                  </div>
-                  <div class="analytics-action-row">
-                    <button id="load-analytics" class="secondary-btn small-btn" type="button">Load Analytics</button>
-                    <button id="export-analytics" class="secondary-btn small-btn" type="button">Export Report</button>
-                  </div>
-                </div>
-              </section>
-
-              <section class="analytics-filter-dock">
-                <div class="analytics-filter-dock-head">
-                  <div>
-                    <p class="eyebrow">Smart Filters</p>
-                    <h4>Control the report view</h4>
-                  </div>
-                  <p class="analytics-filter-dock-copy">Use quick ranges, reservation filters, source filters, and optional deductions to build the exact business view you need.</p>
-                </div>
-                <div class="preset-chip-row analytics-preset-row">
-                  <button class="filter-chip" type="button" data-analytics-preset="this-month">This Month</button>
-                  <button class="filter-chip" type="button" data-analytics-preset="last-month">Last Month</button>
-                  <button class="filter-chip" type="button" data-analytics-preset="this-year">This Year</button>
-                  <button class="filter-chip" type="button" data-analytics-preset="last-year">Last Year</button>
-                </div>
-                <div class="preset-chip-row analytics-date-shortcuts">
-                  <button class="filter-chip" id="analytics-quick-today" type="button">Today</button>
-                  <button class="filter-chip" id="analytics-quick-week" type="button">Last 7 Days</button>
-                  <button class="filter-chip" id="analytics-pick-from" type="button">Pick From</button>
-                  <button class="filter-chip" id="analytics-pick-to" type="button">Pick To</button>
-                </div>
-                <div class="analytics-filter-grid analytics-filter-grid-dashboard">
-                  <div class="field compact-field analytics-state-field">
-                    <span>Reservation State</span>
-                    <div id="analytics-filter-state-chips" class="analytics-state-chip-list" aria-label="Reservation state filters"></div>
-                  </div>
-                  <div class="field compact-field analytics-chip-filter-field">
-                    <span>Source</span>
-                    <div id="analytics-filter-source-chips" class="analytics-state-chip-list" aria-label="Source filters"></div>
-                  </div>
-                  <div class="field compact-field analytics-chip-filter-field">
-                    <span>Booked By</span>
-                    <div id="analytics-filter-staff-chips" class="analytics-state-chip-list" aria-label="Booked by filters"></div>
-                  </div>
-                  <label class="field compact-field analytics-toggle-field">
-                    <span>Options</span>
-                    <span class="analytics-check-row">
-                      <input id="analytics-include-hold-payments" type="checkbox" />
-                      <span>Show Hold Payments</span>
-                    </span>
-                    <span class="analytics-check-row" id="analytics-deductions-toggle-row">
-                      <input id="analytics-include-deductions" type="checkbox" />
-                      <span>Include Deductions</span>
-                    </span>
-                  </label>
-                  <label class="field compact-field analytics-metric-field">
-                    <span>Trend View</span>
-                    <select id="analytics-filter-metric">
-                      <option value="revenue">Revenue</option>
-                      <option value="bookings">Bookings</option>
-                      <option value="room_nights">Room Nights</option>
-                    </select>
-                  </label>
-                </div>
-                <div id="analytics-results-context" class="analytics-results-context" aria-live="polite"></div>
-              </section>
-
-              <section class="analytics-summary-grid analytics-summary-grid-dashboard">
-                <div class="analytics-stat-card analytics-stat-card-highlight">
-                  <span>Total Earn</span>
-                  <strong id="analytics-total-earn">LKR 0.00</strong>
-                </div>
-                <div class="analytics-stat-card analytics-stat-card-highlight-secondary">
-                  <span>Net Profit</span>
-                  <strong id="analytics-net-profit">LKR 0.00</strong>
-                </div>
-                <div class="analytics-stat-card">
-                  <span>Total Deductions</span>
-                  <strong id="analytics-total-deductions">Off</strong>
-                </div>
-                <div class="analytics-stat-card">
-                  <span>Total Bookings</span>
-                  <strong id="analytics-total-bookings">0</strong>
-                </div>
-                <div class="analytics-stat-card">
-                  <span>Avg Booking Value</span>
-                  <strong id="analytics-average-booking">LKR 0.00</strong>
-                </div>
-                <div class="analytics-stat-card">
-                  <span>Pending Balance</span>
-                  <strong id="analytics-pending-balance">LKR 0.00</strong>
-                </div>
-                <div class="analytics-stat-card">
-                  <span>Room Nights</span>
-                  <strong id="analytics-room-nights">0</strong>
-                </div>
-                <div class="analytics-stat-card">
-                  <span>Avg Stay</span>
-                  <strong id="analytics-average-stay">0 nights</strong>
-                </div>
-                <div class="analytics-stat-card">
-                  <span>Hold Payments</span>
-                  <strong id="analytics-hold-payments">Off</strong>
-                </div>
-              </section>
-
-              <div class="analytics-feature-grid analytics-feature-grid-dashboard">
-                <section class="analytics-hero-panel analytics-trend-panel">
-                  <div class="analytics-panel-head analytics-panel-head-light">
-                    <h4>Trend Overview</h4>
-                    <p>Track revenue movement, booking momentum, or room night demand across the selected period.</p>
-                  </div>
-                  <div id="analytics-trend-chart" class="analytics-trend-chart"></div>
-                </section>
-                <section class="analytics-panel analytics-panel-highlight analytics-insight-panel">
-                  <div class="analytics-panel-head">
-                    <h4>Executive Snapshot</h4>
-                    <p>Fast business signals from the current filters and selected date range.</p>
-                  </div>
-                  <div id="analytics-insights" class="analytics-insight-list"></div>
-                </section>
-              </div>
-
-              <div class="analytics-panel-grid analytics-panel-grid-dashboard">
-              <section class="analytics-panel">
-                <div class="analytics-panel-head">
-                  <h4>Top Rooms</h4>
-                  <p>Rooms with the highest room-night demand.</p>
-                </div>
-                <div id="analytics-top-rooms" class="analytics-bar-list"></div>
-              </section>
-
-              <section class="analytics-panel">
-                <div class="analytics-panel-head">
-                  <h4>Room Type Revenue</h4>
-                  <p>How much each room type is earning.</p>
-                </div>
-                <div id="analytics-room-types" class="analytics-bar-list"></div>
-              </section>
-
-              <section class="analytics-panel">
-                <div class="analytics-panel-head">
-                  <h4>Service Revenue</h4>
-                  <p>Paid service totals in the selected range.</p>
-                </div>
-                <div id="analytics-services" class="analytics-bar-list"></div>
-              </section>
-
-              <section class="analytics-panel">
-                <div class="analytics-panel-head">
-                  <h4>Top Customers</h4>
-                  <p>Customers with the most reservation value.</p>
-                </div>
-                <div id="analytics-customers" class="analytics-table-list"></div>
-              </section>
-
-              <section class="analytics-panel">
-                <div class="analytics-panel-head">
-                  <h4>Status Breakdown</h4>
-                  <p>Reservation lifecycle count summary.</p>
-                </div>
-                <div id="analytics-statuses" class="analytics-table-list"></div>
-              </section>
-
-              <section class="analytics-panel">
-                <div class="analytics-panel-head">
-                  <h4>Booking Sources</h4>
-                  <p>See where most bookings are coming from.</p>
-                </div>
-                <div id="analytics-sources" class="analytics-table-list"></div>
-              </section>
-
-              <section class="analytics-panel">
-                <div class="analytics-panel-head">
-                  <h4>Guest Titles</h4>
-                  <p>Track guest title mix from bookings.</p>
-                </div>
-                <div id="analytics-titles" class="analytics-table-list"></div>
-              </section>
-
-              <section class="analytics-panel">
-                <div class="analytics-panel-head">
-                  <h4>Booked By Staff</h4>
-                  <p>Who is adding the most reservation value.</p>
-                </div>
-                <div id="analytics-staff" class="analytics-table-list"></div>
-              </section>
-              <section class="analytics-panel">
-                <div class="analytics-panel-head">
-                  <h4>Deductions Used</h4>
-                  <p>Monthly business costs included in this report.</p>
-                </div>
-                <div id="analytics-deductions-list" class="analytics-table-list"></div>
-              </section>
-              </div>
-
-              <p id="analytics-empty" class="empty-state analytics-empty-state">Select a date range to load analytics.</p>
-            </div>
-          </div>
-        </section>
-
-        <section class="screen" id="screen-deductions" aria-labelledby="tab-deductions">
-          <div class="card analytics-card">
-            <div class="accounts-header">
-              <div>
-                <p class="eyebrow">Business Costs</p>
-                <h3>Deductions</h3>
-              </div>
-            </div>
-            <p class="inline-note">Only owner and admin can save monthly deductions here. These deductions can then be included in Analytics to calculate net profit for the selected month or date range.</p>
-            <div class="analytics-summary-grid notification-summary-grid">
-              <div class="analytics-stat-card">
-                <span>Selected Month</span>
-                <strong id="deduction-month-label">-</strong>
-              </div>
-              <div class="analytics-stat-card">
-                <span>Total Deductions</span>
-                <strong id="deduction-month-total">LKR 0.00</strong>
-              </div>
-              <div class="analytics-stat-card">
-                <span>Entries</span>
-                <strong id="deduction-month-count">0</strong>
-              </div>
-            </div>
-            <div class="request-summary-panel deduction-controls">
-              <div class="request-form-grid">
-                <label class="field compact-field">
-                  <span>View Month</span>
-                  <input id="deduction-month-filter" type="month" />
-                </label>
-              </div>
-            </div>
-            <form id="deduction-form" class="request-form-layout deduction-form">
-              <div id="deduction-entry-list" class="deduction-entry-list"></div>
-              <div class="deduction-form-actions">
-                <button id="add-deduction-row" class="secondary-btn" type="button">Add Another Deduction</button>
-                <button id="save-deduction" class="primary-btn" type="submit">Save Deductions</button>
-              </div>
-            </form>
-            <div id="deduction-list" class="pricing-list deduction-list"></div>
-            <p id="deduction-empty" class="empty-state">No deductions saved for this month.</p>
-          </div>
-        </section>
-
-        <section class="screen" id="screen-guide" aria-labelledby="tab-guide">
-          <div class="card analytics-card">
-            <div class="accounts-header">
-              <div>
-                <p class="eyebrow">System Help</p>
-                <h3>Guide Book</h3>
-              </div>
-              <button id="refresh-guide" class="secondary-btn small-btn" type="button">Refresh Guide</button>
-            </div>
-            <p class="inline-note">Search, jump between sections, and open the FAQ to quickly understand the booking workflow.</p>
-            <div class="guide-toolbar">
-              <label class="field compact-field guide-search-field">
-                <span>Search Guide</span>
-                <input id="guide-search" type="search" placeholder="Search booking, hold, delete, reactivate..." />
-              </label>
-              <div id="guide-stats" class="analytics-summary-grid notification-summary-grid guide-stat-grid"></div>
-            </div>
-            <div id="guide-nav" class="settings-jump-grid guide-nav-grid"></div>
-            <article id="guide-book-content" class="guide-book-content">
-              <p class="inline-note">Loading guide book...</p>
+          <div class="steps-grid">
+            <article class="process-card reveal">
+              <span class="step-number">1</span>
+              <h3>Message us on WhatsApp</h3>
+              <p>
+                Start with a quick message and tell us the dates you want to
+                check.
+              </p>
             </article>
-            <section class="analytics-panel guide-faq-panel">
-              <div class="analytics-panel-head">
-                <h4>FAQ</h4>
-                <p>Quick answers for common booking questions.</p>
-              </div>
-              <div id="guide-faq-list" class="guide-faq-list"></div>
-            </section>
-          </div>
-        </section>
 
-        <section class="screen" id="screen-hold" aria-labelledby="tab-hold">
-          <div class="card">
-            <div class="booking-list-head">
-              <h3>Hold Bookings</h3>
-              <p class="inline-note">Bookings moved to hold appear here for follow-up, move-date requests, or owner/admin review.</p>
-            </div>
-            <div id="hold-booking-cards" class="booking-cards"></div>
-            <p id="hold-booking-empty" class="empty-state">No hold bookings right now.</p>
-          </div>
-        </section>
+            <article class="process-card reveal">
+              <span class="step-number">2</span>
+              <h3>We show your actual room live</h3>
+              <p>
+                Join a video call to view the room, bathroom, and shared spaces
+                in real time.
+              </p>
+            </article>
 
-        <section class="screen" id="screen-requests" aria-labelledby="tab-requests">
-          <div class="card">
-            <div class="accounts-header">
-              <div>
-                <p class="eyebrow">Workflow</p>
-                <h3>Change Requests</h3>
-              </div>
-              <button id="refresh-requests" class="secondary-btn small-btn" type="button">Refresh</button>
-            </div>
-            <p class="inline-note" id="requests-helper">
-              Users can submit requests. Owner/Admin can approve or reject them here.
-            </p>
-            <div class="request-filters">
-              <div class="request-filter-chips">
-                <button id="filter-recent" class="filter-chip" type="button" data-filter-mode="recent">Recent</button>
-                <button id="filter-date" class="filter-chip" type="button" data-filter-mode="date">Date By</button>
-                <button id="filter-pending" class="filter-chip filter-chip-active" type="button" data-filter-status="pending">Pending</button>
-                <button id="filter-approved" class="filter-chip" type="button" data-filter-status="approved">Approved</button>
-                <button id="filter-rejected" class="filter-chip" type="button" data-filter-status="rejected">Cancelled</button>
-                <button id="filter-all" class="filter-chip" type="button" data-filter-status="all">All Data</button>
-              </div>
-              <div class="request-filter-search">
-                <div class="field compact-field">
-                  <label for="requests-track-filter">Track Code</label>
-                  <input id="requests-track-filter" type="text" placeholder="CAM-0008" />
-                </div>
-                <div class="field compact-field">
-                  <label for="requests-requested-by-filter">Requested By</label>
-                  <input id="requests-requested-by-filter" type="text" placeholder="Kavindi" />
-                </div>
-                <div class="field compact-field">
-                  <label for="requests-date-from">From Date</label>
-                  <input id="requests-date-from" type="date" />
-                </div>
-                <div class="field compact-field">
-                  <label for="requests-date-to">To Date</label>
-                  <input id="requests-date-to" type="date" />
-                </div>
-              </div>
-            </div>
-            <div id="requests-list" class="accounts-list"></div>
-            <p id="requests-empty" class="empty-state">No requests yet.</p>
+            <article class="process-card reveal">
+              <span class="step-number">3</span>
+              <h3>Book only if satisfied</h3>
+              <p>
+                Reserve only when you feel fully comfortable with the stay and
+                the offer.
+              </p>
+            </article>
           </div>
-        </section>
 
-        <section class="screen" id="screen-notifications" aria-labelledby="tab-notifications">
-          <div class="card analytics-card">
-            <div class="accounts-header">
-              <div>
-                <p class="eyebrow">Live Updates</p>
-                <h3>Notifications</h3>
-              </div>
-              <button id="refresh-notifications" class="secondary-btn small-btn" type="button">Refresh</button>
-            </div>
-            <p class="inline-note">Short updates show exactly what happened to a booking or request, who did it, and when it happened.</p>
-            <div class="preset-chip-row">
-              <button class="filter-chip filter-chip-active" type="button" data-notification-preset="this-week">This Week</button>
-              <button class="filter-chip" type="button" data-notification-preset="this-month">This Month</button>
-              <button class="filter-chip" type="button" data-notification-preset="this-year">This Year</button>
-              <button class="filter-chip" type="button" data-notification-preset="last-month">Last Month</button>
-            </div>
-            <div class="analytics-summary-grid notification-summary-grid">
-              <div class="analytics-stat-card">
-                <span>Range</span>
-                <strong id="notification-range-label">-</strong>
-              </div>
-              <div class="analytics-stat-card">
-                <span>Total</span>
-                <strong id="notification-total-count">0</strong>
-              </div>
-              <div class="analytics-stat-card">
-                <span>Unread</span>
-                <strong id="notification-unread-count">0</strong>
-              </div>
-            </div>
-            <div id="notifications-list" class="notification-list"></div>
-            <p id="notifications-empty" class="empty-state">No notifications in this range.</p>
+          <div class="inline-cta reveal">
+            <a class="button button-primary" data-whatsapp-link href="#">
+              Book on WhatsApp
+            </a>
           </div>
-        </section>
-
-        <section class="screen" id="screen-accounts" aria-labelledby="tab-accounts">
-          <div class="card">
-            <div class="accounts-header">
-              <div>
-                <p class="eyebrow">Access Control</p>
-                <h3>Accounts</h3>
-              </div>
-              <button id="refresh-accounts" class="secondary-btn small-btn" type="button">Refresh</button>
-            </div>
-            <p class="inline-note">Owner can change roles and grant or remove admin-style access with ticks. Users with Accounts Access can approve or block staff accounts.</p>
-            <div id="accounts-list" class="accounts-list"></div>
-            <p id="accounts-empty" class="empty-state">No accounts yet.</p>
-          </div>
-        </section>
-
-        <section class="screen" id="screen-pricing" aria-labelledby="tab-pricing">
-          <div class="card">
-            <div class="accounts-header">
-              <div>
-                <p class="eyebrow">Settings</p>
-                <h3>Booking Settings</h3>
-              </div>
-              <div class="pricing-toolbar">
-                <button id="refresh-pricing" class="secondary-btn small-btn" type="button">Refresh</button>
-                <button id="save-pricing" class="primary-btn small-btn" type="button">Save Settings</button>
-              </div>
-            </div>
-            <p class="inline-note">This page now groups all booking settings in one place. Use the quick jump buttons to move straight to the section you need.</p>
-            <div class="settings-overview-card">
-              <div class="settings-overview-head">
-                <div>
-                  <h4>Quick Jump</h4>
-                  <p>Open the exact settings section without searching the full page.</p>
-                </div>
-              </div>
-              <div class="settings-jump-grid">
-                <button class="secondary-btn small-btn" type="button" data-settings-jump="settings-times">Check-In / Out Time</button>
-                <button class="secondary-btn small-btn" type="button" data-settings-jump="settings-display">Notifications & Display</button>
-                <button class="secondary-btn small-btn" type="button" data-settings-jump="settings-display">Customer Share Messages</button>
-                <button class="secondary-btn small-btn" type="button" data-settings-jump="settings-preview">Temporary View</button>
-                <button class="secondary-btn small-btn" type="button" data-settings-jump="settings-system-updates">System Updates Access</button>
-                <button class="secondary-btn small-btn" type="button" data-settings-jump="settings-rooms">Room Setup</button>
-                <button class="secondary-btn small-btn" type="button" data-settings-jump="settings-services">Services</button>
-                <button class="secondary-btn small-btn" type="button" data-settings-jump="settings-prices">Room Prices</button>
-              </div>
-              <div class="settings-outline-list">
-                <div class="settings-outline-item">
-                  <strong>Check-In / Out Time</strong>
-                  <span>Control the manual booking time lock used by booking actions.</span>
-                </div>
-                <div class="settings-outline-item">
-                  <strong>Notifications & Display</strong>
-                  <span>Choose who can see notifications and what appears in booking view, PDF, and WhatsApp sharing.</span>
-                </div>
-                <div class="settings-outline-item">
-                  <strong>Customer Share Messages</strong>
-                  <span>Set the reminder and contact text shown to customers in advance-payment PDF and WhatsApp sharing.</span>
-                </div>
-                <div class="settings-outline-item">
-                  <strong>Temporary View</strong>
-                  <span>Owner can preview how the app looks for admin or normal user before saving new visibility changes.</span>
-                </div>
-                <div class="settings-outline-item">
-                  <strong>System Updates Access</strong>
-                  <span>Choose who can open the System Updates page and review saved audit history.</span>
-                </div>
-                <div class="settings-outline-item">
-                  <strong>Room Setup</strong>
-                  <span>Turn rooms on or off, add rooms, and remove unused room numbers.</span>
-                </div>
-                <div class="settings-outline-item">
-                  <strong>Services</strong>
-                  <span>Manage booking service names, prices, and their display order.</span>
-                </div>
-                <div class="settings-outline-item">
-                  <strong>Room Prices</strong>
-                  <span>Set the amount for each room and pax level, including room mode prices for normal and kitchen rooms. Price changes will appear in notifications.</span>
-                </div>
-              </div>
-            </div>
-            <div id="settings-times" class="settings-section-heading">
-              <h4>Check-In / Out Time</h4>
-              <p>These times decide when booking action locks and check-in / check-out flow should start.</p>
-            </div>
-            <div class="room-fix-settings-grid">
-              <label class="field compact-field">
-                <span>Manual Check-In Time</span>
-                <input id="runtime-checkin-time" type="time" value="14:00" />
-              </label>
-              <label class="field compact-field">
-                <span>Manual Check-Out Time</span>
-                <input id="runtime-checkout-time" type="time" value="11:00" />
-              </label>
-            </div>
-            <div id="settings-display" class="settings-section-heading">
-              <h4>Notifications & Display</h4>
-              <p>Manage notification access, booking page fields, and exported booking details.</p>
-            </div>
-            <div id="export-settings-list" class="pricing-list"></div>
-            <div id="settings-preview" class="settings-section-heading">
-              <h4>Temporary View</h4>
-              <p>Owner can temporarily preview the app as admin or user and quickly reset back to the real owner view.</p>
-            </div>
-            <div id="settings-preview-panel" class="pricing-list"></div>
-            <div id="settings-system-updates" class="settings-section-heading">
-              <h4>System Updates Access</h4>
-              <p>Choose which roles can open the System Updates audit page.</p>
-            </div>
-            <div id="settings-rooms" class="settings-section-heading">
-              <h4>Room Setup</h4>
-              <p>Add or remove room numbers and control whether each room is active.</p>
-            </div>
-            <div id="room-inventory-list" class="room-inventory-list"></div>
-            <div id="settings-services" class="settings-section-heading">
-              <h4>Services</h4>
-              <p>Manage the service buttons that can be attached to bookings.</p>
-            </div>
-            <div id="service-catalog-list" class="pricing-list"></div>
-            <div id="settings-prices" class="settings-section-heading">
-              <h4>Room Prices</h4>
-              <p>Set the amount charged for each room type and pax option, including A/C and Non A/C normal-room prices.</p>
-            </div>
-            <div id="pricing-list" class="pricing-list"></div>
-          </div>
-        </section>
-      </main>
-
-      <nav id="bottom-nav" class="bottom-nav">
-        <button id="tab-booking" class="nav-btn nav-active" type="button">
-          <span class="nav-btn-icon" aria-hidden="true">&#8962;</span>
-          <span class="nav-btn-text">
-            <span class="nav-btn-label">Booking</span>
-            <span class="nav-btn-note">New stay</span>
-          </span>
-        </button>
-        <button id="tab-view" class="nav-btn" type="button">
-          <span class="nav-btn-icon" aria-hidden="true">&#8981;</span>
-          <span class="nav-btn-text">
-            <span class="nav-btn-label">View</span>
-            <span class="nav-btn-note">By date</span>
-          </span>
-        </button>
-        <button id="tab-planner" class="nav-btn" type="button">
-          <span class="nav-btn-icon" aria-hidden="true">&#9638;</span>
-          <span class="nav-btn-text">
-            <span class="nav-btn-label">Planner</span>
-            <span class="nav-btn-note">Room plan</span>
-          </span>
-        </button>
-        <button id="tab-analytics" class="nav-btn" type="button">
-          <span class="nav-btn-icon" aria-hidden="true">&#9684;</span>
-          <span class="nav-btn-text">
-            <span class="nav-btn-label">Analytics</span>
-            <span class="nav-btn-note">Reports</span>
-          </span>
-        </button>
-        <button id="tab-deductions" class="nav-btn hidden" type="button">
-          <span class="nav-btn-icon" aria-hidden="true">&#8360;</span>
-          <span class="nav-btn-text">
-            <span class="nav-btn-label">Costs</span>
-            <span class="nav-btn-note">Deductions</span>
-          </span>
-        </button>
-        <button id="tab-guide" class="nav-btn" type="button">
-          <span class="nav-btn-icon" aria-hidden="true">?</span>
-          <span class="nav-btn-text">
-            <span class="nav-btn-label">Guide</span>
-            <span class="nav-btn-note">Help</span>
-          </span>
-        </button>
-        <button id="tab-hold" class="nav-btn" type="button">
-          <span class="nav-btn-icon" aria-hidden="true">&#9208;</span>
-          <span class="nav-btn-text">
-            <span class="nav-btn-label">Hold</span>
-            <span class="nav-btn-note">Bookings</span>
-          </span>
-        </button>
-        <button id="tab-requests" class="nav-btn" type="button">
-          <span class="nav-btn-icon" aria-hidden="true">&#9998;</span>
-          <span class="nav-btn-text">
-            <span class="nav-btn-label">Requests</span>
-            <span class="nav-btn-note">Inbox</span>
-          </span>
-        </button>
-        <button id="tab-notifications" class="nav-btn hidden" type="button">
-          <span class="nav-btn-icon" aria-hidden="true">&#128276;</span>
-          <span class="nav-btn-text">
-            <span class="nav-btn-label">Alerts</span>
-            <span class="nav-btn-note">Updates</span>
-          </span>
-        </button>
-        <button id="tab-accounts" class="nav-btn hidden" type="button">
-          <span class="nav-btn-icon" aria-hidden="true">&#128100;</span>
-          <span class="nav-btn-text">
-            <span class="nav-btn-label">Users</span>
-            <span class="nav-btn-note">Accounts</span>
-          </span>
-        </button>
-        <button id="tab-pricing" class="nav-btn hidden" type="button">
-          <span class="nav-btn-icon" aria-hidden="true">&#9881;</span>
-          <span class="nav-btn-text">
-            <span class="nav-btn-label">Settings</span>
-            <span class="nav-btn-note">System</span>
-          </span>
-        </button>
-      </nav>
-    </div>
-
-    <div id="request-modal" class="modal hidden">
-      <div class="modal-backdrop" data-close-modal></div>
-      <div class="modal-card">
-        <div class="accounts-header">
-          <div>
-            <p class="eyebrow">Booking Action</p>
-            <h3 id="modal-title">Request Change</h3>
-          </div>
-          <button id="close-modal" class="ghost-btn" type="button">Close</button>
         </div>
-        <form id="request-form" class="request-form-layout">
-          <input id="modal-booking-id" type="hidden" />
-          <div id="request-reason-field" class="field">
-            <label for="request-reason">Update Reason *</label>
-            <select id="request-reason" required>
-              <option value="cancel">Customer request to cancel</option>
-              <option value="hold">Customer request to hold</option>
-              <option value="change_date">Customer request to change date</option>
-              <option value="edit_booking_data">Edit Booking</option>
-              <option value="change_room_price" hidden>Change room price</option>
-              <option value="additional_rooms" hidden>Requesting additional rooms</option>
-              <option value="additional_services" hidden>Requesting additional services</option>
-              <option value="remove_rooms" hidden>Requesting room removal</option>
-              <option value="delete_booking">Delete Booking</option>
-            </select>
-          </div>
-          <div class="request-summary-panel">
-            <div class="request-summary-grid">
-              <div class="booking-summary-chip booking-summary-chip-wide">
-                <span>Current Dates</span>
-                <strong id="request-current-dates">-</strong>
-              </div>
-              <div class="booking-summary-chip">
-                <span>Current Room</span>
-                <strong id="request-current-room">-</strong>
-              </div>
-            </div>
-          </div>
-          <section class="request-section-card">
-            <p class="services-title">Guest Details</p>
-            <div class="request-form-grid">
-              <div class="field">
-                <label for="request-guest-name">Guest Name</label>
-                <div class="guest-name-grid">
-                  <select id="request-guest-title">
-                    <option value="">Title</option>
-                    <option value="Mr">Mr</option>
-                    <option value="Ms">Ms</option>
-                    <option value="Rev">Rev</option>
-                  </select>
-                  <input id="request-guest-name" type="text" />
-                </div>
-              </div>
-              <div class="field">
-                <label for="request-phone">Phone Number</label>
-                <input
-                  id="request-phone"
-                  type="tel"
-                  inputmode="numeric"
-                  pattern="[0-9]*"
-                  maxlength="15"
-                  autocomplete="tel-national"
-                />
-              </div>
-            </div>
-          </section>
-          <section class="request-section-card">
-            <p class="services-title">Stay Dates</p>
-            <div class="field grid-2">
-              <div>
-                <label id="request-checkin-label" for="request-check-in">Check-in</label>
-                <input id="request-check-in" type="date" />
-              </div>
-              <div>
-                <label id="request-checkout-label" for="request-check-out">Check-out</label>
-                <input id="request-check-out" type="date" />
-              </div>
-            </div>
-            <p id="request-date-help" class="inline-note hidden">
-              Enter the new requested date range. Owner/Admin will see both current and requested dates before approval.
+      </section>
+
+      <section class="section alt-surface" id="rooms">
+        <div class="container split-layout">
+          <div class="section-copy reveal">
+            <span class="section-kicker">Room Details</span>
+            <h2>Comfortable Stay Near Sigiriya</h2>
+            <p>
+              Designed for couples, small families, and travelers who want a
+              calm base close to Sigiriya’s most loved experiences.
             </p>
-          </section>
-          <section class="request-section-card">
-            <p class="services-title">Room Setup</p>
-            <div class="field grid-2">
-              <div>
-                <label for="request-room-type">Room Group</label>
-                <select id="request-room-type">
-                  <option value="normal">Normal Room</option>
-                  <option value="kitchen">Kitchen Room</option>
-                  <option value="driver">Driver Room</option>
-                </select>
-              </div>
-              <div>
-                <label for="request-room-number">Room Number</label>
-                <select id="request-room-number"></select>
-              </div>
-            </div>
-            <div id="request-guests-field" class="field">
-              <label for="request-guests">Pax Count</label>
-              <select id="request-guests"></select>
-            </div>
-          </section>
-          <div id="request-extra-rooms-section" class="request-section-card hidden">
-            <p class="services-title">Additional Rooms</p>
-            <p class="inline-note">Select extra rooms only when the reason is requesting additional rooms.</p>
-            <div id="request-extra-rooms" class="extra-room-grid"></div>
-          </div>
-          <div id="request-services-section" class="request-section-card hidden">
-            <p class="services-title">Additional Services</p>
-            <p class="inline-note">Select the extra services requested for this booking.</p>
-            <div id="request-services" class="service-grid"></div>
-          </div>
-          <div id="request-remove-rooms-section" class="request-section-card hidden">
-            <p class="services-title">Remove Rooms</p>
-            <p class="inline-note">Select the rooms that should be removed from this booking.</p>
-            <div id="request-remove-rooms" class="extra-room-grid"></div>
-          </div>
-          <div id="request-booking-rooms-section" class="request-section-card hidden">
-            <p class="services-title">Booking Rooms</p>
-            <p class="inline-note">Update room, pax, room mode, services, and add more rooms for the same booking.</p>
-            <div id="request-booking-rooms" class="extra-room-grid"></div>
-          </div>
-          <div id="request-price-section" class="offer-panel hidden">
-            <p class="services-title">Room Pricing</p>
-            <p id="request-current-price" class="inline-note">Current price: -</p>
-            <div class="request-price-grid">
-              <div>
-                <label for="request-weekend-rate">Room Price</label>
-                <input id="request-weekend-rate" type="number" min="0" step="0.01" inputmode="decimal" />
-              </div>
-            </div>
-            <div class="offer-choice-list" id="request-offer-options">
-              <label class="offer-option"><input type="radio" name="request-offer" value="0" checked /><span>No Offer</span></label>
-              <label class="offer-option"><input type="radio" name="request-offer" value="10" /><span>10%</span></label>
-              <label class="offer-option"><input type="radio" name="request-offer" value="15" /><span>15%</span></label>
-              <label class="offer-option"><input type="radio" name="request-offer" value="20" /><span>20%</span></label>
-              <label class="offer-option"><input type="radio" name="request-offer" value="25" /><span>25%</span></label>
-              <label class="offer-option"><input type="radio" name="request-offer" value="custom" /><span>Custom</span></label>
-            </div>
-            <div id="request-offer-custom-field" class="field hidden">
-              <label for="request-offer-custom">Custom Offer %</label>
-              <input id="request-offer-custom" type="number" min="0" max="100" step="0.01" inputmode="decimal" />
-            </div>
-            <p id="request-offer-preview" class="inline-note">Final price: LKR 0.00</p>
-            <div id="request-custom-price-field" class="payment-entry-panel">
-              <div class="payment-entry-head">
-                <div>
-                  <p class="payment-entry-title">Custom Price</p>
-                  <p class="inline-note">Add extra custom price rows for the full booking.</p>
-                </div>
-                <button id="request-add-custom-price" class="subtle-btn" type="button">Add Price</button>
-              </div>
-              <div id="request-custom-price-list" class="payment-entry-list">
-                <p class="inline-note">No custom price entries added.</p>
-              </div>
-              <p id="request-custom-price-total" class="inline-note">Total custom price: LKR 0.00</p>
-            </div>
-            <div id="request-advance-field" class="payment-entry-panel">
-              <p class="payment-entry-title">Advance Payment</p>
-              <label class="check-card" for="request-advance-paid">
-                <input id="request-advance-paid" type="checkbox" />
-                <span>Advance payment received</span>
-              </label>
-              <div id="request-advance-amount-field" class="field hidden">
-                <label for="request-advance-amount">Advance Amount</label>
-                <input id="request-advance-amount" type="number" min="0" step="0.01" inputmode="decimal" placeholder="LKR 0.00" />
-              </div>
-            </div>
-          </div>
-          <section class="request-section-card">
-            <p class="services-title">Booking Details</p>
-            <div class="request-form-grid">
-              <div class="field">
-                <label for="request-status">Booking Status</label>
-                <select id="request-status">
-                  <option value="Campaign">Campaign Booking</option>
-                  <option value="Visit">Visit Booking</option>
-                  <option value="BKC">BKC Booking</option>
-                  <option value="Call">Call Booking</option>
-                  <option value="Pending">Pending Booking</option>
-                  <option value="Cancelled">Cancelled</option>
-                </select>
-              </div>
-              <div class="field field-span-2">
-                <label for="request-notes">Notes</label>
-                <textarea id="request-notes"></textarea>
-              </div>
-              <div class="field field-span-2">
-                <label for="request-message">Comment</label>
-                <textarea id="request-message" placeholder="Explain why this change is needed."></textarea>
-              </div>
-            </div>
-          </section>
-          <button id="request-submit" class="primary-btn" type="submit">Submit</button>
-        </form>
-      </div>
-    </div>
 
+            <ul class="feature-list" aria-label="Room features">
+              <li>AC room</li>
+              <li>Double bed</li>
+              <li>2–3 guests</li>
+              <li>Attached bathroom</li>
+              <li>Hot water</li>
+            </ul>
 
-    <div id="booking-details-modal" class="modal hidden">
-      <div class="modal-backdrop" data-close-booking-details></div>
-      <div class="modal-card">
-        <div class="accounts-header">
-          <div>
-            <p class="eyebrow">Booking Details</p>
-            <h3 id="booking-details-title">Booking Details</h3>
+            <a class="button button-secondary" data-whatsapp-link href="#">
+              Check Room Live Now
+            </a>
           </div>
-          <button id="close-booking-details" class="ghost-btn" type="button">Close</button>
+
+          <div class="gallery-grid reveal">
+            <article class="media-card media-room-main">
+              <span>Room walkthrough preview</span>
+            </article>
+            <article class="media-card media-bathroom">
+              <span>Bathroom placeholder</span>
+            </article>
+            <article class="media-card media-bed">
+              <span>Bed & window light</span>
+            </article>
+          </div>
         </div>
-        <div id="booking-details-body" class="booking-details-body"></div>
+      </section>
+
+      <section class="section" id="experience">
+        <div class="container">
+          <div class="section-intro reveal">
+            <span class="section-kicker">Meals & Experience</span>
+            <h2>More Than a Stay — Enjoy the Experience</h2>
+            <p>
+              Relax into a complete resort stay with meals, rooftop moments,
+              and poolside time built into the experience.
+            </p>
+          </div>
+
+          <div class="experience-grid">
+            <article class="experience-card reveal">
+              <div class="experience-media media-breakfast"></div>
+              <div class="experience-copy">
+                <h3>Breakfast included</h3>
+                <p>Start the morning with a calm, fresh breakfast before your day out.</p>
+              </div>
+            </article>
+
+            <article class="experience-card reveal">
+              <div class="experience-media media-dinner"></div>
+              <div class="experience-copy">
+                <h3>Dinner included</h3>
+                <p>Return to an easy evening meal after exploring Sigiriya and the village.</p>
+              </div>
+            </article>
+
+            <article class="experience-card reveal">
+              <div class="experience-media media-rooftop"></div>
+              <div class="experience-copy">
+                <h3>Rooftop dining</h3>
+                <p>Enjoy dinner and morning tea with open views and a breezy atmosphere.</p>
+              </div>
+            </article>
+
+            <article class="experience-card reveal">
+              <div class="experience-media media-pool"></div>
+              <div class="experience-copy">
+                <h3>Pool access</h3>
+                <p>Unwind with an afternoon swim and a slower resort-style rhythm.</p>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section offer-section">
+        <div class="container offer-card reveal">
+          <div>
+            <span class="section-kicker">Offer</span>
+            <h2>Early Booking Offer</h2>
+            <p>
+              Secure your preferred date early and enjoy the full Sigiri Resort
+              experience at a reduced rate.
+            </p>
+          </div>
+
+          <div class="offer-pricing">
+            <p><span>Original Price</span><strong>Rs. 15,000</strong></p>
+            <p><span>Early Booking</span><strong>35% OFF</strong></p>
+            <p><span>Included</span><strong>Room, breakfast, dinner, rooftop, pool</strong></p>
+            <a class="button button-primary" data-whatsapp-link href="#">
+              Reserve Your Date
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <section class="section alt-surface" id="availability">
+        <div class="container">
+          <div class="section-intro reveal">
+            <span class="section-kicker">Availability</span>
+            <h2>Check Available Dates</h2>
+            <p>
+              A clean availability preview helps guests choose dates quickly.
+              Final confirmation is always done live on WhatsApp before payment.
+            </p>
+          </div>
+
+          <div class="availability-layout">
+            <div class="calendar-card card reveal">
+              <div class="calendar-header">
+                <div>
+                  <p class="calendar-label">Availability preview</p>
+                  <h3 id="calendar-month">This Month</h3>
+                </div>
+                <span class="calendar-updated">Updated daily</span>
+              </div>
+
+              <div class="calendar-legend" aria-label="Availability legend">
+                <span><i class="status-dot available"></i>Available</span>
+                <span><i class="status-dot limited"></i>Limited rooms left</span>
+                <span><i class="status-dot booked"></i>Booked</span>
+              </div>
+
+              <div class="calendar-grid" id="calendar-grid" aria-live="polite"></div>
+            </div>
+
+            <aside class="availability-aside reveal">
+              <div class="availability-note card">
+                <span class="section-kicker">Date Notes</span>
+                <h3>Believable, easy-to-update status cards</h3>
+                <div id="availability-highlights" class="availability-highlights"></div>
+                <a class="button button-secondary" data-whatsapp-link href="#">
+                  View Availability
+                </a>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="nearby">
+        <div class="container">
+          <div class="section-intro reveal">
+            <span class="section-kicker">Nearby Places</span>
+            <h2>Explore Nearby Attractions</h2>
+            <p>
+              Keep this section easy to update with fresh experiences, driver
+              routes, and local recommendations.
+            </p>
+          </div>
+
+          <div class="attractions-grid">
+            <article class="attraction-card reveal">
+              <div class="attraction-media media-sigiriya"></div>
+              <h3>Sigiriya Rock</h3>
+              <p>
+                Add your preferred description, distance, and sunrise visit
+                details here later.
+              </p>
+            </article>
+
+            <article class="attraction-card reveal">
+              <div class="attraction-media media-pidurangala"></div>
+              <h3>Pidurangala Rock</h3>
+              <p>
+                Use this card for hiking info, best times to visit, and guide
+                recommendations.
+              </p>
+            </article>
+
+            <article class="attraction-card reveal">
+              <div class="attraction-media media-village"></div>
+              <h3>Nature / village experiences</h3>
+              <p>
+                Add safari trips, village tours, cycling, or cultural
+                experiences when ready.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section alt-surface" id="reviews">
+        <div class="container">
+          <div class="section-intro reveal">
+            <span class="section-kicker">Reviews</span>
+            <h2>Guest Reviews</h2>
+            <p>
+              This layout is designed to support real guest photos, WhatsApp
+              screenshots, and short video testimonials later.
+            </p>
+          </div>
+
+          <div class="reviews-grid">
+            <article class="review-card reveal">
+              <div class="review-top">
+                <span class="avatar-placeholder">A</span>
+                <div>
+                  <h3>Add guest name</h3>
+                  <p>Live room call + clean stay</p>
+                </div>
+              </div>
+              <p>
+                “Place your real review here. This card is styled for honest,
+                trust-building feedback and can support a guest photo.”
+              </p>
+            </article>
+
+            <article class="review-card reveal">
+              <div class="review-top">
+                <span class="avatar-placeholder">M</span>
+                <div>
+                  <h3>Add guest name</h3>
+                  <p>Family trip / first time in Sri Lanka</p>
+                </div>
+              </div>
+              <p>
+                “Use this space for a review about the live video call, meals,
+                rooftop, or the overall booking confidence.”
+              </p>
+            </article>
+
+            <article class="review-card reveal review-video-card">
+              <div class="video-review-placeholder">
+                <span>Video review placeholder</span>
+              </div>
+              <div>
+                <h3>Guest video story</h3>
+                <p>
+                  Replace this block with a short guest clip, vertical video, or
+                  WhatsApp testimonial capture.
+                </p>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="faq">
+        <div class="container faq-layout">
+          <div class="section-copy reveal">
+            <span class="section-kicker">FAQ</span>
+            <h2>Helpful answers before you book</h2>
+            <p>
+              The most important questions are easy to find so guests feel clear
+              and comfortable before they message you.
+            </p>
+          </div>
+
+          <div class="faq-list reveal">
+            <article class="faq-item">
+              <button class="faq-question" aria-expanded="false">
+                Is the live video call free?
+              </button>
+              <div class="faq-answer">
+                <p>
+                  Yes. The live room viewing is free and helps you decide with
+                  confidence before you confirm anything.
+                </p>
+              </div>
+            </article>
+
+            <article class="faq-item">
+              <button class="faq-question" aria-expanded="false">
+                How do I confirm my booking?
+              </button>
+              <div class="faq-answer">
+                <p>
+                  Message on WhatsApp, view the room live, confirm your dates,
+                  and then complete the booking with the hotel directly.
+                </p>
+              </div>
+            </article>
+
+            <article class="faq-item">
+              <button class="faq-question" aria-expanded="false">
+                Are meals included?
+              </button>
+              <div class="faq-answer">
+                <p>
+                  Yes. The offer includes breakfast and dinner along with your
+                  stay, rooftop access, and pool access.
+                </p>
+              </div>
+            </article>
+
+            <article class="faq-item">
+              <button class="faq-question" aria-expanded="false">
+                What time is check-in / check-out?
+              </button>
+              <div class="faq-answer">
+                <p>
+                  Add your final hotel policy here. This placeholder is ready to
+                  update with your exact check-in and check-out hours.
+                </p>
+              </div>
+            </article>
+
+            <article class="faq-item">
+              <button class="faq-question" aria-expanded="false">
+                Is parking available?
+              </button>
+              <div class="faq-answer">
+                <p>
+                  Yes, this FAQ item is ready for your exact parking details,
+                  including vehicle types and availability notes.
+                </p>
+              </div>
+            </article>
+
+            <article class="faq-item">
+              <button class="faq-question" aria-expanded="false">
+                Can extra guests stay?
+              </button>
+              <div class="faq-answer">
+                <p>
+                  You can customize this answer later with your extra guest
+                  policy, pricing, and meal options.
+                </p>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section final-cta-section" id="contact">
+        <div class="container final-cta-grid">
+          <div class="final-copy reveal">
+            <span class="section-kicker">Contact</span>
+            <h2>Ready to See Your Room Live?</h2>
+            <p>
+              Message us to check availability, request your live video call,
+              and reserve only when you feel sure.
+            </p>
+
+            <div class="contact-actions">
+              <a class="button button-primary" data-whatsapp-link href="#">
+                Book on WhatsApp
+              </a>
+              <a class="button button-secondary" data-call-link href="#">
+                Call Now
+              </a>
+            </div>
+
+            <div class="contact-detail-list">
+              <p><strong>WhatsApp</strong> <span id="whatsapp-display">+94 77 123 4567</span></p>
+              <p><strong>Call</strong> <span id="call-display">+94 77 123 4567</span></p>
+              <p><strong>Location</strong> Avudangawa, Sigiriya, Sri Lanka</p>
+            </div>
+          </div>
+
+          <div class="location-card card reveal">
+            <div class="map-placeholder">
+              <span>Google Maps placeholder</span>
+            </div>
+            <div class="location-copy">
+              <h3>Find Sigiri Resort</h3>
+              <p>
+                Avudangawa, Sigiriya, Sri Lanka. Keep this block ready for your
+                exact map pin, landmark directions, and transfer details.
+              </p>
+              <a
+                class="text-link"
+                href="https://maps.google.com/?q=Avudangawa,Sigiriya,Sri+Lanka"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open location in Google Maps
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-inner">
+        <p>Sigiri Resort • Live video viewing before booking • <span id="year"></span></p>
+        <a href="#top">Back to top</a>
       </div>
+    </footer>
+
+    <div class="sticky-mobile-cta" aria-label="Sticky mobile booking bar">
+      <a class="button button-primary" data-whatsapp-link href="#">
+        Book on WhatsApp
+      </a>
+      <a class="button button-secondary" href="#availability">Availability</a>
     </div>
 
-    <div id="toast" class="toast" role="status" aria-live="polite"></div>
-
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-    <script src="app.js"></script>
+    <script src="./script.js"></script>
   </body>
 </html>
