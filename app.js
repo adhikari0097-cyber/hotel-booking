@@ -4283,7 +4283,7 @@ async function removeBookingRoomDirect(bookingId) {
     requestedRemoveRooms: [{ bookingId: booking.id, roomType: normalizeRoomGroup(booking.roomType), roomNumber: booking.roomNumber }],
     requestStatusOverride: "approved",
     adminNote: "Removed from booking card.",
-    reviewedBy: state.currentSession.user.id,
+    reviewedBy: state.currentSession?.user?.id || null,
     reviewedAt: new Date().toISOString(),
   });
 }
@@ -6003,8 +6003,9 @@ async function runSessionBootStep(label, task, failures) {
 
 async function applySession(session) {
   state.currentSession = session;
+  const sessionUserId = session?.user?.id || null;
 
-  if (!session) {
+  if (!sessionUserId) {
     state.currentProfile = null;
     state.uiPreviewRole = "";
     state.notifications = [];
@@ -6019,7 +6020,7 @@ async function applySession(session) {
     return;
   }
 
-  const profile = await fetchProfile(session.user.id);
+  const profile = await fetchProfile(sessionUserId);
   if (!profile) {
     state.currentProfile = buildFallbackProfileFromSession(session);
     if (state.currentProfile) {
@@ -9874,7 +9875,7 @@ async function fetchRequests() {
     .order("created_at", { ascending: false });
 
   if (!canManageRequests()) {
-    query = query.eq("requested_by", state.currentSession.user.id);
+    query = query.eq("requested_by", state.currentSession?.user?.id || "");
   }
 
   const { data, error } = await query;
@@ -9956,7 +9957,7 @@ async function insertChangeRequest(payload) {
   ensureSupabase();
   const row = {
     booking_id: payload.bookingId,
-    requested_by: state.currentSession.user.id,
+    requested_by: state.currentSession?.user?.id || null,
     reason: payload.reason,
     request_note: payload.requestNote || "",
     requested_scope: payload.requestScope || "single",
@@ -11725,7 +11726,7 @@ async function insertSystemUpdate(payload = {}) {
     update_type: payload.updateType || "settings_saved",
     title: payload.title || "System Update",
     message: payload.message || "",
-    actor_user_id: state.currentSession.user.id,
+    actor_user_id: state.currentSession?.user?.id || null,
     actor_name: payload.actorName || getNotificationActorName(),
     metadata: payload.metadata || {},
   };
@@ -11974,7 +11975,7 @@ async function insertNotification(payload = {}) {
     event_type: payload.eventType || "booking_updated",
     title: payload.title || "Booking Update",
     message: payload.message || "",
-    actor_user_id: state.currentSession.user.id,
+    actor_user_id: state.currentSession?.user?.id || null,
     actor_name: payload.actorName || getNotificationActorName(),
     target_user_id: payload.targetUserId || null,
     audience: payload.audience || "owner_admin",
@@ -12015,7 +12016,7 @@ async function fetchNotificationReadIds(notificationIds = []) {
   const { data, error } = await state.supabase
     .from(CONFIG.SUPABASE_NOTIFICATION_READS_TABLE)
     .select("notification_id")
-    .eq("user_id", state.currentSession.user.id)
+    .eq("user_id", state.currentSession?.user?.id || "")
     .in("notification_id", notificationIds);
   if (error) throw new Error(error.message || "Could not load notification reads.");
   return new Set((data || []).map((row) => row.notification_id));
@@ -12043,7 +12044,7 @@ async function markNotificationsRead(notificationIds = []) {
   if (!unreadIds.length || !state.currentSession?.user?.id) return;
   const rows = unreadIds.map((notificationId) => ({
     notification_id: notificationId,
-    user_id: state.currentSession.user.id,
+    user_id: state.currentSession?.user?.id || null,
     read_at: new Date().toISOString(),
   }));
   const { error } = await state.supabase
@@ -12548,7 +12549,7 @@ async function handleRequestSubmit(event) {
         ...payload,
         requestStatusOverride: "approved",
         adminNote: payload.requestNote,
-        reviewedBy: state.currentSession.user.id,
+        reviewedBy: state.currentSession?.user?.id || null,
         reviewedAt: new Date().toISOString(),
       });
       await resolvePendingRequestsForTargets({
