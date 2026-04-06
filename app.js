@@ -293,6 +293,23 @@ function normalizeProfileRow(profile) {
   };
 }
 
+function buildFallbackProfileFromSession(session) {
+  const user = session?.user;
+  if (!user) return null;
+  const metadata = user.user_metadata || {};
+  const username = normalizeUsername(metadata.username || user.email?.split("@")[0] || "user");
+  return normalizeProfileRow({
+    id: user.id,
+    user_id: user.id,
+    username,
+    full_name: String(metadata.full_name || metadata.fullName || username).trim(),
+    phone: sanitizePhoneValue(metadata.phone || ""),
+    role: "user",
+    approved: false,
+    extra_permissions: [],
+  });
+}
+
 function getPreviewPermissionList(role = "") {
   if (role === "owner" || role === "admin") return [...ADMIN_ACCESS_PERMISSION_KEYS];
   return [];
@@ -6004,9 +6021,17 @@ async function applySession(session) {
 
   const profile = await fetchProfile(session.user.id);
   if (!profile) {
+    state.currentProfile = buildFallbackProfileFromSession(session);
+    if (state.currentProfile) {
+      pendingCopy.textContent = `${state.currentProfile.full_name || state.currentProfile.username}, your account profile is still syncing. Please wait a moment and refresh again.`;
+      updateHeaderProfile();
+      updateNavVisibility();
+      renderShell("pending");
+      updateOnlineStatus();
+      return;
+    }
     renderShell("auth");
     showAuthMessage("Profile not ready yet. Please try again.", true);
-    await state.supabase.auth.signOut();
     return;
   }
 
