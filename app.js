@@ -3534,6 +3534,9 @@ async function saveRoomPricing() {
   });
 
   if (error) {
+    if (String(error.message || "").includes("room_pricing_pax_check")) {
+      throw new Error("Room pricing table still uses the old kitchen pricing rule. Run the updated supabase/schema.sql, then save again.");
+    }
     throw new Error(error.message || "Could not save room pricing.");
   }
 

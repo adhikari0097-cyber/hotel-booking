@@ -95,7 +95,8 @@ create table if not exists public.room_pricing (
   updated_at timestamptz not null default now(),
   constraint room_pricing_pax_check check (
     (room_type = 'normal' and pax between 1 and 4)
-    or (room_type in ('kitchen', 'driver') and pax = 0 and ac_enabled = true)
+    or (room_type = 'kitchen' and pax = 0)
+    or (room_type = 'driver' and pax = 0 and ac_enabled = true)
   ),
   constraint room_pricing_unique unique (room_type, pax, ac_enabled)
 );
@@ -103,14 +104,15 @@ create table if not exists public.room_pricing (
 alter table public.room_pricing add column if not exists ac_enabled boolean not null default true;
 update public.room_pricing
 set ac_enabled = true
-where ac_enabled is distinct from true and room_type in ('kitchen', 'driver');
+where ac_enabled is distinct from true and room_type = 'driver';
 
 alter table public.room_pricing drop constraint if exists room_pricing_pax_check;
 alter table public.room_pricing
   add constraint room_pricing_pax_check
   check (
     (room_type = 'normal' and pax between 1 and 4)
-    or (room_type in ('kitchen', 'driver') and pax = 0 and ac_enabled = true)
+    or (room_type = 'kitchen' and pax = 0)
+    or (room_type = 'driver' and pax = 0 and ac_enabled = true)
   );
 
 alter table public.room_pricing drop constraint if exists room_pricing_unique;
@@ -120,6 +122,7 @@ create unique index if not exists room_pricing_unique_idx
 insert into public.room_pricing (room_type, pax, ac_enabled, weekend_price, weekday_percentage)
 values
   ('kitchen', 0, true, 0, 100),
+  ('kitchen', 0, false, 0, 100),
   ('driver', 0, true, 0, 100),
   ('normal', 1, true, 0, 100),
   ('normal', 1, false, 0, 100),
